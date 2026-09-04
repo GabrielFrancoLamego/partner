@@ -1,7 +1,7 @@
 import "server-only"
 import { Prisma, type Role } from "@prisma/client"
 import { getCurrentUser, type CurrentUser } from "./current-user"
-import { isPlatformAdmin } from "./permissions"
+import { isPlatformAdmin, isCompanyStaff } from "./permissions"
 
 export class ApiError extends Error {
   status: number
@@ -28,6 +28,19 @@ export async function requirePlatformAdmin(): Promise<CurrentUser> {
   const user = await requireUser()
   requireCapability(user, isPlatformAdmin)
   return user
+}
+
+/**
+ * Uso: toda rota sob app/api/company/* — exige sessão + role de staff de
+ * empresa (Master, Gerente, Financeiro ou Colaborador) com companyId
+ * vinculado. Diferente do admin, essas rotas NUNCA aceitam companyId vindo
+ * do cliente — o escopo é sempre `user.companyId` da própria sessão.
+ */
+export async function requireCompanyStaff(): Promise<CurrentUser & { companyId: string }> {
+  const user = await requireUser()
+  requireCapability(user, isCompanyStaff)
+  if (!user.companyId) throw new ApiError(403, "Usuário sem empresa vinculada")
+  return user as CurrentUser & { companyId: string }
 }
 
 /** Uso: `catch (error) { return handleApiError(error) }` em toda rota. */

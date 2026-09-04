@@ -153,6 +153,9 @@ function CompanyDialog({
   const [city, setCity] = useState(company?.city ?? "")
   const [state, setState] = useState(company?.state ?? "")
   const [zipCode, setZipCode] = useState(company?.zipCode ?? "")
+  const [latitude, setLatitude] = useState(company?.latitude?.toString() ?? "")
+  const [longitude, setLongitude] = useState(company?.longitude?.toString() ?? "")
+  const [geofenceRadiusMeters, setGeofenceRadiusMeters] = useState(String(company?.geofenceRadiusMeters ?? 150))
   const [phone, setPhone] = useState(company?.phone ?? "")
   const [companyEmail, setCompanyEmail] = useState(company?.email ?? "")
   const [website, setWebsite] = useState(company?.website ?? "")
@@ -190,6 +193,9 @@ function CompanyDialog({
             city,
             state,
             zipCode,
+            latitude: latitude ? Number(latitude) : null,
+            longitude: longitude ? Number(longitude) : null,
+            geofenceRadiusMeters: Number(geofenceRadiusMeters) || 150,
             phone,
             email: companyEmail,
             website,
@@ -284,6 +290,23 @@ function CompanyDialog({
                   <Label>Descrição curta</Label>
                   <Textarea value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} />
                 </div>
+                <div className="grid grid-cols-3 gap-3 pt-2 border-t border-gray-100">
+                  <div className="space-y-2">
+                    <Label>Latitude</Label>
+                    <Input type="number" step="0.000001" value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="-2.797500" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Longitude</Label>
+                    <Input type="number" step="0.000001" value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="-40.513700" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Raio do geofence (m)</Label>
+                    <Input type="number" value={geofenceRadiusMeters} onChange={(e) => setGeofenceRadiusMeters(e.target.value)} />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400">
+                  Latitude/longitude definem o centro da unidade para validação de GPS no Ponto Digital da empresa.
+                </p>
               </TabsContent>
 
               <TabsContent value="contato" className="space-y-4 pt-4">

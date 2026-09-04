@@ -31,6 +31,7 @@ export type AdminCompany = {
   zipCode: string | null
   latitude: number | null
   longitude: number | null
+  geofenceRadiusMeters: number
   phone: string | null
   email: string | null
   website: string | null

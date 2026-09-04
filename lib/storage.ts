@@ -8,7 +8,10 @@ const BUCKET = "uploads"
  * Storage e devolve a URL pública. Usa o client admin porque quem chama
  * aqui já passou por requireUser()/requireCapability() na própria API.
  */
-export async function uploadImage(folder: "checklists" | "receipts", file: File) {
+export async function uploadImage(
+  folder: "checklists" | "receipts" | "occurrences" | "posts" | "justifications" | "rewards",
+  file: File,
+) {
   const supabase = createAdminClient()
   const extension = file.name.split(".").pop() || "jpg"
   const path = `${folder}/${crypto.randomUUID()}.${extension}`

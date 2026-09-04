@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { LogOut } from "lucide-react"
 import { toMenuBucket, type AuthUser } from "@/lib/role-bucket"
+import { isCompanyStaff } from "@/lib/permissions"
 import { DesktopSidebar } from "./desktop-sidebar"
 import { MobileBottomNav } from "./mobile-bottom-nav"
 import { PartnershipHeader } from "./partnership-header"
@@ -45,6 +46,10 @@ export function PartnershipLayout() {
           router.replace("/admin")
           return
         }
+        if (user && isCompanyStaff(user.role)) {
+          router.replace("/company")
+          return
+        }
         setCurrentUser(user)
       })
       .catch(() => setCurrentUser(null))
@@ -58,6 +63,10 @@ export function PartnershipLayout() {
   const handleLogin = (user: AuthUser) => {
     if (user.role === "ADMIN") {
       router.push("/admin")
+      return
+    }
+    if (isCompanyStaff(user.role)) {
+      router.push("/company")
       return
     }
     setCurrentUser(user)

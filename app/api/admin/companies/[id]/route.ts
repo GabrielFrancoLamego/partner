@@ -13,6 +13,7 @@ const COMPANY_PROFILE_FIELDS = [
   "zipCode",
   "latitude",
   "longitude",
+  "geofenceRadiusMeters",
   "phone",
   "email",
   "website",
