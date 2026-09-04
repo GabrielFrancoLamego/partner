@@ -1,0 +1,692 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN // Administrador da plataforma — acesso global, todas as empresas
+  COMPANY_MASTER // Administrador da empresa — escopo total dentro da empresa
+  COMPANY_GERENTE // Gestão operacional (ponto, checklists, mural, advertências)
+  COMPANY_FINANCE // Financeiro — saques PIX, aprovação de comissões
+  EMPLOYEE // Operador de linha de frente (scanner, ponto, checklists)
+  PARTNER // Pessoa física ou agência (PJ) que indica clientes
+}
+
+enum PartnerType {
+  INDIVIDUAL // Pessoa física
+  AGENCY // Pessoa jurídica (agência de turismo) — pode ter colaboradores/guias
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+}
+
+enum CommissionType {
+  FIXED
+  VARIABLE
+}
+
+enum ReferralStatus {
+  PENDING
+  VISITED
+  NOT_VISITED
+}
+
+enum CommissionStatus {
+  AWAITING_VALUE
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum WalletTransactionType {
+  COMMISSION
+  WITHDRAWAL
+  MANUAL_CREDIT
+  MANUAL_DEBIT
+}
+
+enum WalletTransactionStatus {
+  COMPLETED
+  PENDING
+}
+
+enum TimeEntryType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+enum ChecklistStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ChecklistRecurrence {
+  DAILY
+  WEEKLY
+  FORTNIGHTLY
+  MONTHLY
+  BIMONTHLY
+  TRIMONTHLY
+}
+
+enum ChecklistPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum RegistrationStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  ANSWERED
+  RESOLVED
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique // "nomads-jeri" | "nomads-lagoa" | "in-on"
+  status      Status   @default(ACTIVE) // INACTIVE = empresa bloqueada pelo Admin
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  sidebarBg   String?
+  sidebarText String?
+  logoUrl     String?
+  fontFamily  String?
+  fontSize    String?
+
+  // Dados cadastrais (pacote completo — CNPJ, endereço, contato, mídia)
+  tradeName         String? // Nome Fantasia
+  corporateName     String? // Razão Social
+  cnpj              String? @unique
+  address           String?
+  city              String?
+  state             String?
+  zipCode           String?
+  latitude          Float? // renderização em mapa
+  longitude         Float?
+  phone             String?
+  email             String?
+  website           String?
+  socialLinks       Json? // { instagram, facebook, linkedin, ... }
+  shortDescription  String? @db.Text
+  profilePictureUrl String?
+  coverPictureUrl   String?
+  logoWithLabelUrl  String? // logo com rótulo/marca — cabeçalho do colaborador
+
+  users       User[]
+  units       Unit[]
+  programs    Program[]
+  promotions  Promotion[]
+  referrals   Referral[]
+  commissions Commission[]
+  withdrawals Withdrawal[]
+  wallets     WalletTransaction[]
+  timeEntries TimeEntry[]
+  checklists  Checklist[]
+
+  checklistTemplates      ChecklistTemplate[]
+  publicRegistrationLinks PublicRegistrationLink[]
+  registrationRequests    PublicRegistrationRequest[]
+  tickets                 Ticket[]
+  license                 License?
+}
+
+// Licença SaaS da empresa dentro do grupo — hoje uso interno (Nomad's Jeri,
+// Nomad's Lagoa, IN-ON), mas o schema já fica pronto para comercialização
+// multi-tenant futura. Gerenciada pelo ADMIN em /admin/cadastros.
+model License {
+  id           String    @id @default(cuid())
+  companyId    String    @unique
+  company      Company   @relation(fields: [companyId], references: [id])
+  plan         String    @default("ENTERPRISE") // STANDARD, PREMIUM, ENTERPRISE
+  status       String    @default("ACTIVE") // ACTIVE, SUSPENDED, EXPIRED, TRIAL
+  maxEmployees Int       @default(50)
+  maxPartners  Int       @default(500)
+  billingCycle String    @default("MONTHLY") // MONTHLY, YEARLY
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model User {
+  id           String    @id // == Supabase auth.users.id (uuid), sem @default
+  email        String    @unique
+  name         String
+  role         Role
+  status       Status    @default(ACTIVE)
+  companyId    String? // null quando role = ADMIN ou PARTNER (parceiro não pertence a uma única empresa)
+  company      Company?  @relation(fields: [companyId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastActiveAt DateTime?
+
+  partnerProfile  PartnerProfile?
+  employeeProfile EmployeeProfile?
+
+  referrals             Referral[]          @relation("PartnerReferrals")
+  commissionsAsPartner  Commission[]        @relation("PartnerCommissions")
+  commissionsScanned    Commission[]        @relation("ScannedCommissions")
+  withdrawals           Withdrawal[]
+  walletTransactions    WalletTransaction[] @relation("PartnerWallet")
+  walletAdjustmentsMade WalletTransaction[] @relation("WalletAdjustmentBy")
+  activityLogs          ActivityLog[]
+  auditLogs             AuditLog[]
+  timeEntries           TimeEntry[]
+  checklistsSubmitted   Checklist[]         @relation("ChecklistEmployee")
+  checklistsApproved    Checklist[]         @relation("ChecklistApprover")
+
+  checklistTemplatesCreated    ChecklistTemplate[]         @relation("ChecklistTemplateCreatedBy")
+  checklistReassignedFrom      ChecklistReassignment[]     @relation("ChecklistReassignFrom")
+  checklistReassignedTo        ChecklistReassignment[]     @relation("ChecklistReassignTo")
+  checklistReassignmentsMade   ChecklistReassignment[]     @relation("ChecklistReassignedBy")
+  registrationLinksCreated     PublicRegistrationLink[]    @relation("RegistrationLinkCreatedBy")
+  registrationRequestsReviewed PublicRegistrationRequest[] @relation("RegistrationRequestReviewedBy")
+  ticketsAuthored              Ticket[]                    @relation("TicketAuthor")
+  ticketMessagesAuthored       TicketMessage[]             @relation("TicketMessageAuthor")
+
+  @@index([companyId])
+  @@index([role])
+}
+
+model PartnerProfile {
+  id             String      @id @default(cuid())
+  userId         String      @unique
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  partnerType    PartnerType @default(INDIVIDUAL)
+  document       String? // CPF (INDIVIDUAL) ou CNPJ (AGENCY) — mantido por compat; ver `cpf` abaixo
+  companyName    String? // Razão social — só para AGENCY
+  phone          String?
+  photoUrl       String?
+  pixKey         String?
+  walletBalance  Decimal     @default(0) @db.Decimal(12, 2)
+  currentLevelId String?
+
+  // Pacote completo de cadastro do parceiro
+  fullName     String?
+  nickname     String?       @unique // login por apelido
+  whatsapp     String? // pode ser usado como login
+  email        String? // contato opcional — distinto do User.email (credencial de login)
+  cpf          String?       @unique // exigido ao solicitar saque
+  bio          String?       @db.Text // pesquisável pela plataforma
+  currentLevel ProgramLevel? @relation(fields: [currentLevelId], references: [id])
+  registeredAt DateTime      @default(now())
+
+  // Hierarquia Agência (pai) -> Colaboradores/guias (filhos).
+  // Comissões geradas pelos filhos são consolidadas no saldo do pai (regra aplicada em código).
+  parentId      String?
+  parent        PartnerProfile?  @relation("AgencyCollaborators", fields: [parentId], references: [id])
+  collaborators PartnerProfile[] @relation("AgencyCollaborators")
+
+  @@index([parentId])
+}
+
+model EmployeeProfile {
+  id            String  @id @default(cuid())
+  userId        String  @unique
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isScannerOnly Boolean @default(false)
+  primaryUnitId String? // extensão para geofencing do ponto digital (fase futura)
+  primaryUnit   Unit?   @relation(fields: [primaryUnitId], references: [id])
+  xpPoints      Int     @default(0) // gamificação — pontos de experiência do colaborador
+
+  // Registro completo de RH — preenchimento opcional, feito por etapas.
+  isProfileComplete Boolean @default(false)
+
+  // Dados pessoais & documentos
+  fullName            String?
+  nickname            String?
+  cpf                 String?   @unique
+  rg                  String?
+  rgIssuer            String?
+  birthDate           DateTime?
+  gender              String?
+  maritalStatus       String?
+  voterCard           String?
+  militaryCertificate String?
+  cnh                 String?
+  cnhCategory         String?
+
+  // Endereço & contato
+  street                String?
+  number                String?
+  neighborhood          String?
+  city                  String?
+  state                 String?
+  zipCode               String?
+  personalPhone         String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+
+  // Dados bancários
+  bankName      String?
+  accountType   String?
+  agency        String?
+  accountNumber String?
+  pixKey        String?
+
+  // Documentação (URLs de Storage)
+  cpfDocUrl           String?
+  rgDocUrl            String?
+  proofOfResidenceUrl String?
+  photoUrl            String?
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Unit {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  name        String
+  address     String
+  phone       String
+  email       String
+  description String   @db.Text
+  photos      String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  promotions         PromotionUnit[]
+  commissions        Commission[]
+  employeesAssigned  EmployeeProfile[]
+  timeEntries        TimeEntry[]
+  checklists         Checklist[]
+  checklistTemplates ChecklistTemplate[]
+
+  @@index([companyId])
+}
+
+model Program {
+  id              String         @id @default(cuid())
+  companyId       String
+  company         Company        @relation(fields: [companyId], references: [id])
+  name            String
+  description     String         @db.Text
+  commissionType  CommissionType
+  commissionValue Decimal        @db.Decimal(10, 2)
+  isPercentage    Boolean        @default(false)
+  hasLevels       Boolean        @default(false)
+  autoUpgrade     Boolean        @default(false)
+  active          Boolean        @default(true)
+  contractUrl     String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  levels    ProgramLevel[]
+  materials ProgramMaterial[]
+  referrals Referral[]
+
+  @@index([companyId])
+}
+
+model ProgramLevel {
+  id                    String  @id @default(cuid())
+  programId             String
+  program               Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  name                  String // Prata / Ouro / Diamante
+  order                 Int     @default(0)
+  commissionPercentage  Decimal @db.Decimal(5, 2)
+  bonusDescription      String?
+  badgeColorHex         String  @default("#C0C0C0")
+  requiredReferralCount Int
+  periodMonths          Int
+
+  partners PartnerProfile[]
+
+  @@index([programId])
+}
+
+model ProgramMaterial {
+  id        String   @id @default(cuid())
+  programId String
+  program   Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  name      String
+  url       String
+  type      String
+  createdAt DateTime @default(now())
+}
+
+model Promotion {
+  id                    String   @id @default(cuid())
+  companyId             String
+  company               Company  @relation(fields: [companyId], references: [id])
+  title                 String
+  description           String   @db.Text
+  bannerUrl             String?
+  validFrom             DateTime
+  validUntil            DateTime
+  qrCodeValidityMinutes Int      @default(15)
+  stock                 Int? // null = ilimitado
+  cost                  Decimal  @db.Decimal(10, 2)
+  usedCount             Int      @default(0)
+  active                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  units       PromotionUnit[] // sem linhas = todas as unidades
+  commissions Commission[]
+
+  @@index([companyId])
+}
+
+model PromotionUnit {
+  promotionId String
+  unitId      String
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  unit        Unit      @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@id([promotionId, unitId])
+}
+
+model Referral {
+  id               String         @id @default(cuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  partnerId        String
+  partner          User           @relation("PartnerReferrals", fields: [partnerId], references: [id])
+  programId        String?
+  program          Program?       @relation(fields: [programId], references: [id])
+  clientName       String
+  clientEmail      String
+  clientPhone      String
+  indicatedAt      DateTime       @default(now())
+  visited          Boolean        @default(false)
+  visitDate        DateTime?
+  billAmount       Decimal?       @db.Decimal(10, 2)
+  commissionAmount Decimal?       @db.Decimal(10, 2)
+  status           ReferralStatus @default(PENDING)
+
+  commission Commission?
+
+  @@index([companyId])
+  @@index([partnerId])
+}
+
+model Commission {
+  id                String           @id @default(cuid())
+  companyId         String
+  company           Company          @relation(fields: [companyId], references: [id])
+  partnerId         String
+  partner           User             @relation("PartnerCommissions", fields: [partnerId], references: [id])
+  unitId            String?
+  unit              Unit?            @relation(fields: [unitId], references: [id])
+  promotionId       String?
+  promotion         Promotion?       @relation(fields: [promotionId], references: [id])
+  referralId        String?          @unique
+  referral          Referral?        @relation(fields: [referralId], references: [id])
+  scannedById       String?
+  scannedBy         User?            @relation("ScannedCommissions", fields: [scannedById], references: [id])
+  clientName        String
+  customerPhone     String?
+  qrCodeId          String?          @unique
+  amount            Decimal?         @db.Decimal(10, 2)
+  commissionValue   Decimal?         @db.Decimal(10, 2)
+  status            CommissionStatus @default(PENDING)
+  acceptedAt        DateTime?
+  deadline          DateTime?
+  billAttachmentUrl String?
+  date              DateTime         @default(now())
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([companyId])
+  @@index([partnerId])
+  @@index([status])
+}
+
+model Withdrawal {
+  id                String           @id @default(cuid())
+  companyId         String
+  company           Company          @relation(fields: [companyId], references: [id])
+  partnerId         String
+  partner           User             @relation(fields: [partnerId], references: [id])
+  amount            Decimal          @db.Decimal(10, 2)
+  requestDate       DateTime         @default(now())
+  status            WithdrawalStatus @default(PENDING)
+  pixKey            String?
+  bankAccount       String?
+  rejectionReason   String?
+  proofOfPaymentUrl String? // comprovante de transferência PIX anexado pelo Financeiro
+  paidAt            DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([companyId])
+  @@index([partnerId])
+}
+
+model WalletTransaction {
+  id          String                  @id @default(cuid())
+  companyId   String
+  company     Company                 @relation(fields: [companyId], references: [id])
+  partnerId   String
+  partner     User                    @relation("PartnerWallet", fields: [partnerId], references: [id])
+  type        WalletTransactionType
+  amount      Decimal                 @db.Decimal(10, 2)
+  description String
+  status      WalletTransactionStatus @default(COMPLETED)
+  createdById String?
+  createdBy   User?                   @relation("WalletAdjustmentBy", fields: [createdById], references: [id])
+  createdAt   DateTime                @default(now())
+
+  @@index([companyId])
+  @@index([partnerId])
+}
+
+// Trilha de auditoria — acesso exclusivo do ADMIN.
+// Preenchido automaticamente pelo client extension em lib/audit.ts para
+// ações críticas de ADMIN e usuários de empresa (Master, Gerente, Financeiro).
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  companyId String?
+  action    String // CREATE, UPDATE, DELETE, PIX_APPROVAL, CHECKIN_OVERRIDE, etc.
+  entity    String // User, Company, Checklist, Referral, Withdrawal, ...
+  entityId  String?
+  details   Json? // dados alterados (antes e depois)
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// Ponto digital do colaborador — check-in/check-out com geolocalização.
+model TimeEntry {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id])
+  companyId String
+  company   Company       @relation(fields: [companyId], references: [id])
+  unitId    String?
+  unit      Unit?         @relation(fields: [unitId], references: [id])
+  type      TimeEntryType
+  latitude  Decimal       @db.Decimal(9, 6)
+  longitude Decimal       @db.Decimal(9, 6)
+  createdAt DateTime      @default(now())
+
+  @@index([userId])
+  @@index([companyId])
+}
+
+// Modelo/definição de uma tarefa recorrente de checklist, criada pelo Admin
+// ou pelo Gerente da empresa. Cada execução do colaborador vira um Checklist
+// (instância) vinculado a este template.
+model ChecklistTemplate {
+  id          String              @id @default(cuid())
+  companyId   String
+  company     Company             @relation(fields: [companyId], references: [id])
+  unitId      String?
+  unit        Unit?               @relation(fields: [unitId], references: [id])
+  title       String
+  description String?             @db.Text
+  recurrence  ChecklistRecurrence
+  priority    ChecklistPriority   @default(MEDIUM)
+  dueTime     String // horário limite diário de conclusão, formato "HH:mm"
+  active      Boolean             @default(true)
+  createdById String
+  createdBy   User                @relation("ChecklistTemplateCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  instances Checklist[]
+
+  @@index([companyId])
+}
+
+// Checklist operacional registrado com foto pelo colaborador,
+// aprovado ou rejeitado pelo Gerente/Master.
+model Checklist {
+  id           String             @id @default(cuid())
+  companyId    String
+  company      Company            @relation(fields: [companyId], references: [id])
+  unitId       String?
+  unit         Unit?              @relation(fields: [unitId], references: [id])
+  templateId   String? // null = tarefa avulsa, não vinculada a uma recorrência
+  template     ChecklistTemplate? @relation(fields: [templateId], references: [id])
+  employeeId   String
+  employee     User               @relation("ChecklistEmployee", fields: [employeeId], references: [id])
+  title        String
+  notes        String?
+  photoUrl     String
+  priority     ChecklistPriority  @default(MEDIUM)
+  dueAt        DateTime?
+  status       ChecklistStatus    @default(PENDING)
+  approvedById String?
+  approvedBy   User?              @relation("ChecklistApprover", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+  createdAt    DateTime           @default(now())
+
+  reassignments ChecklistReassignment[]
+
+  @@index([companyId])
+  @@index([employeeId])
+  @@index([status])
+  @@index([templateId])
+}
+
+// Histórico de transferência de atribuição de um checklist entre colaboradores
+// — a tarefa (Checklist.employeeId) é atualizada para o novo responsável, mas
+// cada transferência fica preservada aqui.
+model ChecklistReassignment {
+  id             String    @id @default(cuid())
+  checklistId    String
+  checklist      Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  fromUserId     String
+  fromUser       User      @relation("ChecklistReassignFrom", fields: [fromUserId], references: [id])
+  toUserId       String
+  toUser         User      @relation("ChecklistReassignTo", fields: [toUserId], references: [id])
+  reassignedById String
+  reassignedBy   User      @relation("ChecklistReassignedBy", fields: [reassignedById], references: [id])
+  reason         String?
+  createdAt      DateTime  @default(now())
+
+  @@index([checklistId])
+}
+
+// Link público de auto-cadastro de colaboradores, gerado por empresa.
+// Cada pessoa que se cadastra através do link gera um PublicRegistrationRequest
+// separado, com status próprio — o link em si permanece ativo/reutilizável.
+model PublicRegistrationLink {
+  id          String    @id @default(cuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id])
+  token       String    @unique @default(cuid())
+  role        Role      @default(EMPLOYEE)
+  active      Boolean   @default(true)
+  createdById String
+  createdBy   User      @relation("RegistrationLinkCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime?
+
+  requests PublicRegistrationRequest[]
+
+  @@index([companyId])
+}
+
+// Cadastro submetido por um colaborador através de um PublicRegistrationLink,
+// pendente de aprovação do Admin/Gerente antes de virar um User real.
+model PublicRegistrationRequest {
+  id              String                 @id @default(cuid())
+  linkId          String
+  link            PublicRegistrationLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  companyId       String
+  company         Company                @relation(fields: [companyId], references: [id])
+  name            String
+  email           String
+  phone           String
+  document        String?
+  status          RegistrationStatus     @default(PENDING_APPROVAL)
+  reviewedById    String?
+  reviewedBy      User?                  @relation("RegistrationRequestReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  rejectionReason String?
+  createdUserId   String? // preenchido quando aprovado e o User real é provisionado
+  createdAt       DateTime               @default(now())
+
+  @@index([companyId])
+  @@index([status])
+}
+
+// Chamado aberto por Colaborador, Gerente ou Parceiro na Central de Comunicação.
+model Ticket {
+  id        String       @id @default(cuid())
+  companyId String?
+  company   Company?     @relation(fields: [companyId], references: [id])
+  authorId  String
+  author    User         @relation("TicketAuthor", fields: [authorId], references: [id])
+  subject   String
+  status    TicketStatus @default(OPEN)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  messages TicketMessage[]
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model TicketMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation("TicketMessageAuthor", fields: [authorId], references: [id])
+  message   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+}
