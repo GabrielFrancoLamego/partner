@@ -3,81 +3,83 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Updated to tropical Jericoacoara theme with warmer tones */
+/* Tribuss brand theme — v1.0 do manual da marca (setembro de 2026) */
 :root {
-  --background: oklch(0.97 0.02 70); /* Neutral Sand background */
-  --foreground: oklch(0.2 0.03 240); /* Dark Contrast text */
-  --card: oklch(1 0 0); /* Pure white cards */
-  --card-foreground: oklch(0.2 0.03 240);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2 0.03 240);
-  --primary: oklch(0.65 0.18 45); /* Sun Orange #FF7A28 */
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.55 0.12 230); /* Ocean Blue #0078B7 */
-  --secondary-foreground: oklch(0.99 0 0);
-  --accent: oklch(0.75 0.15 70); /* Sunset Gold #FFBE3B */
-  --accent-foreground: oklch(0.2 0.03 240);
-  --muted: oklch(0.93 0.01 70);
-  --muted-foreground: oklch(0.5 0.02 240);
+  --background: #f7f5f2; /* Areia — fundo neutro */
+  --foreground: #3e2415; /* Marrom Tribuss — texto */
+  --card: #ffffff;
+  --card-foreground: #3e2415;
+  --popover: #ffffff;
+  --popover-foreground: #3e2415;
+  --primary: #f58220; /* Laranja Tribuss — cor principal, botões, destaques */
+  --primary-foreground: #ffffff;
+  --secondary: #3e2415; /* Marrom Tribuss */
+  --secondary-foreground: #ffffff;
+  --accent: #ffc800; /* Âmbar — fim do degradê, acentos */
+  --accent-foreground: #3e2415;
+  --muted: #efebe4;
+  --muted-foreground: #8a7a6c;
   --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(0.88 0.01 70);
-  --input: oklch(0.88 0.01 70);
-  --ring: oklch(0.65 0.18 45);
-  --chart-1: oklch(0.65 0.18 45);
-  --chart-2: oklch(0.55 0.12 230);
-  --chart-3: oklch(0.75 0.15 70);
-  --chart-4: oklch(0.93 0.01 70);
-  --chart-5: oklch(0.2 0.03 240);
+  --destructive-foreground: #ffffff;
+  --border: #e8e3dc;
+  --input: #e8e3dc;
+  --ring: #f58220;
+  --chart-1: #f58220;
+  --chart-2: #3e2415;
+  --chart-3: #ffc800;
+  --chart-4: #efebe4;
+  --chart-5: #8a7a6c;
   --radius: 1rem;
-  --sidebar: oklch(0.99 0 0);
-  --sidebar-foreground: oklch(0.2 0.03 240);
-  --sidebar-primary: oklch(0.65 0.18 45);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.97 0.02 70);
-  --sidebar-accent-foreground: oklch(0.2 0.03 240);
-  --sidebar-border: oklch(0.93 0.01 70);
-  --sidebar-ring: oklch(0.65 0.18 45);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #3e2415; /* itens inativos */
+  --sidebar-primary: #f58220; /* item ativo */
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f7f5f2;
+  --sidebar-accent-foreground: #3e2415;
+  --sidebar-border: #e8e3dc;
+  --sidebar-ring: #f58220;
 }
 
 .dark {
-  --background: oklch(0.2 0.03 240);
-  --foreground: oklch(0.97 0.02 70);
-  --card: oklch(0.25 0.03 240);
-  --card-foreground: oklch(0.97 0.02 70);
-  --popover: oklch(0.25 0.03 240);
-  --popover-foreground: oklch(0.97 0.02 70);
-  --primary: oklch(0.65 0.18 45);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.55 0.12 230);
-  --secondary-foreground: oklch(0.99 0 0);
-  --accent: oklch(0.75 0.15 70);
-  --accent-foreground: oklch(0.2 0.03 240);
-  --muted: oklch(0.3 0.03 240);
-  --muted-foreground: oklch(0.7 0.02 70);
+  /* Marrom Tribuss como fundo escuro oficial (manual, seção 03) */
+  --background: #3e2415;
+  --foreground: #f7f5f2;
+  --card: #4a2c1b;
+  --card-foreground: #f7f5f2;
+  --popover: #4a2c1b;
+  --popover-foreground: #f7f5f2;
+  --primary: #f58220;
+  --primary-foreground: #ffffff;
+  --secondary: #f7f5f2;
+  --secondary-foreground: #3e2415;
+  --accent: #ffc800;
+  --accent-foreground: #3e2415;
+  --muted: #4a2c1b;
+  --muted-foreground: #c9b8a8;
   --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(0.3 0.03 240);
-  --input: oklch(0.3 0.03 240);
-  --ring: oklch(0.65 0.18 45);
-  --chart-1: oklch(0.65 0.18 45);
-  --chart-2: oklch(0.55 0.12 230);
-  --chart-3: oklch(0.75 0.15 70);
-  --chart-4: oklch(0.93 0.01 70);
-  --chart-5: oklch(0.97 0.02 70);
-  --sidebar: oklch(0.25 0.03 240);
-  --sidebar-foreground: oklch(0.97 0.02 70);
-  --sidebar-primary: oklch(0.65 0.18 45);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.3 0.03 240);
-  --sidebar-accent-foreground: oklch(0.97 0.02 70);
-  --sidebar-border: oklch(0.3 0.03 240);
-  --sidebar-ring: oklch(0.65 0.18 45);
+  --destructive-foreground: #ffffff;
+  --border: #5a3826;
+  --input: #5a3826;
+  --ring: #f58220;
+  --chart-1: #f58220;
+  --chart-2: #ffc800;
+  --chart-3: #c9b8a8;
+  --chart-4: #f7f5f2;
+  --chart-5: #5a3826;
+  --sidebar: #3e2415;
+  --sidebar-foreground: #f7f5f2;
+  --sidebar-primary: #f58220;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #4a2c1b;
+  --sidebar-accent-foreground: #f7f5f2;
+  --sidebar-border: #5a3826;
+  --sidebar-ring: #f58220;
 }
 
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback';
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --font-sans: var(--font-poppins), 'Poppins', sans-serif;
+  --font-body: var(--font-poppins), 'Poppins', sans-serif;
+  --font-heading: var(--font-poppins), 'Poppins', sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -121,7 +123,13 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-body;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading;
   }
 }
 

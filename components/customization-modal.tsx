@@ -69,7 +69,7 @@ export function CustomizationModal({ isOpen, onClose, onSave, currentCustomizati
       {/* Modal */}
       <div className="relative w-[90%] max-w-4xl max-h-[85vh] bg-white rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#FF7A28] via-[#FFBE3B] to-[#0078B7] p-6 relative overflow-hidden">
+        <div className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] p-6 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
           <div className="relative flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -93,8 +93,8 @@ export function CustomizationModal({ isOpen, onClose, onSave, currentCustomizati
             {/* Cores do Sidebar */}
             <Card className="p-6 border-2 border-gray-100 shadow-sm">
               <div className="flex items-center gap-2 mb-4">
-                <Palette className="w-5 h-5 text-[#FF7A28]" />
-                <h3 className="text-lg font-semibold text-[#0A2E4D]">Cores do Menu</h3>
+                <Palette className="w-5 h-5 text-[#F58220]" />
+                <h3 className="text-lg font-semibold text-[#3E2415]">Cores do Menu</h3>
               </div>
 
               <div className="space-y-4">
@@ -115,7 +115,7 @@ export function CustomizationModal({ isOpen, onClose, onSave, currentCustomizati
                       value={sidebarBg}
                       onChange={(e) => setSidebarBg(e.target.value)}
                       className="flex-1"
-                      placeholder="#F4E9D8"
+                      placeholder="#FFFFFF"
                     />
                   </div>
                 </div>
@@ -137,7 +137,7 @@ export function CustomizationModal({ isOpen, onClose, onSave, currentCustomizati
                       value={sidebarText}
                       onChange={(e) => setSidebarText(e.target.value)}
                       className="flex-1"
-                      placeholder="#0A2E4D"
+                      placeholder="#3E2415"
                     />
                   </div>
                 </div>
@@ -147,43 +147,43 @@ export function CustomizationModal({ isOpen, onClose, onSave, currentCustomizati
                   <div className="grid grid-cols-4 gap-2">
                     <button
                       onClick={() => {
-                        setSidebarBg("#F4E9D8")
-                        setSidebarText("#0A2E4D")
+                        setSidebarBg("#FFFFFF")
+                        setSidebarText("#3E2415")
                       }}
-                      className="group relative w-full h-16 rounded-xl border-2 border-gray-200 hover:border-[#FF7A28] transition-all overflow-hidden"
+                      className="group relative w-full h-16 rounded-xl border-2 border-gray-200 hover:border-[#F58220] transition-all overflow-hidden"
                       title="Areia (Padrão)"
                     >
                       <div
                         className="absolute inset-0"
-                        style={{ background: "linear-gradient(135deg, #F4E9D8 50%, #0A2E4D 50%)" }}
+                        style={{ background: "linear-gradient(135deg, #FFFFFF 50%, #3E2415 50%)" }}
                       />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                     </button>
                     <button
                       onClick={() => {
                         setSidebarBg("#E8F4F8")
-                        setSidebarText("#0078B7")
+                        setSidebarText("#3E2415")
                       }}
-                      className="group relative w-full h-16 rounded-xl border-2 border-gray-200 hover:border-[#0078B7] transition-all overflow-hidden"
+                      className="group relative w-full h-16 rounded-xl border-2 border-gray-200 hover:border-[#3E2415] transition-all overflow-hidden"
                       title="Oceano"
                     >
                       <div
                         className="absolute inset-0"
-                        style={{ background: "linear-gradient(135deg, #E8F4F8 50%, #0078B7 50%)" }}
+                        style={{ background: "linear-gradient(135deg, #E8F4F8 50%, #3E2415 50%)" }}
                       />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                     </button>
                     <button
                       onClick={() => {
                         setSidebarBg("#FFF5E6")
-                        setSidebarText("#FF7A28")
+                        setSidebarText("#F58220")
                       }}
-                      className="group relative w-full h-16 rounded-xl border-2 border-gray-200 hover:border-[#FFBE3B] transition-all overflow-hidden"
+                      className="group relative w-full h-16 rounded-xl border-2 border-gray-200 hover:border-[#FFC800] transition-all overflow-hidden"
                       title="Pôr do Sol"
                     >
                       <div
                         className="absolute inset-0"
-                        style={{ background: "linear-gradient(135deg, #FFF5E6 50%, #FF7A28 50%)" }}
+                        style={{ background: "linear-gradient(135deg, #FFF5E6 50%, #F58220 50%)" }}
                       />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                     </button>
@@ -209,8 +209,8 @@ export function CustomizationModal({ isOpen, onClose, onSave, currentCustomizati
             {/* Tipografia */}
             <Card className="p-6 border-2 border-gray-100 shadow-sm">
               <div className="flex items-center gap-2 mb-4">
-                <Type className="w-5 h-5 text-[#0078B7]" />
-                <h3 className="text-lg font-semibold text-[#0A2E4D]">Tipografia</h3>
+                <Type className="w-5 h-5 text-[#3E2415]" />
+                <h3 className="text-lg font-semibold text-[#3E2415]">Tipografia</h3>
               </div>
 
               <div className="space-y-4">
@@ -225,7 +225,7 @@ export function CustomizationModal({ isOpen, onClose, onSave, currentCustomizati
                         onClick={() => setFontSize(size)}
                         className={`px-4 py-3 rounded-xl border-2 transition-all ${
                           fontSize === size
-                            ? "border-[#FF7A28] bg-[#FF7A28]/10 text-[#FF7A28] font-semibold"
+                            ? "border-[#F58220] bg-[#F58220]/10 text-[#F58220] font-semibold"
                             : "border-gray-200 hover:border-gray-300 text-gray-700"
                         }`}
                       >
@@ -244,7 +244,7 @@ export function CustomizationModal({ isOpen, onClose, onSave, currentCustomizati
                     id="font-family"
                     value={fontFamily}
                     onChange={(e) => setFontFamily(e.target.value)}
-                    className="w-full mt-2 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#0078B7] focus:outline-none transition-colors"
+                    className="w-full mt-2 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#3E2415] focus:outline-none transition-colors"
                   >
                     <option value="system-ui">System (Padrão)</option>
                     <option value="Inter">Inter</option>
@@ -277,8 +277,8 @@ export function CustomizationModal({ isOpen, onClose, onSave, currentCustomizati
             {/* Logo Personalizado */}
             <Card className="p-6 border-2 border-gray-100 shadow-sm md:col-span-2">
               <div className="flex items-center gap-2 mb-4">
-                <ImageIcon className="w-5 h-5 text-[#FFBE3B]" />
-                <h3 className="text-lg font-semibold text-[#0A2E4D]">Logo Personalizado</h3>
+                <ImageIcon className="w-5 h-5 text-[#FFC800]" />
+                <h3 className="text-lg font-semibold text-[#3E2415]">Logo Personalizado</h3>
               </div>
 
               <div className="flex flex-col md:flex-row gap-6 items-center">
@@ -300,15 +300,11 @@ export function CustomizationModal({ isOpen, onClose, onSave, currentCustomizati
                         className="w-full h-full object-contain p-2"
                       />
                     ) : (
-                      <div className="w-16 h-16 bg-gradient-to-br from-[#FF7A28] via-[#FFBE3B] to-[#0078B7] rounded-xl flex items-center justify-center shadow-lg relative overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent" />
-                        <span
-                          className="text-white font-bold text-2xl relative z-10"
-                          style={{ fontFamily: "Georgia, serif" }}
-                        >
-                          P
-                        </span>
-                      </div>
+                      <img
+                        src="/brand/tribuss-icone-app.png"
+                        alt="Tribuss"
+                        className="w-16 h-16 rounded-xl object-contain"
+                      />
                     )}
                   </div>
                 </div>
@@ -321,8 +317,8 @@ export function CustomizationModal({ isOpen, onClose, onSave, currentCustomizati
         <div className="border-t border-gray-200 bg-gray-50 px-6 py-4 flex items-center justify-between">
           <Button
             onClick={() => {
-              setSidebarBg("#F4E9D8")
-              setSidebarText("#0A2E4D")
+              setSidebarBg("#FFFFFF")
+              setSidebarText("#3E2415")
               setFontSize("medium")
               setFontFamily("system-ui")
               setLogoPreview(null)
@@ -338,7 +334,7 @@ export function CustomizationModal({ isOpen, onClose, onSave, currentCustomizati
             </Button>
             <Button
               onClick={handleSave}
-              className="bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-full px-8 shadow-lg"
+              className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-full px-8 shadow-lg"
             >
               Salvar Alterações
             </Button>

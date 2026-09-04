@@ -59,12 +59,12 @@ export function UnitsContent() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-[#0A2E4D]">Unidades</h2>
+          <h2 className="text-2xl font-bold text-[#3E2415]">Unidades</h2>
           <p className="text-sm text-gray-600 mt-1">Gerencie suas unidades parceiras</p>
         </div>
         <Button
           onClick={() => setIsAddModalOpen(true)}
-          className="bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white shadow-lg"
+          className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white shadow-lg"
         >
           <Plus className="w-4 h-4 mr-2" />
           Cadastrar Unidade
@@ -74,16 +74,16 @@ export function UnitsContent() {
       {/* Units Grid */}
       {units.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 shadow-md border border-gray-100 text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-[#FF7A28] to-[#FFBE3B] flex items-center justify-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800] flex items-center justify-center">
             <MapPin className="w-8 h-8 text-white" />
           </div>
-          <h3 className="text-lg font-bold text-[#0A2E4D] mb-2">Nenhuma unidade cadastrada</h3>
+          <h3 className="text-lg font-bold text-[#3E2415] mb-2">Nenhuma unidade cadastrada</h3>
           <p className="text-sm text-gray-600 mb-6">
             Comece cadastrando sua primeira unidade para gerenciar seus parceiros.
           </p>
           <Button
             onClick={() => setIsAddModalOpen(true)}
-            className="bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white"
+            className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white"
           >
             <Plus className="w-4 h-4 mr-2" />
             Cadastrar Primeira Unidade
@@ -97,7 +97,7 @@ export function UnitsContent() {
               className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden hover:shadow-xl transition-shadow"
             >
               {/* Unit Photos */}
-              <div className="relative h-48 bg-gradient-to-br from-[#FF7A28] to-[#FFBE3B]">
+              <div className="relative h-48 bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800]">
                 {unit.photos.length > 0 ? (
                   <img
                     src={unit.photos[0] || "/placeholder.svg"}
@@ -113,20 +113,20 @@ export function UnitsContent() {
 
               {/* Unit Info */}
               <div className="p-5">
-                <h3 className="text-lg font-bold text-[#0A2E4D] mb-2">{unit.name}</h3>
+                <h3 className="text-lg font-bold text-[#3E2415] mb-2">{unit.name}</h3>
                 <p className="text-sm text-gray-600 mb-4 line-clamp-2">{unit.description}</p>
 
                 <div className="space-y-2 mb-4">
                   <div className="flex items-start gap-2 text-sm">
-                    <MapPin className="w-4 h-4 text-[#FF7A28] mt-0.5 flex-shrink-0" />
+                    <MapPin className="w-4 h-4 text-[#F58220] mt-0.5 flex-shrink-0" />
                     <span className="text-gray-700">{unit.address}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
-                    <Phone className="w-4 h-4 text-[#0078B7] flex-shrink-0" />
+                    <Phone className="w-4 h-4 text-[#3E2415] flex-shrink-0" />
                     <span className="text-gray-700">{unit.phone}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
-                    <Mail className="w-4 h-4 text-[#FFBE3B] flex-shrink-0" />
+                    <Mail className="w-4 h-4 text-[#FFC800] flex-shrink-0" />
                     <span className="text-gray-700">{unit.email}</span>
                   </div>
                 </div>
@@ -137,7 +137,7 @@ export function UnitsContent() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleEditUnit(unit)}
-                    className="flex-1 border-[#0078B7] text-[#0078B7] hover:bg-[#0078B7] hover:text-white bg-transparent"
+                    className="flex-1 border-[#3E2415] text-[#3E2415] hover:bg-[#3E2415] hover:text-white bg-transparent"
                   >
                     <Edit className="w-4 h-4 mr-1" />
                     Editar

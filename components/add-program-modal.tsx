@@ -149,7 +149,7 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#FF7A28] via-[#FFBE3B] to-[#0078B7] p-6 text-white">
+        <div className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold">{editingProgram ? "Editar Programa" : "Criar Novo Programa"}</h2>
@@ -170,8 +170,8 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
           <div className="space-y-6">
             {/* Basic Information */}
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-[#0A2E4D] flex items-center gap-2">
-                <Info className="w-5 h-5 text-[#FF7A28]" />
+              <h3 className="text-lg font-semibold text-[#3E2415] flex items-center gap-2">
+                <Info className="w-5 h-5 text-[#F58220]" />
                 Informações Básicas
               </h3>
 
@@ -200,19 +200,19 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
 
             {/* Commission Type */}
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-[#0A2E4D]">Tipo de Comissão</h3>
+              <h3 className="text-lg font-semibold text-[#3E2415]">Tipo de Comissão</h3>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, commissionType: "fixed", hasLevels: false })}
                   className={`p-4 rounded-xl border-2 transition-all ${
                     formData.commissionType === "fixed"
-                      ? "border-[#FF7A28] bg-[#FFF5E6]"
+                      ? "border-[#F58220] bg-[#FFF5E6]"
                       : "border-gray-200 hover:border-gray-300"
                   }`}
                 >
-                  <p className="font-semibold text-[#0A2E4D]">Fixa</p>
+                  <p className="font-semibold text-[#3E2415]">Fixa</p>
                   <p className="text-xs text-gray-600 mt-1">Mesma comissão para todos</p>
                 </button>
 
@@ -221,17 +221,17 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
                   onClick={() => setFormData({ ...formData, commissionType: "variable", hasLevels: true })}
                   className={`p-4 rounded-xl border-2 transition-all ${
                     formData.commissionType === "variable"
-                      ? "border-[#0078B7] bg-[#E8F4F8]"
+                      ? "border-[#3E2415] bg-[#E8F4F8]"
                       : "border-gray-200 hover:border-gray-300"
                   }`}
                 >
-                  <p className="font-semibold text-[#0A2E4D]">Variável por Nível</p>
+                  <p className="font-semibold text-[#3E2415]">Variável por Nível</p>
                   <p className="text-xs text-gray-600 mt-1">Comissão aumenta com crescimento</p>
                 </button>
               </div>
 
               {formData.commissionType === "fixed" && (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="commission-value">Valor da Comissão *</Label>
                     <Input
@@ -265,8 +265,8 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
             {formData.hasLevels && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-[#0A2E4D] flex items-center gap-2">
-                    <Award className="w-5 h-5 text-[#FFBE3B]" />
+                  <h3 className="text-lg font-semibold text-[#3E2415] flex items-center gap-2">
+                    <Award className="w-5 h-5 text-[#FFC800]" />
                     Níveis de Parceria
                   </h3>
                   <div className="flex items-center gap-2">
@@ -278,7 +278,7 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
                       type="checkbox"
                       checked={formData.autoUpgrade}
                       onChange={(e) => setFormData({ ...formData, autoUpgrade: e.target.checked })}
-                      className="w-4 h-4 text-[#0078B7] rounded"
+                      className="w-4 h-4 text-[#3E2415] rounded"
                     />
                   </div>
                 </div>
@@ -293,9 +293,9 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
                       >
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="font-bold text-[#0A2E4D]">{index + 1}.</span>
-                            <h4 className="font-bold text-[#0A2E4D]">{level.name}</h4>
-                            <span className="px-2 py-1 bg-[#FF7A28] text-white rounded-full text-xs font-semibold">
+                            <span className="font-bold text-[#3E2415]">{index + 1}.</span>
+                            <h4 className="font-bold text-[#3E2415]">{level.name}</h4>
+                            <span className="px-2 py-1 bg-[#F58220] text-white rounded-full text-xs font-semibold">
                               {level.commissionPercentage}%
                             </span>
                           </div>
@@ -319,9 +319,9 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
 
                 {/* Add New Level */}
                 <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 space-y-4">
-                  <h4 className="font-semibold text-[#0A2E4D]">Adicionar Novo Nível</h4>
+                  <h4 className="font-semibold text-[#3E2415]">Adicionar Novo Nível</h4>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="level-name">Nome do Nível</Label>
                       <Input
@@ -358,7 +358,7 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="level-referrals">Indicações Necessárias</Label>
                       <Input
@@ -395,7 +395,7 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
 
                   <Button
                     onClick={handleAddLevel}
-                    className="w-full bg-gradient-to-r from-[#0078B7] to-[#00A8E8] hover:from-[#006BA7] hover:to-[#0098D8] text-white rounded-xl"
+                    className="w-full bg-gradient-to-r from-[#3E2415] to-[#FFC800] hover:from-[#2F1B10] hover:to-[#E6B400] text-white rounded-xl"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Adicionar Nível
@@ -405,8 +405,8 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
             )}
 
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-[#0A2E4D] flex items-center gap-2">
-                <FileText className="w-5 h-5 text-[#0078B7]" />
+              <h3 className="text-lg font-semibold text-[#3E2415] flex items-center gap-2">
+                <FileText className="w-5 h-5 text-[#3E2415]" />
                 Contrato do Programa
               </h3>
               <div>
@@ -425,8 +425,8 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-[#0A2E4D] flex items-center gap-2">
-                <Upload className="w-5 h-5 text-[#FFBE3B]" />
+              <h3 className="text-lg font-semibold text-[#3E2415] flex items-center gap-2">
+                <Upload className="w-5 h-5 text-[#FFC800]" />
                 Material de Apoio
               </h3>
               <p className="text-sm text-gray-600">
@@ -442,11 +442,11 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
                       className="bg-gradient-to-r from-[#FFF5E6] to-white rounded-xl p-3 flex items-center justify-between"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-[#FF7A28] flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-lg bg-[#F58220] flex items-center justify-center">
                           <FileText className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                          <p className="font-medium text-[#0A2E4D] text-sm">{material.name}</p>
+                          <p className="font-medium text-[#3E2415] text-sm">{material.name}</p>
                           <p className="text-xs text-gray-500">{material.type}</p>
                         </div>
                       </div>
@@ -464,13 +464,13 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
               )}
 
               {/* Upload Button */}
-              <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-[#FF7A28] transition-colors">
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-[#F58220] transition-colors">
                 <label htmlFor="materials-upload" className="cursor-pointer">
                   <div className="flex flex-col items-center gap-2">
                     <div className="w-12 h-12 rounded-full bg-[#FFF5E6] flex items-center justify-center">
-                      <Upload className="w-6 h-6 text-[#FF7A28]" />
+                      <Upload className="w-6 h-6 text-[#F58220]" />
                     </div>
-                    <p className="font-medium text-[#0A2E4D]">Clique para fazer upload</p>
+                    <p className="font-medium text-[#3E2415]">Clique para fazer upload</p>
                     <p className="text-xs text-gray-500">PDF, PNG, JPG, MP4, etc.</p>
                   </div>
                   <input
@@ -498,7 +498,7 @@ export function AddProgramModal({ isOpen, onClose, onSave, editingProgram }: Add
           </Button>
           <Button
             onClick={handleSubmit}
-            className="flex-1 bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-xl shadow-lg"
+            className="flex-1 bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-xl shadow-lg"
           >
             {editingProgram ? "Salvar Alterações" : "Criar Programa"}
           </Button>

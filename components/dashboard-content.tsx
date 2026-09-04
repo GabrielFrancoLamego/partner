@@ -71,28 +71,28 @@ export function DashboardContent() {
         value: `${24 * mult}`,
         change: "+12%",
         icon: TrendingUp,
-        color: "from-[#FF7A28] to-[#FFBE3B]",
+        color: "from-[#F2680C] via-[#FB9C08] to-[#FFC800]",
       },
       {
         title: "Comissões pendentes",
         value: `R$ ${(15.4 * mult).toFixed(1)}k`,
         change: "+8%",
         icon: Wallet,
-        color: "from-[#0078B7] to-[#00A3E0]",
+        color: "from-[#3E2415] to-[#FFC800]",
       },
       {
         title: "Comissões pagas",
         value: `R$ ${(87.2 * mult).toFixed(1)}k`,
         change: "+23%",
         icon: CheckCircle,
-        color: "from-[#FFBE3B] to-[#FFD700]",
+        color: "from-[#FFC800] to-[#FFD700]",
       },
       {
         title: "Parceiros ativos",
         value: `${142 + mult * 5}`,
         change: "+5%",
         icon: Users,
-        color: "from-[#FF7A28] to-[#FF5A00]",
+        color: "from-[#F58220] to-[#FF5A00]",
       },
     ]
   }
@@ -126,18 +126,18 @@ export function DashboardContent() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl md:text-2xl font-bold text-[#0A2E4D]">Dashboard da Empresa</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-[#3E2415]">Dashboard da Empresa</h2>
           <p className="text-gray-600 mt-1 text-sm">Resumo geral das indicações e programas</p>
         </div>
 
-        <div className="flex items-center gap-2 bg-white rounded-xl p-1 shadow-md border border-gray-100">
+        <div className="flex items-center gap-2 bg-white rounded-xl p-1 shadow-md border border-gray-100 flex-wrap">
           <Button
             size="sm"
             variant={dateRange === "today" ? "default" : "ghost"}
             onClick={() => setDateRange("today")}
             className={`text-xs ${
               dateRange === "today"
-                ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90"
+                ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90"
                 : "text-gray-600 hover:bg-gray-50"
             }`}
           >
@@ -150,7 +150,7 @@ export function DashboardContent() {
             onClick={() => setDateRange("week")}
             className={`text-xs ${
               dateRange === "week"
-                ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90"
+                ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90"
                 : "text-gray-600 hover:bg-gray-50"
             }`}
           >
@@ -162,7 +162,7 @@ export function DashboardContent() {
             onClick={() => setDateRange("month")}
             className={`text-xs ${
               dateRange === "month"
-                ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90"
+                ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90"
                 : "text-gray-600 hover:bg-gray-50"
             }`}
           >
@@ -174,7 +174,7 @@ export function DashboardContent() {
             onClick={() => setDateRange("year")}
             className={`text-xs ${
               dateRange === "year"
-                ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90"
+                ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90"
                 : "text-gray-600 hover:bg-gray-50"
             }`}
           >
@@ -186,7 +186,7 @@ export function DashboardContent() {
             onClick={() => setShowCustomDateRange(true)}
             className={`text-xs ${
               dateRange === "custom"
-                ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90"
+                ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90"
                 : "text-gray-600 hover:bg-gray-50"
             }`}
           >
@@ -216,7 +216,7 @@ export function DashboardContent() {
                 </span>
               </div>
               <h3 className="text-gray-600 text-xs font-medium mb-1">{stat.title}</h3>
-              <p className="text-xl font-bold text-[#0A2E4D]">{stat.value}</p>
+              <p className="text-xl font-bold text-[#3E2415]">{stat.value}</p>
             </div>
           )
         })}
@@ -230,7 +230,7 @@ export function DashboardContent() {
               <MapPin className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-[#0A2E4D]">Indicações Ativas Agora</h3>
+              <h3 className="text-lg font-bold text-[#3E2415]">Indicações Ativas Agora</h3>
               <p className="text-xs text-gray-600">{activeReferrals.length} clientes no restaurante</p>
             </div>
           </div>
@@ -258,12 +258,12 @@ export function DashboardContent() {
                   className="w-12 h-12 rounded-full border-2 border-white shadow-md"
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-[#0A2E4D] text-sm">{referral.name}</p>
+                  <p className="font-semibold text-[#3E2415] text-sm">{referral.name}</p>
                   <div className="flex items-center gap-3 mt-1 flex-wrap">
                     <span className="text-xs text-gray-600">
-                      Indicado por: <span className="font-medium text-[#0078B7]">{referral.partnerId}</span>
+                      Indicado por: <span className="font-medium text-[#3E2415]">{referral.partnerId}</span>
                     </span>
-                    <span className="text-xs bg-[#FFBE3B] text-[#0A2E4D] px-2 py-0.5 rounded-full font-medium">
+                    <span className="text-xs bg-[#FFC800] text-[#3E2415] px-2 py-0.5 rounded-full font-medium">
                       {referral.program}
                     </span>
                   </div>
@@ -275,7 +275,7 @@ export function DashboardContent() {
                 </div>
                 <Button
                   onClick={() => setSelectedReferral(referral)}
-                  className="bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90 shadow-md text-xs h-9 px-4"
+                  className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90 shadow-md text-xs h-9 px-4"
                 >
                   Registrar Comissão
                 </Button>
@@ -289,11 +289,11 @@ export function DashboardContent() {
       {registeredCommissions.length > 0 && (
         <div className="bg-white rounded-2xl p-5 shadow-md border border-gray-100">
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-gradient-to-br from-[#FF7A28] to-[#FFBE3B] rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-lg flex items-center justify-center">
               <CheckCircle className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-[#0A2E4D]">Comissões Registradas</h3>
+              <h3 className="text-lg font-bold text-[#3E2415]">Comissões Registradas</h3>
               <p className="text-xs text-gray-600">{registeredCommissions.length} registro(s) recente(s)</p>
             </div>
           </div>
@@ -310,10 +310,10 @@ export function DashboardContent() {
                   className="w-12 h-12 rounded-full border-2 border-white shadow-md"
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-[#0A2E4D] text-sm">{commission.name}</p>
+                  <p className="font-semibold text-[#3E2415] text-sm">{commission.name}</p>
                   <div className="flex items-center gap-3 mt-1 flex-wrap">
                     <span className="text-xs text-gray-600">
-                      Por: <span className="font-medium text-[#0078B7]">{commission.partnerId}</span>
+                      Por: <span className="font-medium text-[#3E2415]">{commission.partnerId}</span>
                     </span>
                     <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
                       R$ {commission.commissionValue.toFixed(2)}
@@ -326,7 +326,7 @@ export function DashboardContent() {
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-gray-600">Conta Total</p>
-                  <p className="text-lg font-bold text-[#0A2E4D]">R$ {commission.billAmount.toFixed(2)}</p>
+                  <p className="text-lg font-bold text-[#3E2415]">R$ {commission.billAmount.toFixed(2)}</p>
                 </div>
               </div>
             ))}
@@ -335,18 +335,18 @@ export function DashboardContent() {
       )}
 
       <div className="bg-white rounded-2xl p-5 shadow-md border border-gray-100">
-        <h3 className="text-lg font-bold text-[#0A2E4D] mb-4">Atividade Recente</h3>
+        <h3 className="text-lg font-bold text-[#3E2415] mb-4">Atividade Recente</h3>
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors">
-              <div className="w-9 h-9 bg-gradient-to-br from-[#0078B7] to-[#00A3E0] rounded-full flex items-center justify-center">
+              <div className="w-9 h-9 bg-gradient-to-br from-[#3E2415] to-[#FFC800] rounded-full flex items-center justify-center">
                 <Users className="w-4 h-4 text-white" />
               </div>
               <div className="flex-1">
-                <p className="font-medium text-[#0A2E4D] text-sm">Nova indicação registrada</p>
+                <p className="font-medium text-[#3E2415] text-sm">Nova indicação registrada</p>
                 <p className="text-xs text-gray-600">Parceiro João Silva - há 2 horas</p>
               </div>
-              <span className="text-xs font-semibold text-[#FF7A28]">R$ 450</span>
+              <span className="text-xs font-semibold text-[#F58220]">R$ 450</span>
             </div>
           ))}
         </div>

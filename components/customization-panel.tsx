@@ -7,20 +7,20 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 
 export function CustomizationPanel() {
-  const [sidebarBg, setSidebarBg] = useState('#F4E9D8')
-  const [sidebarText, setSidebarText] = useState('#0A2E4D')
+  const [sidebarBg, setSidebarBg] = useState('#FFFFFF')
+  const [sidebarText, setSidebarText] = useState('#3E2415')
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-[#0A2E4D] mb-2">Personalizar Interface</h2>
+        <h2 className="text-2xl font-bold text-[#3E2415] mb-2">Personalizar Interface</h2>
         <p className="text-gray-600">Configure as cores e aparência do seu painel</p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Sidebar Customization */}
         <Card className="p-6">
-          <h3 className="text-lg font-semibold text-[#0A2E4D] mb-4">Menu Lateral</h3>
+          <h3 className="text-lg font-semibold text-[#3E2415] mb-4">Menu Lateral</h3>
           
           <div className="space-y-4">
             <div>
@@ -66,29 +66,29 @@ export function CustomizationPanel() {
               <div className="grid grid-cols-4 gap-2">
                 <button
                   onClick={() => {
-                    setSidebarBg('#F4E9D8')
-                    setSidebarText('#0A2E4D')
+                    setSidebarBg('#FFFFFF')
+                    setSidebarText('#3E2415')
                   }}
                   className="w-full h-10 rounded-lg border-2 border-gray-200"
-                  style={{ background: 'linear-gradient(135deg, #F4E9D8 50%, #0A2E4D 50%)' }}
+                  style={{ background: 'linear-gradient(135deg, #FFFFFF 50%, #3E2415 50%)' }}
                   title="Areia (Padrão)"
                 />
                 <button
                   onClick={() => {
                     setSidebarBg('#E8F4F8')
-                    setSidebarText('#0078B7')
+                    setSidebarText('#3E2415')
                   }}
                   className="w-full h-10 rounded-lg border-2 border-gray-200"
-                  style={{ background: 'linear-gradient(135deg, #E8F4F8 50%, #0078B7 50%)' }}
+                  style={{ background: 'linear-gradient(135deg, #E8F4F8 50%, #3E2415 50%)' }}
                   title="Oceano"
                 />
                 <button
                   onClick={() => {
                     setSidebarBg('#FFF5E6')
-                    setSidebarText('#FF7A28')
+                    setSidebarText('#F58220')
                   }}
                   className="w-full h-10 rounded-lg border-2 border-gray-200"
-                  style={{ background: 'linear-gradient(135deg, #FFF5E6 50%, #FF7A28 50%)' }}
+                  style={{ background: 'linear-gradient(135deg, #FFF5E6 50%, #F58220 50%)' }}
                   title="Pôr do Sol"
                 />
                 <button
@@ -107,7 +107,7 @@ export function CustomizationPanel() {
 
         {/* Banner Customization */}
         <Card className="p-6">
-          <h3 className="text-lg font-semibold text-[#0A2E4D] mb-4">Banner e Perfil</h3>
+          <h3 className="text-lg font-semibold text-[#3E2415] mb-4">Banner e Perfil</h3>
           
           <div className="space-y-4">
             <div>
@@ -162,7 +162,7 @@ export function CustomizationPanel() {
         <Button variant="outline" className="rounded-full">
           Resetar
         </Button>
-        <Button className="bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-full px-8">
+        <Button className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-full px-8">
           Salvar Alterações
         </Button>
       </div>

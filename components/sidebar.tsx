@@ -34,11 +34,9 @@ export function Sidebar({ className, onClose }: SidebarProps) {
       {/* Logo Area */}
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-6">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary shadow-md">
-            <span className="font-bold text-lg text-primary-foreground">P</span>
-          </div>
+          <img src="/brand/tribuss-icone-app.png" alt="Tribuss" className="h-10 w-10 rounded-xl object-contain" />
           <div>
-            <h1 className="font-bold text-sidebar-foreground text-sm">Partnership</h1>
+            <h1 className="font-heading font-semibold tracking-[-0.035em] text-sidebar-foreground text-sm">Tribuss</h1>
             <p className="text-sidebar-foreground/60 text-xs">White Label</p>
           </div>
         </div>
@@ -58,7 +56,7 @@ export function Sidebar({ className, onClose }: SidebarProps) {
             className="flex items-center gap-3 rounded-xl px-4 py-3 text-sidebar-foreground/70 transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-primary active:text-primary-foreground"
           >
             <item.icon className="h-5 w-5" />
-            <span className="font-medium text-sm">{item.label}</span>
+            <span className="font-heading font-medium text-sm">{item.label}</span>
           </a>
         ))}
       </nav>

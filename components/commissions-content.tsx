@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -122,39 +122,6 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
       pixKey: "123.456.789-00",
     },
   ])
-
-  useEffect(() => {
-    const handleStorageChange = () => {
-      const pending = JSON.parse(localStorage.getItem("pendingCommissions") || "[]")
-
-      const newCommissions = pending.map((p: any) => ({
-        id: `COM-${Date.now()}-${Math.random()}`,
-        partnerName: "João Silva",
-        clientName: p.customerName,
-        amount: 0,
-        commissionValue: 0,
-        date: new Date().toISOString().split("T")[0],
-        status: "awaiting_value" as CommissionStatus,
-        unit: "Nomad's Jeri - Principal",
-        qrCodeId: p.qrCodeId,
-        promotionTitle: p.promotionTitle,
-        acceptedAt: p.acceptedAt,
-        deadline: p.deadline,
-        customerPhone: p.customerPhone,
-      }))
-
-      setCommissions((prev) => {
-        const existingIds = prev.filter((c) => c.status === "awaiting_value").map((c) => c.qrCodeId)
-        const filtered = newCommissions.filter((nc: Commission) => !existingIds.includes(nc.qrCodeId))
-        return [...filtered, ...prev]
-      })
-    }
-
-    window.addEventListener("storage", handleStorageChange)
-    handleStorageChange() // Load initial data
-
-    return () => window.removeEventListener("storage", handleStorageChange)
-  }, [])
 
   const handleSubmitBillValue = () => {
     if (selectedCommission && billValue && billAttachment) {
@@ -303,7 +270,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
     <div className="space-y-6">
       {/* Stats Widgets */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-[#FFBE3B] to-[#FF7A28] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#FFC800] to-[#F58220] rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <DollarSign className="w-8 h-8 opacity-80" />
             <span className="text-sm font-medium opacity-90">Em Carteira</span>
@@ -311,7 +278,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
           <p className="text-3xl font-bold">R$ {totalInWallet.toFixed(2)}</p>
         </div>
 
-        <div className="bg-gradient-to-br from-[#0078B7] to-[#0A2E4D] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#3E2415] to-[#3E2415] rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <CheckCircle className="w-8 h-8 opacity-80" />
             <span className="text-sm font-medium opacity-90">Pagas</span>
@@ -319,7 +286,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
           <p className="text-3xl font-bold">R$ {totalPaid.toFixed(2)}</p>
         </div>
 
-        <div className="bg-gradient-to-br from-[#FF7A28] to-[#FFBE3B] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <Clock className="w-8 h-8 opacity-80" />
             <span className="text-sm font-medium opacity-90">Pendentes</span>
@@ -331,7 +298,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
       <div className="flex justify-end">
         <Button
           onClick={() => setShowAddManualCommission(true)}
-          className="bg-gradient-to-r from-[#0078B7] to-[#0A2E4D] hover:opacity-90 text-white rounded-xl shadow-lg"
+          className="bg-gradient-to-r from-[#3E2415] to-[#3E2415] hover:opacity-90 text-white rounded-xl shadow-lg"
         >
           <Plus className="w-4 h-4 mr-2" />
           Adicionar Comissão Adicional
@@ -344,7 +311,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
             onClick={() => setActiveTab("commissions")}
             className={`flex-1 px-6 py-4 font-semibold transition-colors relative ${
               activeTab === "commissions"
-                ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white"
+                ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white"
                 : "text-gray-600 hover:bg-gray-50"
             }`}
           >
@@ -359,7 +326,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
             onClick={() => setActiveTab("withdrawals")}
             className={`flex-1 px-6 py-4 font-semibold transition-colors ${
               activeTab === "withdrawals"
-                ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white"
+                ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white"
                 : "text-gray-600 hover:bg-gray-50"
             }`}
           >
@@ -377,7 +344,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
                   onClick={() => setFilterStatus(status as typeof filterStatus)}
                   className={`px-4 py-2 rounded-lg font-medium transition-all ${
                     filterStatus === status
-                      ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white shadow-md"
+                      ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white shadow-md"
                       : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                   }`}
                 >
@@ -431,11 +398,11 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF7A28] to-[#FFBE3B] flex items-center justify-center text-white font-bold">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800] flex items-center justify-center text-white font-bold">
                             {commission.partnerName[0]}
                           </div>
                           <div>
-                            <h4 className="font-bold text-[#0A2E4D]">{commission.partnerName}</h4>
+                            <h4 className="font-bold text-[#3E2415]">{commission.partnerName}</h4>
                             <p className="text-sm text-gray-600">Cliente: {commission.clientName}</p>
                           </div>
                         </div>
@@ -482,7 +449,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
                       <div className="flex flex-col items-end gap-3">
                         {getStatusBadge(commission.status)}
                         {!isAwaitingValue && (
-                          <p className="text-2xl font-bold text-[#0A2E4D]">
+                          <p className="text-2xl font-bold text-[#3E2415]">
                             R$ {commission.commissionValue.toFixed(2)}
                           </p>
                         )}
@@ -497,7 +464,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
                               className={`${
                                 passed
                                   ? "bg-gradient-to-r from-red-600 to-red-700 animate-pulse"
-                                  : "bg-gradient-to-r from-[#0078B7] to-[#0A2E4D]"
+                                  : "bg-gradient-to-r from-[#3E2415] to-[#3E2415]"
                               } hover:opacity-90 text-white`}
                             >
                               <DollarSign className="w-4 h-4 mr-2" />
@@ -531,7 +498,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
                           {/* {commission.status === "approved" && (
                             <Button
                               onClick={() => handleMarkAsPaid(commission.id)}
-                              className="bg-gradient-to-r from-[#0078B7] to-[#0A2E4D] hover:opacity-90 text-white"
+                              className="bg-gradient-to-r from-[#3E2415] to-[#3E2415] hover:opacity-90 text-white"
                             >
                               <CheckCircle className="w-4 h-4 mr-2" />
                               Marcar como Pago
@@ -566,17 +533,17 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#0078B7] to-[#0A2E4D] flex items-center justify-center text-white font-bold">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3E2415] to-[#3E2415] flex items-center justify-center text-white font-bold">
                           {withdrawal.partnerName[0]}
                         </div>
                         <div>
-                          <h4 className="font-bold text-[#0A2E4D]">{withdrawal.partnerName}</h4>
+                          <h4 className="font-bold text-[#3E2415]">{withdrawal.partnerName}</h4>
                           <p className="text-sm text-gray-600">ID: {withdrawal.id}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4 text-sm">
                         <span className="text-gray-600">
-                          Valor: <span className="font-bold text-[#FF7A28]">R$ {withdrawal.amount.toFixed(2)}</span>
+                          Valor: <span className="font-bold text-[#F58220]">R$ {withdrawal.amount.toFixed(2)}</span>
                         </span>
                         <span className="text-gray-500 text-xs">
                           {new Date(withdrawal.requestDate).toLocaleDateString()}
@@ -598,7 +565,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
                           setShowWithdrawalDetails(true)
                         }}
                         variant="outline"
-                        className="border-[#0078B7] text-[#0078B7] hover:bg-blue-50"
+                        className="border-[#3E2415] text-[#3E2415] hover:bg-blue-50"
                         size="sm"
                       >
                         <Eye className="w-4 h-4 mr-1" />
@@ -608,7 +575,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
                         <>
                           <Button
                             onClick={() => handleApproveWithdrawal(withdrawal.id)}
-                            className="bg-gradient-to-r from-[#0078B7] to-[#0A2E4D] hover:opacity-90 text-white"
+                            className="bg-gradient-to-r from-[#3E2415] to-[#3E2415] hover:opacity-90 text-white"
                             size="sm"
                           >
                             Aprovar
@@ -657,11 +624,11 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
             <div className="p-6 space-y-4">
               <div>
                 <p className="text-sm text-gray-600 mb-2">
-                  Parceiro: <span className="font-semibold text-[#0A2E4D]">{selectedCommission.partnerName}</span>
+                  Parceiro: <span className="font-semibold text-[#3E2415]">{selectedCommission.partnerName}</span>
                 </p>
                 <p className="text-sm text-gray-600 mb-2">
                   Valor:{" "}
-                  <span className="font-bold text-[#FF7A28]">R$ {selectedCommission.commissionValue.toFixed(2)}</span>
+                  <span className="font-bold text-[#F58220]">R$ {selectedCommission.commissionValue.toFixed(2)}</span>
                 </p>
               </div>
               <div>
@@ -702,7 +669,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
       {showWithdrawalDetails && selectedWithdrawal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-gradient-to-r from-[#0078B7] to-[#0A2E4D] p-6 text-white">
+            <div className="bg-gradient-to-r from-[#3E2415] to-[#3E2415] p-6 text-white">
               <h3 className="text-2xl font-bold flex items-center gap-2">
                 <CreditCard className="w-6 h-6" />
                 Detalhes do Saque
@@ -710,11 +677,11 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
             </div>
             <div className="p-6 space-y-4">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#0078B7] to-[#0A2E4D] flex items-center justify-center text-white font-bold text-lg">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#3E2415] to-[#3E2415] flex items-center justify-center text-white font-bold text-lg">
                   {selectedWithdrawal.partnerName[0]}
                 </div>
                 <div>
-                  <h4 className="font-bold text-[#0A2E4D]">{selectedWithdrawal.partnerName}</h4>
+                  <h4 className="font-bold text-[#3E2415]">{selectedWithdrawal.partnerName}</h4>
                   <p className="text-sm text-gray-600">{selectedWithdrawal.id}</p>
                 </div>
               </div>
@@ -722,11 +689,11 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
               <div className="bg-gradient-to-r from-[#FFF5E6] to-[#E8F4F8] rounded-xl p-4 space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Valor Solicitado:</span>
-                  <span className="font-bold text-xl text-[#FF7A28]">R$ {selectedWithdrawal.amount.toFixed(2)}</span>
+                  <span className="font-bold text-xl text-[#F58220]">R$ {selectedWithdrawal.amount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Data da Solicitação:</span>
-                  <span className="font-semibold text-[#0A2E4D]">
+                  <span className="font-semibold text-[#3E2415]">
                     {new Date(selectedWithdrawal.requestDate).toLocaleString("pt-BR")}
                   </span>
                 </div>
@@ -737,20 +704,20 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
               </div>
 
               <div className="border-t pt-4">
-                <h5 className="font-bold text-[#0A2E4D] mb-3 flex items-center gap-2">
+                <h5 className="font-bold text-[#3E2415] mb-3 flex items-center gap-2">
                   <CreditCard className="w-5 h-5" />
                   Dados para Pagamento
                 </h5>
                 {selectedWithdrawal.pixKey && (
                   <div className="bg-gray-50 rounded-lg p-3 mb-2">
                     <p className="text-xs text-gray-600 mb-1">Chave PIX:</p>
-                    <p className="font-mono font-semibold text-[#0A2E4D]">{selectedWithdrawal.pixKey}</p>
+                    <p className="font-mono font-semibold text-[#3E2415]">{selectedWithdrawal.pixKey}</p>
                   </div>
                 )}
                 {selectedWithdrawal.bankAccount && (
                   <div className="bg-gray-50 rounded-lg p-3">
                     <p className="text-xs text-gray-600 mb-1">Conta Bancária:</p>
-                    <p className="font-mono text-sm font-semibold text-[#0A2E4D]">{selectedWithdrawal.bankAccount}</p>
+                    <p className="font-mono text-sm font-semibold text-[#3E2415]">{selectedWithdrawal.bankAccount}</p>
                   </div>
                 )}
               </div>
@@ -760,7 +727,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
                   setShowWithdrawalDetails(false)
                   setSelectedWithdrawal(null)
                 }}
-                className="w-full bg-gradient-to-r from-[#0078B7] to-[#0A2E4D] hover:opacity-90 text-white"
+                className="w-full bg-gradient-to-r from-[#3E2415] to-[#3E2415] hover:opacity-90 text-white"
               >
                 Fechar
               </Button>
@@ -782,10 +749,10 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
             <div className="p-6 space-y-4">
               <div>
                 <p className="text-sm text-gray-600 mb-2">
-                  Parceiro: <span className="font-semibold text-[#0A2E4D]">{withdrawalToReject.partnerName}</span>
+                  Parceiro: <span className="font-semibold text-[#3E2415]">{withdrawalToReject.partnerName}</span>
                 </p>
                 <p className="text-sm text-gray-600 mb-2">
-                  Valor: <span className="font-bold text-[#FF7A28]">R$ {withdrawalToReject.amount.toFixed(2)}</span>
+                  Valor: <span className="font-bold text-[#F58220]">R$ {withdrawalToReject.amount.toFixed(2)}</span>
                 </p>
               </div>
               <div>
@@ -827,7 +794,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             {/* Updated modal header */}
-            <div className="bg-gradient-to-r from-[#0078B7] to-[#0A2E4D] p-6 text-white">
+            <div className="bg-gradient-to-r from-[#3E2415] to-[#3E2415] p-6 text-white">
               <h3 className="text-2xl font-bold">Inserir Valor da Conta</h3>
               <p className="text-sm opacity-90 mt-1">Cliente: {selectedCommission.clientName}</p>
             </div>
@@ -847,7 +814,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
 
               <div>
                 <Label>Anexar Cupom Fiscal / Foto da Conta *</Label>
-                <div className="mt-2 border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:border-[#FF7A28] transition-colors">
+                <div className="mt-2 border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:border-[#F58220] transition-colors">
                   <input
                     type="file"
                     accept="image/*,.pdf"
@@ -889,7 +856,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
               <Button
                 onClick={handleSubmitBillValue}
                 disabled={!billValue || !billAttachment}
-                className="flex-1 bg-gradient-to-r from-[#0078B7] to-[#0A2E4D] hover:opacity-90 text-white disabled:opacity-50"
+                className="flex-1 bg-gradient-to-r from-[#3E2415] to-[#3E2415] hover:opacity-90 text-white disabled:opacity-50"
               >
                 Confirmar e Calcular Comissão
               </Button>
@@ -901,7 +868,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
       {showAddManualCommission && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-gradient-to-r from-[#0078B7] to-[#0A2E4D] p-6 text-white">
+            <div className="bg-gradient-to-r from-[#3E2415] to-[#3E2415] p-6 text-white">
               <h3 className="text-2xl font-bold flex items-center gap-2">
                 <Plus className="w-6 h-6" />
                 Adicionar Comissão Adicional
@@ -952,7 +919,7 @@ export function CommissionsContent({ onAddCommission }: CommissionsContentProps)
                   disabled={
                     !manualCommissionData.partnerName || !manualCommissionData.amount || !manualCommissionData.reason
                   }
-                  className="flex-1 bg-gradient-to-r from-[#0078B7] to-[#0A2E4D] hover:opacity-90 text-white disabled:opacity-50"
+                  className="flex-1 bg-gradient-to-r from-[#3E2415] to-[#3E2415] hover:opacity-90 text-white disabled:opacity-50"
                 >
                   <CheckCircle className="w-4 h-4 mr-2" />
                   Adicionar Comissão

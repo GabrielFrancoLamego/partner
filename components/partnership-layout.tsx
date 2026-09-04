@@ -1,6 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { LogOut } from "lucide-react"
+import { toMenuBucket, type AuthUser } from "@/lib/role-bucket"
 import { DesktopSidebar } from "./desktop-sidebar"
 import { MobileBottomNav } from "./mobile-bottom-nav"
 import { PartnershipHeader } from "./partnership-header"
@@ -15,46 +18,68 @@ import { CommissionsContent } from "./commissions-content"
 import { PartnersContent } from "./partners-content"
 import { UsersContent } from "./users-content"
 import { ReportsContent } from "./reports-content"
-import { LoginContent } from "./login-content"
 import { WelcomeContent } from "./welcome-content"
 
 export function PartnershipLayout() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [userType, setUserType] = useState<"admin" | "partner" | null>(null)
+  const router = useRouter()
+  const [isCheckingSession, setIsCheckingSession] = useState(true)
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
   const [activeMenu, setActiveMenu] = useState("Dashboard")
   const [isCustomizationOpen, setIsCustomizationOpen] = useState(false)
   const [customization, setCustomization] = useState<CustomizationData>({
-    sidebarBg: "#F4E9D8",
-    sidebarText: "#0A2E4D",
+    sidebarBg: "#FFFFFF",
+    sidebarText: "#3E2415",
     fontSize: "medium",
     fontFamily: "system-ui",
     logoUrl: null,
   })
 
+  const isLoggedIn = currentUser !== null
+  const userType = currentUser ? toMenuBucket(currentUser.role) : null
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((user: AuthUser | null) => {
+        if (user?.role === "ADMIN") {
+          router.replace("/admin")
+          return
+        }
+        setCurrentUser(user)
+      })
+      .catch(() => setCurrentUser(null))
+      .finally(() => setIsCheckingSession(false))
+  }, [router])
+
   const handleCustomizationSave = (newCustomization: CustomizationData) => {
     setCustomization(newCustomization)
   }
 
-  const handleLogin = (type: "admin" | "partner") => {
-    setIsLoggedIn(true)
-    setUserType(type)
+  const handleLogin = (user: AuthUser) => {
+    if (user.role === "ADMIN") {
+      router.push("/admin")
+      return
+    }
+    setCurrentUser(user)
     setActiveMenu("Dashboard")
   }
 
   const handleLogout = () => {
-    setIsLoggedIn(false)
-    setUserType(null)
-    setActiveMenu("Login")
+    setCurrentUser(null)
+    setActiveMenu("Dashboard")
+    fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
+  }
+
+  if (isCheckingSession) {
+    return <div className="min-h-screen bg-gradient-to-br from-[#E8F4F8] to-[#FFF5E6]" />
+  }
+
+  if (!isLoggedIn) {
+    return <WelcomeContent onLogin={handleLogin} />
   }
 
   const renderContent = () => {
-    if (!isLoggedIn && activeMenu !== "Login") {
-      return <WelcomeContent />
-    }
-
     switch (activeMenu) {
-      case "Login":
-        return <LoginContent onLogin={handleLogin} />
       case "Dashboard":
         return <DashboardContent />
       case "Unidades":
@@ -78,14 +103,14 @@ export function PartnershipLayout() {
       case "Suporte":
         return (
           <div className="bg-white rounded-2xl p-8 shadow-md border border-gray-100 text-center">
-            <h3 className="text-xl font-bold text-[#0A2E4D] mb-2">Suporte</h3>
+            <h3 className="text-xl font-bold text-[#3E2415] mb-2">Suporte</h3>
             <p className="text-gray-600">Entre em contato com nossa equipe de suporte.</p>
           </div>
         )
       default:
         return (
           <div className="bg-white rounded-2xl p-8 shadow-md border border-gray-100 text-center">
-            <h3 className="text-xl font-bold text-[#0A2E4D] mb-2">{activeMenu}</h3>
+            <h3 className="text-xl font-bold text-[#3E2415] mb-2">{activeMenu}</h3>
             <p className="text-gray-600">Conteúdo de {activeMenu} será implementado em breve.</p>
           </div>
         )
@@ -109,7 +134,19 @@ export function PartnershipLayout() {
 
       {/* Main Content */}
       <div className="lg:ml-[260px] pb-20 lg:pb-0">
-        {isLoggedIn && <PartnershipHeader />}
+        <div className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-gray-100 bg-white/90 px-4 py-2 backdrop-blur lg:px-8">
+          <p className="min-w-0 truncate text-xs text-gray-500">
+            Logado como <span className="font-semibold text-[#3E2415]">{currentUser.name}</span>
+          </p>
+          <button
+            onClick={handleLogout}
+            className="flex flex-shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#3E2415] transition-colors hover:bg-red-50 hover:text-red-600"
+          >
+            <LogOut className="h-4 w-4" />
+            Sair
+          </button>
+        </div>
+        <PartnershipHeader />
         <main className="p-4 md:p-6 lg:p-8">{renderContent()}</main>
       </div>
 

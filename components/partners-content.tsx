@@ -310,12 +310,12 @@ Total de Parceiros: ${partners.length}
     <div className="space-y-6">
       {/* Stats Widgets */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-[#FF7A28] to-[#FFBE3B] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-2xl p-6 text-white shadow-lg">
           <Users className="w-8 h-8 mb-2 opacity-90" />
           <p className="text-sm opacity-90">Total Parceiros</p>
           <p className="text-3xl font-bold">{partners.length}</p>
         </div>
-        <div className="bg-gradient-to-br from-[#0078B7] to-[#00A8E8] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#3E2415] to-[#FFC800] rounded-2xl p-6 text-white shadow-lg">
           <TrendingUp className="w-8 h-8 mb-2 opacity-90" />
           <p className="text-sm opacity-90">Ativos (7 dias)</p>
           <p className="text-3xl font-bold">
@@ -329,7 +329,7 @@ Total de Parceiros: ${partners.length}
             }
           </p>
         </div>
-        <div className="bg-gradient-to-br from-[#FFBE3B] to-[#FF7A28] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#FFC800] to-[#F58220] rounded-2xl p-6 text-white shadow-lg">
           <Award className="w-8 h-8 mb-2 opacity-90" />
           <p className="text-sm opacity-90">Diamante</p>
           <p className="text-3xl font-bold">{partners.filter((p) => p.level === "Diamante").length}</p>
@@ -353,8 +353,8 @@ Total de Parceiros: ${partners.length}
       {/* Filters */}
       <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
         <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-5 h-5 text-[#FF7A28]" />
-          <h3 className="text-lg font-bold text-[#0A2E4D]">Filtros</h3>
+          <Filter className="w-5 h-5 text-[#F58220]" />
+          <h3 className="text-lg font-bold text-[#3E2415]">Filtros</h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
@@ -374,7 +374,7 @@ Total de Parceiros: ${partners.length}
             <select
               value={levelFilter}
               onChange={(e) => setLevelFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#FF7A28] focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#F58220] focus:border-transparent"
             >
               <option value="all">Todos os níveis</option>
               <option value="Diamante">Diamante</option>
@@ -387,7 +387,7 @@ Total de Parceiros: ${partners.length}
             <select
               value={activityFilter}
               onChange={(e) => setActivityFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#FF7A28] focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#F58220] focus:border-transparent"
             >
               <option value="all">Todos</option>
               <option value="7days">Indicou nos últimos 7 dias</option>
@@ -401,7 +401,7 @@ Total de Parceiros: ${partners.length}
       </div>
 
       {/* Ranking Section */}
-      <div className="bg-gradient-to-br from-[#FF7A28] to-[#FFBE3B] rounded-2xl p-6 shadow-lg text-white">
+      <div className="bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-2xl p-6 shadow-lg text-white">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Award className="w-6 h-6" />
@@ -409,7 +409,7 @@ Total de Parceiros: ${partners.length}
           </div>
           <Button
             variant="outline"
-            className="bg-white text-[#FF7A28] hover:bg-gray-50 border-0"
+            className="bg-white text-[#F58220] hover:bg-gray-50 border-0"
             onClick={handleExportRanking}
           >
             <Download className="w-4 h-4 mr-2" />
@@ -444,7 +444,7 @@ Total de Parceiros: ${partners.length}
       {/* Partners List */}
       <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-bold text-[#0A2E4D]">Parceiros ({filteredPartners.length})</h3>
+          <h3 className="text-lg font-bold text-[#3E2415]">Parceiros ({filteredPartners.length})</h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredPartners.map((partner) => (
@@ -460,7 +460,7 @@ Total de Parceiros: ${partners.length}
                   className="w-12 h-12 rounded-full object-cover"
                 />
                 <div className="flex-1">
-                  <h4 className="font-semibold text-[#0A2E4D]">{partner.name}</h4>
+                  <h4 className="font-semibold text-[#3E2415]">{partner.name}</h4>
                   <span
                     className={`inline-block px-2 py-1 rounded-full text-xs font-semibold text-white bg-gradient-to-r ${partner.levelColor}`}
                   >
@@ -475,7 +475,7 @@ Total de Parceiros: ${partners.length}
                 <p>💰 R$ {partner.totalCommission.toFixed(2)}</p>
                 <p>💳 Carteira: R$ {partner.walletBalance.toFixed(2)}</p>
               </div>
-              <Button className="w-full mt-3 bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90">
+              <Button className="w-full mt-3 bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90">
                 <Eye className="w-4 h-4 mr-2" />
                 Ver Detalhes
               </Button>
@@ -489,7 +489,7 @@ Total de Parceiros: ${partners.length}
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="bg-gradient-to-r from-[#FF7A28] via-[#FFBE3B] to-[#0078B7] p-6 text-white sticky top-0">
+            <div className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] p-6 text-white sticky top-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <img
@@ -517,7 +517,7 @@ Total de Parceiros: ${partners.length}
             <div className="p-6 space-y-6">
               {/* Contact Info */}
               <div className="bg-gray-50 rounded-xl p-4">
-                <h4 className="font-bold text-[#0A2E4D] mb-3">Dados Cadastrais</h4>
+                <h4 className="font-bold text-[#3E2415] mb-3">Dados Cadastrais</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                   <p>
                     <span className="font-semibold">Email:</span> {selectedPartner.email}
@@ -546,21 +546,21 @@ Total de Parceiros: ${partners.length}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <Button
                   onClick={() => setShowWalletModal(true)}
-                  className="bg-gradient-to-r from-[#0078B7] to-[#00A8E8] text-white hover:opacity-90"
+                  className="bg-gradient-to-r from-[#3E2415] to-[#FFC800] text-white hover:opacity-90"
                 >
                   <Wallet className="w-4 h-4 mr-2" />
                   Ver Carteira
                 </Button>
                 <Button
                   onClick={() => setShowLevelChangeModal(true)}
-                  className="bg-gradient-to-r from-[#FFBE3B] to-[#FF7A28] text-white hover:opacity-90"
+                  className="bg-gradient-to-r from-[#FFC800] to-[#F58220] text-white hover:opacity-90"
                 >
                   <Award className="w-4 h-4 mr-2" />
                   Mudar Nível
                 </Button>
                 <Button
                   variant="outline"
-                  className="border-[#FF7A28] text-[#FF7A28] hover:bg-[#FF7A28] hover:text-white bg-transparent"
+                  className="border-[#F58220] text-[#F58220] hover:bg-[#F58220] hover:text-white bg-transparent"
                 >
                   <Download className="w-4 h-4 mr-2" />
                   Extrair Relatórios
@@ -570,7 +570,7 @@ Total de Parceiros: ${partners.length}
               {/* Reports */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="border border-gray-200 rounded-xl p-4">
-                  <h4 className="font-bold text-[#0A2E4D] mb-3">Relatório de Indicações</h4>
+                  <h4 className="font-bold text-[#3E2415] mb-3">Relatório de Indicações</h4>
                   <div className="space-y-2 text-sm">
                     <p>
                       Total de indicações: <span className="font-semibold">{selectedPartner.totalIndications}</span>
@@ -587,7 +587,7 @@ Total de Parceiros: ${partners.length}
                   </div>
                   <Button
                     variant="outline"
-                    className="w-full mt-3 text-[#0078B7] border-[#0078B7] bg-transparent"
+                    className="w-full mt-3 text-[#3E2415] border-[#3E2415] bg-transparent"
                     onClick={() => handleExportIndicationsReport(selectedPartner)}
                   >
                     <Download className="w-4 h-4 mr-2" />
@@ -595,7 +595,7 @@ Total de Parceiros: ${partners.length}
                   </Button>
                 </div>
                 <div className="border border-gray-200 rounded-xl p-4">
-                  <h4 className="font-bold text-[#0A2E4D] mb-3">Relatório de QR Codes</h4>
+                  <h4 className="font-bold text-[#3E2415] mb-3">Relatório de QR Codes</h4>
                   <div className="space-y-2 text-sm">
                     <p>
                       QR Codes gerados: <span className="font-semibold">23</span>
@@ -609,7 +609,7 @@ Total de Parceiros: ${partners.length}
                   </div>
                   <Button
                     variant="outline"
-                    className="w-full mt-3 text-[#0078B7] border-[#0078B7] bg-transparent"
+                    className="w-full mt-3 text-[#3E2415] border-[#3E2415] bg-transparent"
                     onClick={() => handleExportQRCodesReport(selectedPartner)}
                   >
                     <Download className="w-4 h-4 mr-2" />
@@ -626,7 +626,7 @@ Total de Parceiros: ${partners.length}
       {showWalletModal && selectedPartner && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-            <div className="bg-gradient-to-r from-[#0078B7] to-[#00A8E8] p-6 text-white">
+            <div className="bg-gradient-to-r from-[#3E2415] to-[#FFC800] p-6 text-white">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-2xl font-bold">Carteira</h3>
@@ -670,7 +670,7 @@ Total de Parceiros: ${partners.length}
               </div>
 
               <div>
-                <h4 className="font-bold text-[#0A2E4D] mb-3">Histórico de Transações</h4>
+                <h4 className="font-bold text-[#3E2415] mb-3">Histórico de Transações</h4>
                 <div className="space-y-2">
                   {walletTransactions.map((transaction) => (
                     <div
@@ -698,7 +698,7 @@ Total de Parceiros: ${partners.length}
       {/* Credit/Debit Modal */}
       {showCreditModal && selectedPartner && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div
               className={`${creditAction === "add" ? "bg-gradient-to-r from-green-600 to-green-700" : "bg-gradient-to-r from-red-600 to-red-700"} p-6 text-white rounded-t-2xl`}
             >
@@ -734,7 +734,7 @@ Total de Parceiros: ${partners.length}
               </div>
               <div>
                 <Label className="text-sm text-gray-600 mb-2 block">Anexar Comprovante (opcional)</Label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-[#FF7A28] transition-colors cursor-pointer">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-[#F58220] transition-colors cursor-pointer">
                   <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
                   <p className="text-sm text-gray-600">Clique para selecionar arquivo</p>
                   <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png" />
@@ -759,8 +759,8 @@ Total de Parceiros: ${partners.length}
       {/* Level Change Modal */}
       {showLevelChangeModal && selectedPartner && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md">
-            <div className="bg-gradient-to-r from-[#FFBE3B] to-[#FF7A28] p-6 text-white rounded-t-2xl">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="bg-gradient-to-r from-[#FFC800] to-[#F58220] p-6 text-white rounded-t-2xl">
               <div className="flex items-center justify-between">
                 <h3 className="text-xl font-bold">Mudar Nível Manualmente</h3>
                 <button
@@ -796,7 +796,7 @@ Total de Parceiros: ${partners.length}
                 <select
                   name="level"
                   required
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#FF7A28] focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#F58220] focus:border-transparent"
                 >
                   <option value="">Selecione...</option>
                   <option value="Diamante">Diamante</option>
@@ -821,7 +821,7 @@ Total de Parceiros: ${partners.length}
                 >
                   Cancelar
                 </Button>
-                <Button type="submit" className="flex-1 bg-gradient-to-r from-[#FFBE3B] to-[#FF7A28] text-white">
+                <Button type="submit" className="flex-1 bg-gradient-to-r from-[#FFC800] to-[#F58220] text-white">
                   Confirmar Mudança
                 </Button>
               </div>

@@ -46,7 +46,7 @@ export function PartnershipHeader() {
             <div className="flex-1">
               <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
                 <div>
-                  <h1 className="text-base md:text-lg font-bold text-[#0A2E4D] whitespace-nowrap">
+                  <h1 className="text-base md:text-lg font-bold text-[#3E2415] whitespace-nowrap">
                     {profileData.businessName}
                   </h1>
                   <p className="text-gray-600 text-xs">{profileData.username}</p>
@@ -55,7 +55,7 @@ export function PartnershipHeader() {
 
                 <Button
                   onClick={() => setIsEditModalOpen(true)}
-                  className="bg-[#0078B7] hover:bg-[#006399] text-white rounded-full px-4 py-1 text-xs h-8"
+                  className="bg-[#3E2415] hover:bg-[#2F1B10] text-white rounded-full px-4 py-1 text-xs h-8"
                 >
                   Editar Perfil
                 </Button>
@@ -63,15 +63,15 @@ export function PartnershipHeader() {
 
               <div className="flex gap-4 md:gap-6 mt-3 text-xs">
                 <div>
-                  <span className="font-bold text-[#0A2E4D]">8.367</span>
+                  <span className="font-bold text-[#3E2415]">8.367</span>
                   <span className="text-gray-600 ml-1">Seguidores</span>
                 </div>
                 <div>
-                  <span className="font-bold text-[#0A2E4D]">245</span>
+                  <span className="font-bold text-[#3E2415]">245</span>
                   <span className="text-gray-600 ml-1">Parceiros</span>
                 </div>
                 <div>
-                  <span className="font-bold text-[#0A2E4D]">1.2M</span>
+                  <span className="font-bold text-[#3E2415]">1.2M</span>
                   <span className="text-gray-600 ml-1">Comissões</span>
                 </div>
               </div>

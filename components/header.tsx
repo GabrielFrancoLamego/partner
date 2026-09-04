@@ -18,10 +18,7 @@ export function Header({ onMenuToggle }: HeaderProps) {
 
       {/* Logo on Mobile/Tablet */}
       <div className="flex items-center gap-2 lg:hidden">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-          <span className="font-bold text-primary-foreground text-sm">P</span>
-        </div>
-        <span className="font-bold text-foreground text-sm">Partnership</span>
+        <img src="/brand/tribuss-logo-horizontal-cor.png" alt="Tribuss" className="h-6 w-auto" />
       </div>
 
       {/* Spacer on Desktop */}

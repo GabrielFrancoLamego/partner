@@ -105,7 +105,7 @@ export function AddUnitModal({ isOpen, onClose, onAdd, onUpdate, editingUnit }: 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#FF7A28] via-[#FFBE3B] to-[#0078B7] p-6 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] p-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
               <MapPin className="w-5 h-5 text-white" />
@@ -124,7 +124,7 @@ export function AddUnitModal({ isOpen, onClose, onAdd, onUpdate, editingUnit }: 
           <div className="space-y-6">
             {/* Nome */}
             <div>
-              <Label htmlFor="name" className="text-[#0A2E4D] font-semibold mb-2 block">
+              <Label htmlFor="name" className="text-[#3E2415] font-semibold mb-2 block">
                 Nome da Unidade *
               </Label>
               <Input
@@ -132,13 +132,13 @@ export function AddUnitModal({ isOpen, onClose, onAdd, onUpdate, editingUnit }: 
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Ex: Nomad's Jeri - Centro"
-                className="border-2 border-gray-200 focus:border-[#FF7A28] rounded-xl"
+                className="border-2 border-gray-200 focus:border-[#F58220] rounded-xl"
               />
             </div>
 
             {/* Endereço */}
             <div>
-              <Label htmlFor="address" className="text-[#0A2E4D] font-semibold mb-2 block">
+              <Label htmlFor="address" className="text-[#3E2415] font-semibold mb-2 block">
                 Endereço Completo *
               </Label>
               <Input
@@ -146,7 +146,7 @@ export function AddUnitModal({ isOpen, onClose, onAdd, onUpdate, editingUnit }: 
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 placeholder="Rua Principal, 123 - Jericoacoara, CE"
-                className="border-2 border-gray-200 focus:border-[#FF7A28] rounded-xl"
+                className="border-2 border-gray-200 focus:border-[#F58220] rounded-xl"
               />
               <p className="text-xs text-gray-500 mt-1">Este endereço será usado para exibir no mapa</p>
             </div>
@@ -154,7 +154,7 @@ export function AddUnitModal({ isOpen, onClose, onAdd, onUpdate, editingUnit }: 
             {/* Telefone e Email */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="phone" className="text-[#0A2E4D] font-semibold mb-2 block">
+                <Label htmlFor="phone" className="text-[#3E2415] font-semibold mb-2 block">
                   Telefone *
                 </Label>
                 <Input
@@ -162,11 +162,11 @@ export function AddUnitModal({ isOpen, onClose, onAdd, onUpdate, editingUnit }: 
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   placeholder="(85) 99999-9999"
-                  className="border-2 border-gray-200 focus:border-[#0078B7] rounded-xl"
+                  className="border-2 border-gray-200 focus:border-[#3E2415] rounded-xl"
                 />
               </div>
               <div>
-                <Label htmlFor="email" className="text-[#0A2E4D] font-semibold mb-2 block">
+                <Label htmlFor="email" className="text-[#3E2415] font-semibold mb-2 block">
                   E-mail *
                 </Label>
                 <Input
@@ -175,14 +175,14 @@ export function AddUnitModal({ isOpen, onClose, onAdd, onUpdate, editingUnit }: 
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="unidade@nomadsjeri.com"
-                  className="border-2 border-gray-200 focus:border-[#0078B7] rounded-xl"
+                  className="border-2 border-gray-200 focus:border-[#3E2415] rounded-xl"
                 />
               </div>
             </div>
 
             {/* Descrição */}
             <div>
-              <Label htmlFor="description" className="text-[#0A2E4D] font-semibold mb-2 block">
+              <Label htmlFor="description" className="text-[#3E2415] font-semibold mb-2 block">
                 Descrição Resumida
               </Label>
               <Textarea
@@ -191,16 +191,16 @@ export function AddUnitModal({ isOpen, onClose, onAdd, onUpdate, editingUnit }: 
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Breve descrição sobre esta unidade..."
                 rows={3}
-                className="border-2 border-gray-200 focus:border-[#FFBE3B] rounded-xl resize-none"
+                className="border-2 border-gray-200 focus:border-[#FFC800] rounded-xl resize-none"
               />
             </div>
 
             {/* Galeria de Fotos */}
             <div>
-              <Label className="text-[#0A2E4D] font-semibold mb-2 block">Galeria de Fotos</Label>
+              <Label className="text-[#3E2415] font-semibold mb-2 block">Galeria de Fotos</Label>
               <div className="space-y-4">
                 {/* Upload Button */}
-                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-[#FF7A28] transition-colors">
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-[#F58220] transition-colors">
                   <input
                     type="file"
                     id="photos"
@@ -211,7 +211,7 @@ export function AddUnitModal({ isOpen, onClose, onAdd, onUpdate, editingUnit }: 
                   />
                   <label
                     htmlFor="photos"
-                    className="cursor-pointer flex flex-col items-center gap-2 text-gray-600 hover:text-[#FF7A28]"
+                    className="cursor-pointer flex flex-col items-center gap-2 text-gray-600 hover:text-[#F58220]"
                   >
                     <Upload className="w-8 h-8" />
                     <span className="text-sm font-medium">Clique para adicionar fotos</span>
@@ -255,7 +255,7 @@ export function AddUnitModal({ isOpen, onClose, onAdd, onUpdate, editingUnit }: 
           </Button>
           <Button
             onClick={handleSubmit}
-            className="flex-1 bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-xl py-6 shadow-lg"
+            className="flex-1 bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-xl py-6 shadow-lg"
           >
             {editingUnit ? "Salvar Alterações" : "Cadastrar Unidade"}
           </Button>

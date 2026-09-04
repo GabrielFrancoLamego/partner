@@ -144,13 +144,13 @@ export function IndicationsContent() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl md:text-2xl font-bold text-[#0A2E4D]">Indicações</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-[#3E2415]">Indicações</h2>
           <p className="text-gray-600 mt-1 text-sm">Gerencie todas as indicações realizadas</p>
         </div>
 
         <Button
           size="sm"
-          className="bg-gradient-to-r from-[#0078B7] to-[#00A3E0] text-white hover:opacity-90 shadow-md"
+          className="bg-gradient-to-r from-[#3E2415] to-[#FFC800] text-white hover:opacity-90 shadow-md"
         >
           <Download className="w-4 h-4 mr-2" />
           Exportar Relatório
@@ -161,12 +161,12 @@ export function IndicationsContent() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-2xl p-5 shadow-md hover:shadow-lg transition-shadow border border-gray-100">
           <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-[#0078B7] to-[#00A3E0] rounded-xl flex items-center justify-center shadow-md">
+            <div className="w-10 h-10 bg-gradient-to-br from-[#3E2415] to-[#FFC800] rounded-xl flex items-center justify-center shadow-md">
               <Users className="w-5 h-5 text-white" />
             </div>
           </div>
           <h3 className="text-gray-600 text-xs font-medium mb-1">Total de Indicações</h3>
-          <p className="text-xl font-bold text-[#0A2E4D]">{stats.totalIndications}</p>
+          <p className="text-xl font-bold text-[#3E2415]">{stats.totalIndications}</p>
         </div>
 
         <div className="bg-white rounded-2xl p-5 shadow-md hover:shadow-lg transition-shadow border border-gray-100">
@@ -179,7 +179,7 @@ export function IndicationsContent() {
             </span>
           </div>
           <h3 className="text-gray-600 text-xs font-medium mb-1">Visitaram</h3>
-          <p className="text-xl font-bold text-[#0A2E4D]">{stats.visited}</p>
+          <p className="text-xl font-bold text-[#3E2415]">{stats.visited}</p>
         </div>
 
         <div className="bg-white rounded-2xl p-5 shadow-md hover:shadow-lg transition-shadow border border-gray-100">
@@ -192,12 +192,12 @@ export function IndicationsContent() {
             </span>
           </div>
           <h3 className="text-gray-600 text-xs font-medium mb-1">Não Visitaram</h3>
-          <p className="text-xl font-bold text-[#0A2E4D]">{stats.notVisited}</p>
+          <p className="text-xl font-bold text-[#3E2415]">{stats.notVisited}</p>
         </div>
 
         <div className="bg-white rounded-2xl p-5 shadow-md hover:shadow-lg transition-shadow border border-gray-100">
           <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-[#FF7A28] to-[#FFBE3B] rounded-xl flex items-center justify-center shadow-md">
+            <div className="w-10 h-10 bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-xl flex items-center justify-center shadow-md">
               <DollarSign className="w-5 h-5 text-white" />
             </div>
             <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">
@@ -205,15 +205,15 @@ export function IndicationsContent() {
             </span>
           </div>
           <h3 className="text-gray-600 text-xs font-medium mb-1">Faturamento Gerado</h3>
-          <p className="text-xl font-bold text-[#0A2E4D]">R$ {stats.totalRevenue.toLocaleString("pt-BR")}</p>
+          <p className="text-xl font-bold text-[#3E2415]">R$ {stats.totalRevenue.toLocaleString("pt-BR")}</p>
         </div>
       </div>
 
       {/* Filters and Search */}
       <div className="bg-white rounded-2xl p-5 shadow-md border border-gray-100">
         <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-5 h-5 text-[#0078B7]" />
-          <h3 className="text-lg font-bold text-[#0A2E4D]">Filtros e Busca</h3>
+          <Filter className="w-5 h-5 text-[#3E2415]" />
+          <h3 className="text-lg font-bold text-[#3E2415]">Filtros e Busca</h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -230,7 +230,7 @@ export function IndicationsContent() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0078B7] text-sm"
+            className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3E2415] text-sm"
           >
             <option value="all">Todos os status</option>
             <option value="visited">Visitaram</option>
@@ -241,7 +241,7 @@ export function IndicationsContent() {
           <select
             value={filterPartner}
             onChange={(e) => setFilterPartner(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0078B7] text-sm"
+            className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3E2415] text-sm"
           >
             <option value="all">Todos os parceiros</option>
             {partners.map((partner) => (
@@ -265,7 +265,7 @@ export function IndicationsContent() {
                 setFilterStatus("all")
                 setFilterPartner("all")
               }}
-              className="text-[#0078B7] hover:text-[#005A8C] text-xs h-6 px-2"
+              className="text-[#3E2415] hover:text-[#F58220] text-xs h-6 px-2"
             >
               Limpar filtros
             </Button>
@@ -275,7 +275,7 @@ export function IndicationsContent() {
 
       {/* Indications List */}
       <div className="bg-white rounded-2xl p-5 shadow-md border border-gray-100">
-        <h3 className="text-lg font-bold text-[#0A2E4D] mb-4">Lista de Indicações</h3>
+        <h3 className="text-lg font-bold text-[#3E2415] mb-4">Lista de Indicações</h3>
 
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -296,7 +296,7 @@ export function IndicationsContent() {
                 <tr key={indication.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                   <td className="py-4 px-4">
                     <div>
-                      <p className="font-semibold text-[#0A2E4D] text-sm">{indication.clientName}</p>
+                      <p className="font-semibold text-[#3E2415] text-sm">{indication.clientName}</p>
                       <p className="text-xs text-gray-500">{indication.clientEmail}</p>
                     </div>
                   </td>
@@ -305,12 +305,12 @@ export function IndicationsContent() {
                   </td>
                   <td className="py-4 px-4">
                     <div>
-                      <p className="font-medium text-[#0078B7] text-sm">{indication.partnerName}</p>
+                      <p className="font-medium text-[#3E2415] text-sm">{indication.partnerName}</p>
                       <p className="text-xs text-gray-500">ID: {indication.partnerId}</p>
                     </div>
                   </td>
                   <td className="py-4 px-4">
-                    <span className="inline-block bg-[#FFBE3B] bg-opacity-20 text-[#0A2E4D] px-3 py-1 rounded-full text-xs font-medium">
+                    <span className="inline-block bg-[#FFC800] bg-opacity-20 text-[#3E2415] px-3 py-1 rounded-full text-xs font-medium">
                       {indication.program}
                     </span>
                   </td>
@@ -339,7 +339,7 @@ export function IndicationsContent() {
                   </td>
                   <td className="py-4 px-4 text-right">
                     {indication.billAmount ? (
-                      <p className="font-semibold text-[#0A2E4D] text-sm">
+                      <p className="font-semibold text-[#3E2415] text-sm">
                         R$ {indication.billAmount.toLocaleString("pt-BR")}
                       </p>
                     ) : (

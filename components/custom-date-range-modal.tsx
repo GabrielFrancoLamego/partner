@@ -27,7 +27,7 @@ export function CustomDateRangeModal({ isOpen, onClose, onApply }: CustomDateRan
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="bg-gradient-to-r from-[#FF7A28] via-[#FFBE3B] to-[#0078B7] p-6 relative">
+        <div className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] p-6 relative">
           <button
             onClick={onClose}
             className="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm transition-all"
@@ -47,7 +47,7 @@ export function CustomDateRangeModal({ isOpen, onClose, onApply }: CustomDateRan
 
         <div className="p-6 space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="startDate" className="text-sm font-semibold text-[#0A2E4D]">
+            <Label htmlFor="startDate" className="text-sm font-semibold text-[#3E2415]">
               Data Inicial
             </Label>
             <Input
@@ -55,12 +55,12 @@ export function CustomDateRangeModal({ isOpen, onClose, onApply }: CustomDateRan
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border-2 border-gray-200 focus:border-[#FF7A28] rounded-xl h-12"
+              className="w-full border-2 border-gray-200 focus:border-[#F58220] rounded-xl h-12"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="endDate" className="text-sm font-semibold text-[#0A2E4D]">
+            <Label htmlFor="endDate" className="text-sm font-semibold text-[#3E2415]">
               Data Final
             </Label>
             <Input
@@ -69,13 +69,13 @@ export function CustomDateRangeModal({ isOpen, onClose, onApply }: CustomDateRan
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
               min={startDate}
-              className="w-full border-2 border-gray-200 focus:border-[#FF7A28] rounded-xl h-12"
+              className="w-full border-2 border-gray-200 focus:border-[#F58220] rounded-xl h-12"
             />
           </div>
 
           {startDate && endDate && (
             <div className="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl p-4 border border-blue-200">
-              <p className="text-sm text-[#0A2E4D]">
+              <p className="text-sm text-[#3E2415]">
                 <span className="font-semibold">Período selecionado:</span>
                 <br />
                 {new Date(startDate).toLocaleDateString("pt-BR")} até {new Date(endDate).toLocaleDateString("pt-BR")}
@@ -94,7 +94,7 @@ export function CustomDateRangeModal({ isOpen, onClose, onApply }: CustomDateRan
             <Button
               onClick={handleApply}
               disabled={!startDate || !endDate}
-              className="flex-1 h-12 rounded-xl bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90 shadow-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 h-12 rounded-xl bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90 shadow-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Aplicar Filtro
             </Button>

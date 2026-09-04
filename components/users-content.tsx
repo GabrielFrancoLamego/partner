@@ -3,11 +3,11 @@
 import type React from "react"
 
 import { useState } from "react"
-import { Plus, Search, Eye, Shield, ShieldCheck, Crown, Filter } from "lucide-react"
+import { Plus, Search, Eye, Shield, ShieldCheck, Crown, Filter, UserCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-type UserRole = "scanner" | "admin" | "master"
+type UserRole = "scanner" | "colaborador" | "admin" | "master"
 
 interface User {
   id: string
@@ -120,6 +120,13 @@ export function UsersContent() {
           icon: Shield,
           description: "Apenas escaneia QR codes e visualiza promoções",
         }
+      case "colaborador":
+        return {
+          label: "Colaborador",
+          color: "bg-green-100 text-green-700",
+          icon: UserCheck,
+          description: "Acessa indicações, promoções e comissões do dia a dia, sem permissões administrativas",
+        }
       case "admin":
         return {
           label: "Administrativo",
@@ -130,7 +137,7 @@ export function UsersContent() {
       case "master":
         return {
           label: "Master",
-          color: "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white",
+          color: "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white",
           icon: Crown,
           description: "Acesso total - gerencia todos os cadastros e operações",
         }
@@ -150,12 +157,12 @@ export function UsersContent() {
       <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-[#0A2E4D] mb-2">Gerenciar Usuários</h2>
+            <h2 className="text-2xl font-bold text-[#3E2415] mb-2">Gerenciar Usuários</h2>
             <p className="text-gray-600 text-sm">Gerencie usuários internos da empresa com diferentes permissões</p>
           </div>
           <Button
             onClick={() => setIsAddUserOpen(true)}
-            className="bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90 shadow-md"
+            className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90 shadow-md"
           >
             <Plus className="h-5 w-5 mr-2" />
             Adicionar Usuário
@@ -169,15 +176,15 @@ export function UsersContent() {
               placeholder="Buscar por nome ou email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 border-gray-200 focus:border-[#FF7A28] focus:ring-[#FF7A28]"
+              className="pl-10 border-gray-200 focus:border-[#F58220] focus:ring-[#F58220]"
             />
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant={roleFilter === "all" ? "default" : "outline"}
               onClick={() => setRoleFilter("all")}
               className={
-                roleFilter === "all" ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white" : "border-gray-200"
+                roleFilter === "all" ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white" : "border-gray-200"
               }
             >
               <Filter className="h-4 w-4 mr-2" />
@@ -191,6 +198,13 @@ export function UsersContent() {
               Scanner
             </Button>
             <Button
+              variant={roleFilter === "colaborador" ? "default" : "outline"}
+              onClick={() => setRoleFilter("colaborador")}
+              className={roleFilter === "colaborador" ? "bg-green-500 text-white" : "border-gray-200"}
+            >
+              Colaborador
+            </Button>
+            <Button
               variant={roleFilter === "admin" ? "default" : "outline"}
               onClick={() => setRoleFilter("admin")}
               className={roleFilter === "admin" ? "bg-purple-500 text-white" : "border-gray-200"}
@@ -201,7 +215,7 @@ export function UsersContent() {
               variant={roleFilter === "master" ? "default" : "outline"}
               onClick={() => setRoleFilter("master")}
               className={
-                roleFilter === "master" ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white" : "border-gray-200"
+                roleFilter === "master" ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white" : "border-gray-200"
               }
             >
               Master
@@ -221,12 +235,12 @@ export function UsersContent() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-4 flex-1">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#FF7A28] via-[#FFBE3B] to-[#0078B7] flex items-center justify-center text-white font-bold text-lg shadow-md">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800] flex items-center justify-center text-white font-bold text-lg shadow-md">
                       {user.name.charAt(0)}
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold text-[#0A2E4D]">{user.name}</h3>
+                        <h3 className="font-bold text-[#3E2415]">{user.name}</h3>
                         <span
                           className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${roleInfo.color}`}
                         >
@@ -249,7 +263,7 @@ export function UsersContent() {
                     variant="outline"
                     size="sm"
                     onClick={() => setSelectedUser(user)}
-                    className="border-[#FF7A28] text-[#FF7A28] hover:bg-[#FF7A28] hover:text-white"
+                    className="border-[#F58220] text-[#F58220] hover:bg-[#F58220] hover:text-white"
                   >
                     <Eye className="h-4 w-4 mr-1" />
                     Ver Log
@@ -308,7 +322,7 @@ function AddUserModal({
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="bg-gradient-to-r from-[#FF7A28] via-[#FFBE3B] to-[#0078B7] p-6 rounded-t-2xl">
+        <div className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] p-6 rounded-t-2xl">
           <h2 className="text-2xl font-bold text-white">Adicionar Novo Usuário</h2>
           <p className="text-white/90 text-sm mt-1">Cadastre um novo usuário interno da empresa</p>
         </div>
@@ -349,12 +363,17 @@ function AddUserModal({
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Usuário</label>
             <div className="space-y-3">
-              {(["scanner", "admin", "master"] as UserRole[]).map((role) => {
+              {(["scanner", "colaborador", "admin", "master"] as UserRole[]).map((role) => {
                 const info = {
                   scanner: {
                     label: "Scanner",
                     description: "Apenas escaneia QR codes e visualiza promoções",
                     icon: Shield,
+                  },
+                  colaborador: {
+                    label: "Colaborador",
+                    description: "Acessa indicações, promoções e comissões do dia a dia, sem permissões administrativas",
+                    icon: UserCheck,
                   },
                   admin: {
                     label: "Administrativo",
@@ -374,7 +393,7 @@ function AddUserModal({
                   <label
                     key={role}
                     className={`flex items-start gap-3 p-4 border-2 rounded-xl cursor-pointer transition-all ${
-                      formData.role === role ? "border-[#FF7A28] bg-orange-50" : "border-gray-200 hover:border-gray-300"
+                      formData.role === role ? "border-[#F58220] bg-orange-50" : "border-gray-200 hover:border-gray-300"
                     }`}
                   >
                     <input
@@ -404,7 +423,7 @@ function AddUserModal({
             </Button>
             <Button
               type="submit"
-              className="flex-1 bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90"
+              className="flex-1 bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90"
             >
               Adicionar Usuário
             </Button>
@@ -418,11 +437,12 @@ function AddUserModal({
 function UserLogModal({ user, onClose }: { user: User; onClose: () => void }) {
   const roleInfo = {
     scanner: { label: "Scanner", icon: Shield, color: "bg-blue-100 text-blue-700" },
+    colaborador: { label: "Colaborador", icon: UserCheck, color: "bg-green-100 text-green-700" },
     admin: { label: "Administrativo", icon: ShieldCheck, color: "bg-purple-100 text-purple-700" },
     master: {
       label: "Master",
       icon: Crown,
-      color: "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white",
+      color: "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white",
     },
   }[user.role]
 
@@ -431,7 +451,7 @@ function UserLogModal({ user, onClose }: { user: User; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-        <div className="bg-gradient-to-r from-[#0078B7] via-[#FF7A28] to-[#FFBE3B] p-6 rounded-t-2xl">
+        <div className="bg-gradient-to-r from-[#3E2415] via-[#F58220] to-[#FFC800] p-6 rounded-t-2xl">
           <h2 className="text-2xl font-bold text-white mb-2">Log de Atividades</h2>
           <div className="flex items-center gap-3 text-white/90">
             <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white font-bold text-lg">
@@ -475,7 +495,7 @@ function UserLogModal({ user, onClose }: { user: User; onClose: () => void }) {
             <h3 className="font-semibold text-gray-900 mb-4">Histórico de Atividades</h3>
             <div className="space-y-3">
               {user.activityLog.map((log) => (
-                <div key={log.id} className="border-l-4 border-[#FF7A28] pl-4 py-2 bg-orange-50 rounded-r-lg">
+                <div key={log.id} className="border-l-4 border-[#F58220] pl-4 py-2 bg-orange-50 rounded-r-lg">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-medium text-gray-900">{log.action}</p>
@@ -488,7 +508,7 @@ function UserLogModal({ user, onClose }: { user: User; onClose: () => void }) {
             </div>
           </div>
 
-          <Button onClick={onClose} className="w-full mt-6 bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white">
+          <Button onClick={onClose} className="w-full mt-6 bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
             Fechar
           </Button>
         </div>

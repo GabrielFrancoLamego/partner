@@ -87,7 +87,7 @@ export function PromotionsContent() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-[#0A2E4D]">Promoções</h2>
+          <h2 className="text-2xl font-bold text-[#3E2415]">Promoções</h2>
           <p className="text-sm text-gray-600 mt-1">Gerencie promoções com QR Code para seus parceiros e clientes</p>
         </div>
         <Button
@@ -95,7 +95,7 @@ export function PromotionsContent() {
             setEditingPromotion(null)
             setIsAddModalOpen(true)
           }}
-          className="bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-xl px-6 shadow-lg"
+          className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-xl px-6 shadow-lg"
         >
           <Plus className="w-4 h-4 mr-2" />
           Nova Promoção
@@ -114,7 +114,7 @@ export function PromotionsContent() {
               className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden hover:shadow-lg transition-all"
             >
               {/* Banner Image */}
-              <div className="relative h-40 bg-gradient-to-br from-[#FF7A28] to-[#FFBE3B]">
+              <div className="relative h-40 bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800]">
                 <img
                   src={promotion.bannerUrl || "/placeholder.svg"}
                   alt={promotion.title}
@@ -138,8 +138,8 @@ export function PromotionsContent() {
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <Gift className="w-5 h-5 text-[#FF7A28]" />
-                      <h3 className="text-lg font-bold text-[#0A2E4D]">{promotion.title}</h3>
+                      <Gift className="w-5 h-5 text-[#F58220]" />
+                      <h3 className="text-lg font-bold text-[#3E2415]">{promotion.title}</h3>
                     </div>
                     <p className="text-sm text-gray-600 line-clamp-2">{promotion.description}</p>
                   </div>
@@ -149,7 +149,7 @@ export function PromotionsContent() {
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="bg-gradient-to-br from-[#FFF5E6] to-[#FFE5CC] rounded-lg p-3">
                     <div className="flex items-center gap-2 mb-1">
-                      <Package className="w-4 h-4 text-[#FF7A28]" />
+                      <Package className="w-4 h-4 text-[#F58220]" />
                       <p className="text-xs text-gray-600">Estoque</p>
                     </div>
                     <p className={`text-sm font-bold ${getStockColor(promotion)}`}>{getStockStatus(promotion)}</p>
@@ -157,10 +157,10 @@ export function PromotionsContent() {
 
                   <div className="bg-gradient-to-br from-[#E8F4F8] to-[#D0E7F0] rounded-lg p-3">
                     <div className="flex items-center gap-2 mb-1">
-                      <QrCode className="w-4 h-4 text-[#0078B7]" />
+                      <QrCode className="w-4 h-4 text-[#3E2415]" />
                       <p className="text-xs text-gray-600">Utilizados</p>
                     </div>
-                    <p className="text-sm font-bold text-[#0078B7]">{promotion.usedCount}</p>
+                    <p className="text-sm font-bold text-[#3E2415]">{promotion.usedCount}</p>
                   </div>
 
                   <div className="bg-gradient-to-br from-[#FFE5E5] to-[#FFD5D5] rounded-lg p-3">
@@ -186,11 +186,11 @@ export function PromotionsContent() {
                 <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg p-3 mb-4">
                   <div className="flex items-center justify-between text-xs mb-1">
                     <span className="text-gray-600">Custo Unitário:</span>
-                    <span className="font-semibold text-[#0A2E4D]">R$ {promotion.cost.toFixed(2)}</span>
+                    <span className="font-semibold text-[#3E2415]">R$ {promotion.cost.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-gray-600">Custo Total Usado:</span>
-                    <span className="font-bold text-[#FF7A28]">R$ {calculateTotalCost(promotion).toFixed(2)}</span>
+                    <span className="font-bold text-[#F58220]">R$ {calculateTotalCost(promotion).toFixed(2)}</span>
                   </div>
                 </div>
 
@@ -204,7 +204,7 @@ export function PromotionsContent() {
                 <div className="flex gap-2">
                   <Button
                     onClick={() => openEditModal(promotion)}
-                    className="flex-1 bg-[#0078B7] hover:bg-[#006BA7] text-white rounded-lg"
+                    className="flex-1 bg-[#3E2415] hover:bg-[#2F1B10] text-white rounded-lg"
                   >
                     <Edit className="w-4 h-4 mr-2" />
                     Editar
@@ -227,11 +227,11 @@ export function PromotionsContent() {
       {promotions.length === 0 && (
         <div className="bg-white rounded-2xl p-12 text-center shadow-md border border-gray-100">
           <Gift className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-[#0A2E4D] mb-2">Nenhuma promoção cadastrada</h3>
+          <h3 className="text-xl font-bold text-[#3E2415] mb-2">Nenhuma promoção cadastrada</h3>
           <p className="text-gray-600 mb-6">Crie sua primeira promoção com QR Code para começar</p>
           <Button
             onClick={() => setIsAddModalOpen(true)}
-            className="bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-xl px-6"
+            className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-xl px-6"
           >
             <Plus className="w-4 h-4 mr-2" />
             Criar Promoção

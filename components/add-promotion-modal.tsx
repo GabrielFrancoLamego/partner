@@ -122,7 +122,7 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#FF7A28] via-[#FFBE3B] to-[#0078B7] p-6 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] p-6 flex items-center justify-between">
           <h2 className="text-2xl font-bold text-white">{editingPromotion ? "Editar Promoção" : "Nova Promoção"}</h2>
           <button onClick={onClose} className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors">
             <X className="w-6 h-6" />
@@ -134,7 +134,7 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
           <div className="space-y-6">
             {/* Banner Upload */}
             <div>
-              <Label className="text-[#0A2E4D] font-semibold mb-2">Banner da Promoção *</Label>
+              <Label className="text-[#3E2415] font-semibold mb-2">Banner da Promoção *</Label>
               <div className="mt-2">
                 {bannerPreview ? (
                   <div className="relative rounded-xl overflow-hidden border-2 border-gray-200">
@@ -151,7 +151,7 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
                     </button>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-[#FF7A28] hover:bg-orange-50 transition-all">
+                  <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-[#F58220] hover:bg-orange-50 transition-all">
                     <ImageIcon className="w-12 h-12 text-gray-400 mb-2" />
                     <p className="text-sm text-gray-600 mb-1">Clique para fazer upload do banner</p>
                     <p className="text-xs text-gray-400">JPG, PNG até 5MB</p>
@@ -164,7 +164,7 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
             {/* Title and Description */}
             <div className="grid md:grid-cols-1 gap-4">
               <div>
-                <Label htmlFor="title" className="text-[#0A2E4D] font-semibold">
+                <Label htmlFor="title" className="text-[#3E2415] font-semibold">
                   Título da Promoção *
                 </Label>
                 <Input
@@ -179,7 +179,7 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
             </div>
 
             <div>
-              <Label htmlFor="description" className="text-[#0A2E4D] font-semibold">
+              <Label htmlFor="description" className="text-[#3E2415] font-semibold">
                 Descrição *
               </Label>
               <Textarea
@@ -196,7 +196,7 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
             {/* Validity Dates */}
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="validFrom" className="text-[#0A2E4D] font-semibold">
+                <Label htmlFor="validFrom" className="text-[#3E2415] font-semibold">
                   Válido De *
                 </Label>
                 <Input
@@ -209,7 +209,7 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
                 />
               </div>
               <div>
-                <Label htmlFor="validUntil" className="text-[#0A2E4D] font-semibold">
+                <Label htmlFor="validUntil" className="text-[#3E2415] font-semibold">
                   Válido Até *
                 </Label>
                 <Input
@@ -226,7 +226,7 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
             {/* QR Code Validity and Cost */}
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="qrValidity" className="text-[#0A2E4D] font-semibold">
+                <Label htmlFor="qrValidity" className="text-[#3E2415] font-semibold">
                   Validade do QR Code (minutos) *
                 </Label>
                 <Input
@@ -242,7 +242,7 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
                 <p className="text-xs text-gray-500 mt-1">Tempo que o QR Code fica ativo após ser gerado</p>
               </div>
               <div>
-                <Label htmlFor="cost" className="text-[#0A2E4D] font-semibold">
+                <Label htmlFor="cost" className="text-[#3E2415] font-semibold">
                   Custo da Promoção (R$) *
                 </Label>
                 <Input
@@ -262,7 +262,7 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
 
             {/* Stock */}
             <div>
-              <Label htmlFor="stock" className="text-[#0A2E4D] font-semibold">
+              <Label htmlFor="stock" className="text-[#3E2415] font-semibold">
                 Estoque (deixe vazio para ilimitado)
               </Label>
               <Input
@@ -279,7 +279,7 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
 
             {/* Unit Selection */}
             <div>
-              <Label className="text-[#0A2E4D] font-semibold mb-3 block">Unidades Vinculadas</Label>
+              <Label className="text-[#3E2415] font-semibold mb-3 block">Unidades Vinculadas</Label>
               <div className="space-y-3">
                 <label className="flex items-center gap-3 p-3 bg-gradient-to-r from-[#FFF5E6] to-[#FFE5CC] rounded-lg cursor-pointer hover:shadow-md transition-all">
                   <input
@@ -291,15 +291,15 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
                     }}
                     className="w-5 h-5 rounded border-gray-300"
                   />
-                  <span className="font-medium text-[#0A2E4D]">Aplicar a todas as unidades</span>
+                  <span className="font-medium text-[#3E2415]">Aplicar a todas as unidades</span>
                 </label>
 
                 {!applyToAllUnits && (
-                  <div className="space-y-2 pl-4 border-l-2 border-[#FF7A28]">
+                  <div className="space-y-2 pl-4 border-l-2 border-[#F58220]">
                     {availableUnits.map((unit) => (
                       <label
                         key={unit.id}
-                        className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:border-[#0078B7] hover:bg-blue-50 transition-all"
+                        className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:border-[#3E2415] hover:bg-blue-50 transition-all"
                       >
                         <input
                           type="checkbox"
@@ -307,7 +307,7 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
                           onChange={() => handleUnitToggle(unit.id)}
                           className="w-4 h-4 rounded border-gray-300"
                         />
-                        <span className="text-sm text-[#0A2E4D]">{unit.name}</span>
+                        <span className="text-sm text-[#3E2415]">{unit.name}</span>
                       </label>
                     ))}
                   </div>
@@ -329,7 +329,7 @@ export function AddPromotionModal({ isOpen, onClose, onSave, editingPromotion }:
           </Button>
           <Button
             onClick={handleSubmit}
-            className="flex-1 bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-lg shadow-lg"
+            className="flex-1 bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] hover:from-[#FF6A18] hover:to-[#FFAE2B] text-white rounded-lg shadow-lg"
           >
             {editingPromotion ? "Salvar Alterações" : "Criar Promoção"}
           </Button>

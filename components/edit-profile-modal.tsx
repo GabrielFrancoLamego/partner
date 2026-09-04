@@ -82,7 +82,7 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave }: EditP
           style={{ maxHeight: "85vh" }}
         >
           {/* Header with gradient */}
-          <div className="relative bg-gradient-to-r from-[#FF7A28] via-[#FFBE3B] to-[#0078B7] p-6 rounded-t-3xl">
+          <div className="relative bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] p-6 rounded-t-3xl">
             <button
               onClick={onClose}
               className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full transition-colors"
@@ -99,8 +99,8 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave }: EditP
               {/* Profile Images Section */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-5 border-b border-gray-200">
                 <div>
-                  <Label className="text-sm font-semibold text-[#0A2E4D] mb-2 block">Banner de Fundo</Label>
-                  <div className="relative h-32 bg-gradient-to-br from-[#FF7A28]/20 to-[#FFBE3B]/20 rounded-xl border-2 border-dashed border-gray-300 hover:border-[#FF7A28] transition-colors cursor-pointer group overflow-hidden">
+                  <Label className="text-sm font-semibold text-[#3E2415] mb-2 block">Banner de Fundo</Label>
+                  <div className="relative h-32 bg-gradient-to-br from-[#F58220]/20 to-[#FFC800]/20 rounded-xl border-2 border-dashed border-gray-300 hover:border-[#F58220] transition-colors cursor-pointer group overflow-hidden">
                     {formData.banner && (
                       <img
                         src={formData.banner || "/placeholder.svg"}
@@ -126,9 +126,9 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave }: EditP
                 </div>
 
                 <div>
-                  <Label className="text-sm font-semibold text-[#0A2E4D] mb-2 block">Logo do Perfil</Label>
+                  <Label className="text-sm font-semibold text-[#3E2415] mb-2 block">Logo do Perfil</Label>
                   <div className="relative h-32 flex items-center justify-center">
-                    <div className="relative w-32 h-32 rounded-full bg-gradient-to-br from-[#0078B7]/20 to-[#FF7A28]/20 border-2 border-dashed border-gray-300 hover:border-[#0078B7] transition-colors cursor-pointer group overflow-hidden">
+                    <div className="relative w-32 h-32 rounded-full bg-gradient-to-br from-[#3E2415]/20 to-[#F58220]/20 border-2 border-dashed border-gray-300 hover:border-[#3E2415] transition-colors cursor-pointer group overflow-hidden">
                       {formData.logo && (
                         <img
                           src={formData.logo || "/placeholder.svg"}
@@ -158,33 +158,33 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave }: EditP
               {/* Business Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="businessName" className="text-sm font-semibold text-[#0A2E4D]">
+                  <Label htmlFor="businessName" className="text-sm font-semibold text-[#3E2415]">
                     Nome do Negócio
                   </Label>
                   <Input
                     id="businessName"
                     value={formData.businessName}
                     onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                    className="mt-1.5 border-gray-300 focus:border-[#0078B7] focus:ring-[#0078B7] rounded-xl"
+                    className="mt-1.5 border-gray-300 focus:border-[#3E2415] focus:ring-[#3E2415] rounded-xl"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="username" className="text-sm font-semibold text-[#0A2E4D]">
+                  <Label htmlFor="username" className="text-sm font-semibold text-[#3E2415]">
                     Nome de Usuário
                   </Label>
                   <Input
                     id="username"
                     value={formData.username}
                     onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                    className="mt-1.5 border-gray-300 focus:border-[#0078B7] focus:ring-[#0078B7] rounded-xl"
+                    className="mt-1.5 border-gray-300 focus:border-[#3E2415] focus:ring-[#3E2415] rounded-xl"
                   />
                 </div>
               </div>
 
               {/* Description */}
               <div>
-                <Label htmlFor="description" className="text-sm font-semibold text-[#0A2E4D]">
+                <Label htmlFor="description" className="text-sm font-semibold text-[#3E2415]">
                   Descrição
                 </Label>
                 <Textarea
@@ -192,7 +192,7 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave }: EditP
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={4}
-                  className="mt-1.5 border-gray-300 focus:border-[#0078B7] focus:ring-[#0078B7] rounded-xl resize-none"
+                  className="mt-1.5 border-gray-300 focus:border-[#3E2415] focus:ring-[#3E2415] rounded-xl resize-none"
                   placeholder="Descreva seu negócio..."
                 />
               </div>
@@ -200,7 +200,7 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave }: EditP
               {/* Contact Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="email" className="text-sm font-semibold text-[#0A2E4D]">
+                  <Label htmlFor="email" className="text-sm font-semibold text-[#3E2415]">
                     Email
                   </Label>
                   <Input
@@ -208,19 +208,19 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave }: EditP
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="mt-1.5 border-gray-300 focus:border-[#0078B7] focus:ring-[#0078B7] rounded-xl"
+                    className="mt-1.5 border-gray-300 focus:border-[#3E2415] focus:ring-[#3E2415] rounded-xl"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="phone" className="text-sm font-semibold text-[#0A2E4D]">
+                  <Label htmlFor="phone" className="text-sm font-semibold text-[#3E2415]">
                     Telefone
                   </Label>
                   <Input
                     id="phone"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="mt-1.5 border-gray-300 focus:border-[#0078B7] focus:ring-[#0078B7] rounded-xl"
+                    className="mt-1.5 border-gray-300 focus:border-[#3E2415] focus:ring-[#3E2415] rounded-xl"
                   />
                 </div>
               </div>
@@ -228,26 +228,26 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave }: EditP
               {/* Additional Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="website" className="text-sm font-semibold text-[#0A2E4D]">
+                  <Label htmlFor="website" className="text-sm font-semibold text-[#3E2415]">
                     Website
                   </Label>
                   <Input
                     id="website"
                     value={formData.website}
                     onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                    className="mt-1.5 border-gray-300 focus:border-[#0078B7] focus:ring-[#0078B7] rounded-xl"
+                    className="mt-1.5 border-gray-300 focus:border-[#3E2415] focus:ring-[#3E2415] rounded-xl"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="address" className="text-sm font-semibold text-[#0A2E4D]">
+                  <Label htmlFor="address" className="text-sm font-semibold text-[#3E2415]">
                     Endereço
                   </Label>
                   <Input
                     id="address"
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    className="mt-1.5 border-gray-300 focus:border-[#0078B7] focus:ring-[#0078B7] rounded-xl"
+                    className="mt-1.5 border-gray-300 focus:border-[#3E2415] focus:ring-[#3E2415] rounded-xl"
                   />
                 </div>
               </div>
@@ -267,7 +267,7 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave }: EditP
             <Button
               type="submit"
               onClick={handleSubmit}
-              className="rounded-full px-6 bg-gradient-to-r from-[#FF7A28] to-[#0078B7] hover:from-[#FF7A28]/90 hover:to-[#0078B7]/90 text-white shadow-lg"
+              className="rounded-full px-6 bg-gradient-to-r from-[#F2680C] to-[#3E2415] hover:from-[#F58220]/90 hover:to-[#3E2415]/90 text-white shadow-lg"
             >
               Salvar Alterações
             </Button>

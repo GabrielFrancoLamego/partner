@@ -94,9 +94,9 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
     if (ctx) {
       // Background gradient
       const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
-      gradient.addColorStop(0, "#FF7A28")
-      gradient.addColorStop(0.5, "#FFBE3B")
-      gradient.addColorStop(1, "#0078B7")
+      gradient.addColorStop(0, "#F58220")
+      gradient.addColorStop(0.5, "#FFC800")
+      gradient.addColorStop(1, "#3E2415")
       ctx.fillStyle = gradient
       ctx.fillRect(0, 0, canvas.width, canvas.height)
 
@@ -106,7 +106,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
       ctx.fill()
 
       // Title
-      ctx.fillStyle = "#0A2E4D"
+      ctx.fillStyle = "#3E2415"
       ctx.font = "bold 48px system-ui"
       ctx.fillText("RELATÓRIO GERAL", 100, 140)
 
@@ -120,15 +120,15 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
       const lineHeight = 60
 
       const sections = [
-        { label: "Receitas Total", value: `R$ ${reportData.receitas.toFixed(2)}`, color: "#0078B7" },
-        { label: "Custos Total", value: `R$ ${reportData.custos.toFixed(2)}`, color: "#FF7A28" },
-        { label: "CMV", value: `${(reportData.cmv * 100).toFixed(1)}%`, color: "#0A2E4D" },
-        { label: "Indicações", value: reportData.indicacoes.toString(), color: "#0078B7" },
-        { label: "QR Codes Gerados", value: reportData.qrcodesGerados.toString(), color: "#FFBE3B" },
-        { label: "QR Codes Usados", value: reportData.qrcodesUsados.toString(), color: "#0078B7" },
-        { label: "Ticket Médio", value: `R$ ${reportData.ticketMedio.toFixed(2)}`, color: "#0A2E4D" },
-        { label: "Comissões Geradas", value: `R$ ${reportData.comissoesGeradas.toFixed(2)}`, color: "#0078B7" },
-        { label: "Comissões Pagas", value: `R$ ${reportData.comissoesPagas.toFixed(2)}`, color: "#FF7A28" },
+        { label: "Receitas Total", value: `R$ ${reportData.receitas.toFixed(2)}`, color: "#3E2415" },
+        { label: "Custos Total", value: `R$ ${reportData.custos.toFixed(2)}`, color: "#F58220" },
+        { label: "CMV", value: `${(reportData.cmv * 100).toFixed(1)}%`, color: "#3E2415" },
+        { label: "Indicações", value: reportData.indicacoes.toString(), color: "#3E2415" },
+        { label: "QR Codes Gerados", value: reportData.qrcodesGerados.toString(), color: "#FFC800" },
+        { label: "QR Codes Usados", value: reportData.qrcodesUsados.toString(), color: "#3E2415" },
+        { label: "Ticket Médio", value: `R$ ${reportData.ticketMedio.toFixed(2)}`, color: "#3E2415" },
+        { label: "Comissões Geradas", value: `R$ ${reportData.comissoesGeradas.toFixed(2)}`, color: "#3E2415" },
+        { label: "Comissões Pagas", value: `R$ ${reportData.comissoesPagas.toFixed(2)}`, color: "#F58220" },
       ]
 
       sections.forEach((section) => {
@@ -180,7 +180,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
       <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-[#0A2E4D] mb-1">Relatórios Gerais</h2>
+            <h2 className="text-2xl font-bold text-[#3E2415] mb-1">Relatórios Gerais</h2>
             <p className="text-gray-600 text-sm">Exporte dados completos em diferentes formatos</p>
           </div>
 
@@ -190,7 +190,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
               variant={period === "today" ? "default" : "outline"}
               size="sm"
               className={
-                period === "today" ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90" : ""
+                period === "today" ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90" : ""
               }
             >
               Hoje
@@ -200,7 +200,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
               variant={period === "7days" ? "default" : "outline"}
               size="sm"
               className={
-                period === "7days" ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90" : ""
+                period === "7days" ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90" : ""
               }
             >
               7 dias
@@ -210,7 +210,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
               variant={period === "30days" ? "default" : "outline"}
               size="sm"
               className={
-                period === "30days" ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90" : ""
+                period === "30days" ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90" : ""
               }
             >
               30 dias
@@ -220,7 +220,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
               variant={period === "90days" ? "default" : "outline"}
               size="sm"
               className={
-                period === "90days" ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90" : ""
+                period === "90days" ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90" : ""
               }
             >
               90 dias
@@ -230,7 +230,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
               variant={period === "year" ? "default" : "outline"}
               size="sm"
               className={
-                period === "year" ? "bg-gradient-to-r from-[#FF7A28] to-[#FFBE3B] text-white hover:opacity-90" : ""
+                period === "year" ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90" : ""
               }
             >
               Ano
@@ -241,7 +241,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
 
       {/* Export Options */}
       <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
-        <h3 className="text-lg font-bold text-[#0A2E4D] mb-4">Exportar Relatório</h3>
+        <h3 className="text-lg font-bold text-[#3E2415] mb-4">Exportar Relatório</h3>
         <div className="flex flex-wrap gap-3">
           <Button
             onClick={exportToExcel}
@@ -270,7 +270,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
       {/* Report Data Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Receitas */}
-        <div className="bg-gradient-to-br from-[#0078B7] to-[#005A8C] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#3E2415] to-[#FFC800] rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <DollarSign className="w-8 h-8 opacity-80" />
             <span className="text-sm opacity-80">Financeiro</span>
@@ -280,7 +280,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
         </div>
 
         {/* Custos */}
-        <div className="bg-gradient-to-br from-[#FF7A28] to-[#E56020] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#F58220] to-[#E56020] rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <TrendingUp className="w-8 h-8 opacity-80" />
             <span className="text-sm opacity-80">Despesas</span>
@@ -290,7 +290,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
         </div>
 
         {/* CMV */}
-        <div className="bg-gradient-to-br from-[#FFBE3B] to-[#E5A822] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#FFC800] to-[#E5A822] rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <Receipt className="w-8 h-8 opacity-80" />
             <span className="text-sm opacity-80">Margem</span>
@@ -300,7 +300,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
         </div>
 
         {/* Indicações */}
-        <div className="bg-gradient-to-br from-[#0078B7] to-[#005A8C] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#3E2415] to-[#FFC800] rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <Users className="w-8 h-8 opacity-80" />
             <span className="text-sm opacity-80">Clientes</span>
@@ -310,7 +310,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
         </div>
 
         {/* QR Codes Gerados */}
-        <div className="bg-gradient-to-br from-[#FFBE3B] to-[#E5A822] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#FFC800] to-[#E5A822] rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <QrCode className="w-8 h-8 opacity-80" />
             <span className="text-sm opacity-80">Gerados</span>
@@ -320,7 +320,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
         </div>
 
         {/* QR Codes Usados */}
-        <div className="bg-gradient-to-br from-[#0078B7] to-[#005A8C] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#3E2415] to-[#FFC800] rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <QrCode className="w-8 h-8 opacity-80" />
             <span className="text-sm opacity-80">Utilizados</span>
@@ -330,7 +330,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
         </div>
 
         {/* Ticket Médio */}
-        <div className="bg-gradient-to-br from-[#FF7A28] to-[#E56020] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#F58220] to-[#E56020] rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <Receipt className="w-8 h-8 opacity-80" />
             <span className="text-sm opacity-80">Média</span>
@@ -340,7 +340,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
         </div>
 
         {/* Comissões Geradas */}
-        <div className="bg-gradient-to-br from-[#0078B7] to-[#005A8C] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#3E2415] to-[#FFC800] rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <DollarSign className="w-8 h-8 opacity-80" />
             <span className="text-sm opacity-80">Geradas</span>
@@ -350,7 +350,7 @@ Comissões Pendentes: R$ ${(reportData.comissoesGeradas - reportData.comissoesPa
         </div>
 
         {/* Comissões Pagas */}
-        <div className="bg-gradient-to-br from-[#FFBE3B] to-[#E5A822] rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-[#FFC800] to-[#E5A822] rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <DollarSign className="w-8 h-8 opacity-80" />
             <span className="text-sm opacity-80">Pagas</span>
