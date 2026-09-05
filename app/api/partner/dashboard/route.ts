@@ -1,0 +1,81 @@
+import { prisma } from "@/lib/prisma"
+import { requirePartner, handleApiError, ApiError } from "@/lib/api-auth"
+
+/**
+ * Painel do parceiro: saldo em carteira, régua de nível (todos os níveis do
+ * mesmo Program do nível atual, para desenhar a trilha Prata->Ouro->Diamante),
+ * comissões pendentes/aprovadas e as indicações mais recentes.
+ */
+export async function GET() {
+  try {
+    const user = await requirePartner()
+
+    const profile = await prisma.partnerProfile.findUnique({
+      where: { userId: user.id },
+      include: { currentLevel: { include: { program: { include: { levels: { orderBy: { order: "asc" } } } } } } },
+    })
+    if (!profile) throw new ApiError(404, "Perfil de parceiro não encontrado")
+
+    const [pendingAgg, approvedAgg, paidAgg, recentCommissions, qualifyingCount] = await Promise.all([
+      prisma.commission.aggregate({
+        where: { partnerId: user.id, status: { in: ["PENDING", "AWAITING_VALUE"] } },
+        _sum: { commissionValue: true },
+        _count: true,
+      }),
+      prisma.commission.aggregate({
+        where: { partnerId: user.id, status: "APPROVED" },
+        _sum: { commissionValue: true },
+        _count: true,
+      }),
+      prisma.commission.aggregate({
+        where: { partnerId: user.id, status: "PAID" },
+        _sum: { commissionValue: true },
+        _count: true,
+      }),
+      prisma.commission.findMany({
+        where: { partnerId: user.id },
+        include: { company: { select: { name: true } }, promotion: { select: { title: true } } },
+        orderBy: { date: "desc" },
+        take: 10,
+      }),
+      prisma.commission.count({ where: { partnerId: user.id, status: { in: ["APPROVED", "PAID"] } } }),
+    ])
+
+    const levels = profile.currentLevel?.program.levels ?? []
+    const currentOrder = profile.currentLevel?.order ?? -1
+    const nextLevel = levels.find((l) => l.order > currentOrder) ?? null
+
+    return Response.json({
+      walletBalance: Number(profile.walletBalance),
+      currentLevel: profile.currentLevel
+        ? {
+            id: profile.currentLevel.id,
+            name: profile.currentLevel.name,
+            order: profile.currentLevel.order,
+            badgeColorHex: profile.currentLevel.badgeColorHex,
+            commissionPercentage: Number(profile.currentLevel.commissionPercentage),
+            bonusDescription: profile.currentLevel.bonusDescription,
+          }
+        : null,
+      nextLevel: nextLevel
+        ? {
+            id: nextLevel.id,
+            name: nextLevel.name,
+            order: nextLevel.order,
+            requiredReferralCount: nextLevel.requiredReferralCount,
+            badgeColorHex: nextLevel.badgeColorHex,
+          }
+        : null,
+      levels: levels.map((l) => ({ id: l.id, name: l.name, order: l.order, badgeColorHex: l.badgeColorHex })),
+      qualifyingCount,
+      commissions: {
+        pending: { total: Number(pendingAgg._sum.commissionValue ?? 0), count: pendingAgg._count },
+        approved: { total: Number(approvedAgg._sum.commissionValue ?? 0), count: approvedAgg._count },
+        paid: { total: Number(paidAgg._sum.commissionValue ?? 0), count: paidAgg._count },
+      },
+      recentCommissions,
+    })
+  } catch (error) {
+    return handleApiError(error)
+  }
+}

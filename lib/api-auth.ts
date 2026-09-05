@@ -1,7 +1,7 @@
 import "server-only"
 import { Prisma, type Role } from "@prisma/client"
 import { getCurrentUser, type CurrentUser } from "./current-user"
-import { isPlatformAdmin, isCompanyStaff } from "./permissions"
+import { isPlatformAdmin, isCompanyStaff, isPartner } from "./permissions"
 
 export class ApiError extends Error {
   status: number
@@ -41,6 +41,13 @@ export async function requireCompanyStaff(): Promise<CurrentUser & { companyId: 
   requireCapability(user, isCompanyStaff)
   if (!user.companyId) throw new ApiError(403, "Usuário sem empresa vinculada")
   return user as CurrentUser & { companyId: string }
+}
+
+/** Uso: toda rota sob app/api/partner/* — exige sessão + role PARTNER. */
+export async function requirePartner(): Promise<CurrentUser> {
+  const user = await requireUser()
+  requireCapability(user, isPartner)
+  return user
 }
 
 /** Uso: `catch (error) { return handleApiError(error) }` em toda rota. */

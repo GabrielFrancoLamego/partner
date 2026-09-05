@@ -50,6 +50,10 @@ export function PartnershipLayout() {
           router.replace("/company")
           return
         }
+        if (user?.role === "PARTNER") {
+          router.replace("/partner")
+          return
+        }
         setCurrentUser(user)
       })
       .catch(() => setCurrentUser(null))
@@ -67,6 +71,10 @@ export function PartnershipLayout() {
     }
     if (isCompanyStaff(user.role)) {
       router.push("/company")
+      return
+    }
+    if (user.role === "PARTNER") {
+      router.push("/partner")
       return
     }
     setCurrentUser(user)
