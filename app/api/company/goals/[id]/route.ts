@@ -8,25 +8,27 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const user = await requireCompanyStaff()
     requireCapability(user, canManageDailyOperations)
     const { id } = await params
+    const companyId = user.companyId
 
-    const existing = await prisma.revenueGoalTier.findFirst({ where: { id, companyId: user.companyId } })
+    const existing = await prisma.goal.findFirst({ where: { id, companyId } })
     if (!existing) throw new ApiError(404, "Meta não encontrada")
 
     const body = await request.json()
-    const { targetAmount, bonusAmount, order } = body
+    const { name, active, endDate } = body
 
-    const tier = await prisma.revenueGoalTier.update({
+    const goal = await prisma.goal.update({
       where: { id },
       data: {
-        ...(targetAmount !== undefined ? { targetAmount: Number(targetAmount) } : {}),
-        ...(bonusAmount !== undefined ? { bonusAmount: Number(bonusAmount) } : {}),
-        ...(order !== undefined ? { order: Number(order) } : {}),
+        ...(name !== undefined ? { name } : {}),
+        ...(active !== undefined ? { active } : {}),
+        ...(endDate !== undefined ? { endDate: endDate ? new Date(endDate) : null } : {}),
       },
+      include: { tiers: { orderBy: { order: "asc" } } },
     })
 
-    await logAudit({ userId: user.id, companyId: user.companyId, action: "UPDATE", entity: "RevenueGoalTier", entityId: id, details: body })
+    await logAudit({ userId: user.id, companyId, action: "UPDATE", entity: "Goal", entityId: id, details: body })
 
-    return Response.json(tier)
+    return Response.json(goal)
   } catch (error) {
     return handleApiError(error)
   }
@@ -37,12 +39,13 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     const user = await requireCompanyStaff()
     requireCapability(user, canManageDailyOperations)
     const { id } = await params
+    const companyId = user.companyId
 
-    const existing = await prisma.revenueGoalTier.findFirst({ where: { id, companyId: user.companyId } })
+    const existing = await prisma.goal.findFirst({ where: { id, companyId } })
     if (!existing) throw new ApiError(404, "Meta não encontrada")
 
-    await prisma.revenueGoalTier.delete({ where: { id } })
-    await logAudit({ userId: user.id, companyId: user.companyId, action: "DELETE", entity: "RevenueGoalTier", entityId: id })
+    await prisma.goal.delete({ where: { id } })
+    await logAudit({ userId: user.id, companyId, action: "DELETE", entity: "Goal", entityId: id })
 
     return Response.json({ ok: true })
   } catch (error) {

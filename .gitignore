@@ -28,3 +28,5 @@ next-env.d.ts
 
 # dados reais de parceiros (PII + saldos) — nunca commitar
 /prisma/partners-data.json
+/prisma/parceiros.csv
+/prisma/*.csv

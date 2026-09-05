@@ -6,6 +6,7 @@ import Link from "next/link"
 import { LayoutDashboard, Wallet, Banknote, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PartnerUserProvider, type PartnerUser } from "@/lib/partner-user-context"
+import { PartnerTermAcceptanceGate } from "./term-acceptance-gate"
 
 const NAV_ITEMS = [
   { href: "/partner", label: "Dashboard", icon: LayoutDashboard },
@@ -28,6 +29,7 @@ export function PartnerShell({ user, children }: { user: PartnerUser; children: 
   return (
     <PartnerUserProvider user={user}>
       <div className="min-h-screen bg-[#F7F5F2]">
+        <PartnerTermAcceptanceGate />
         <aside className="hidden lg:flex fixed left-0 top-0 h-screen w-[260px] flex-col border-r border-[#E8E3DC] bg-white">
           <div className="p-4 border-b border-[#E8E3DC] flex items-center gap-3">
             <img src="/brand/tribuss-icone-app.png" alt="Tribuss" className="w-10 h-10 rounded-xl object-contain" />

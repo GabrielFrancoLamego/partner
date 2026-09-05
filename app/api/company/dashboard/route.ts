@@ -104,12 +104,9 @@ export async function GET(request: Request) {
     } | null = null
 
     if (user.role === "EMPLOYEE") {
-      const [profile, levels, todayXpAgg, ranked, monthlyScore, efficiency] = await Promise.all([
-        prisma.employeeProfile.findUnique({ where: { userId: user.id }, select: { xpPoints: true } }),
-        prisma.careerLevel.findMany({
-          where: { companyId },
-          select: { id: true, name: true, order: true, requiredXp: true, badgeColorHex: true },
-        }),
+      const [profile, program, todayXpAgg, ranked, monthlyScore, efficiency] = await Promise.all([
+        prisma.employeeProfile.findUnique({ where: { userId: user.id }, select: { xpPoints: true, currentInternalLevelId: true } }),
+        prisma.internalProgram.findUnique({ where: { companyId }, select: { levels: { orderBy: { order: "asc" } } } }),
         prisma.xpEntry.aggregate({
           where: { companyId, employeeId: user.id, createdAt: { gte: startOfToday } },
           _sum: { points: true },
@@ -124,7 +121,7 @@ export async function GET(request: Request) {
       ])
 
       const xpPoints = profile?.xpPoints ?? 0
-      const progress = resolveCareerProgress(xpPoints, levels)
+      const progress = resolveCareerProgress(xpPoints, program?.levels ?? [], profile?.currentInternalLevelId ?? null)
       const rank = ranked.findIndex((r) => r.userId === user.id) + 1
 
       me = {

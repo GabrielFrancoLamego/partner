@@ -91,41 +91,88 @@ export async function computeDailyEfficiency(companyId: string, employeeId: stri
   return { efficiencyPercent, medal: resolveEfficiencyMedal(efficiencyPercent) }
 }
 
+type LevelLike = { id: string; name: string; order: number; pointsRequired: number; badgeColorHex: string }
+
 export type CareerProgress = {
-  currentLevel: { id: string; name: string; order: number; requiredXp: number; badgeColorHex: string } | null
-  nextLevel: { id: string; name: string; order: number; requiredXp: number; badgeColorHex: string } | null
+  currentLevel: LevelLike | null
+  nextLevel: LevelLike | null
   xpPoints: number
   progressToNextPercent: number
 }
 
 /**
- * Deriva o nível atual e o progresso até o próximo degrau da régua de
- * cargos a partir do saldo de XP — o nível não é persistido no colaborador,
- * é sempre recalculado contra CareerLevel.requiredXp (fonte da verdade).
+ * Nível atual = EmployeeProfile.currentInternalLevelId (ponteiro explícito;
+ * cai no degrau de menor `order` se ainda não foi definido). `xpPoints` conta
+ * SÓ desde a última promoção — REGRA DE MUDANÇA DE CARGO: promover zera
+ * xpPoints e move o ponteiro (ver promoteEmployee abaixo), então o progresso
+ * aqui é sempre relativo ao `pointsRequired` do nível atual, nunca cumulativo
+ * contra a régua inteira.
  */
-export function resolveCareerProgress(
-  xpPoints: number,
-  levels: { id: string; name: string; order: number; requiredXp: number; badgeColorHex: string }[],
-): CareerProgress {
-  const sorted = [...levels].sort((a, b) => a.requiredXp - b.requiredXp)
-  let currentLevel: CareerProgress["currentLevel"] = null
-  let nextLevel: CareerProgress["nextLevel"] = null
+export function resolveCareerProgress(xpPoints: number, levels: LevelLike[], currentLevelId: string | null): CareerProgress {
+  const sorted = [...levels].sort((a, b) => a.order - b.order)
+  const currentLevel = (currentLevelId ? sorted.find((l) => l.id === currentLevelId) : sorted[0]) ?? sorted[0] ?? null
+  const nextLevel = currentLevel ? (sorted.find((l) => l.order === currentLevel.order + 1) ?? null) : null
 
-  for (const level of sorted) {
-    if (xpPoints >= level.requiredXp) {
-      currentLevel = level
-    } else {
-      nextLevel = level
-      break
-    }
-  }
-
-  let progressToNextPercent = 100
-  if (nextLevel) {
-    const floor = currentLevel?.requiredXp ?? 0
-    const span = nextLevel.requiredXp - floor
-    progressToNextPercent = span > 0 ? Math.max(0, Math.min(100, Math.round(((xpPoints - floor) / span) * 100))) : 0
-  }
+  const progressToNextPercent =
+    currentLevel && currentLevel.pointsRequired > 0
+      ? Math.max(0, Math.min(100, Math.round((xpPoints / currentLevel.pointsRequired) * 100)))
+      : 0
 
   return { currentLevel, nextLevel, xpPoints, progressToNextPercent }
+}
+
+/**
+ * Promove um colaborador para um novo nível do Programa Interno — zera
+ * xpPoints (novo ciclo de pontuação começa do zero no cargo novo, regra
+ * explícita do produto) e registra o motivo em AuditLog (chamador loga).
+ */
+export async function promoteEmployee(employeeId: string, newLevelId: string, tx: Prisma.TransactionClient | typeof prisma = prisma) {
+  return tx.employeeProfile.update({
+    where: { userId: employeeId },
+    data: { currentInternalLevelId: newLevelId, xpPoints: 0 },
+  })
+}
+
+export type InternalProgramRules = {
+  pointsOnTimeCheckIn: number
+  pointsChecklistOnTime: number
+  pointsChecklistLateOrRejected: number
+  pointsOccurrencePenalty: number
+  minEfficiencyPercent: number
+  efficiencyBonusAmount: number | null
+}
+
+const DEFAULT_INTERNAL_PROGRAM_RULES: InternalProgramRules = {
+  pointsOnTimeCheckIn: 5,
+  pointsChecklistOnTime: 5,
+  pointsChecklistLateOrRejected: -3,
+  pointsOccurrencePenalty: -10,
+  minEfficiencyPercent: 90,
+  efficiencyBonusAmount: null,
+}
+
+/** Garante que a empresa tenha um InternalProgram (cria um rascunho padrão na primeira vez que algo precisa dele — ex: cadastrar o 1º nível antes de a Master preencher o resto do programa em /company/programa-interno). */
+export async function getOrCreateInternalProgram(companyId: string) {
+  const existing = await prisma.internalProgram.findUnique({ where: { companyId } })
+  if (existing) return existing
+  return prisma.internalProgram.create({ data: { companyId, title: "Programa Interno de Colaboradores" } })
+}
+
+/**
+ * Regras de pontuação do Programa Interno da empresa — usadas em vez de
+ * constantes fixas em app/api/company/{timeclock,checklists,occurrences}.
+ * Sem InternalProgram cadastrado ainda, cai nos mesmos valores-padrão que o
+ * sistema sempre usou (compatibilidade com empresas que não configuraram).
+ */
+export async function getInternalProgramRules(companyId: string): Promise<InternalProgramRules> {
+  const program = await prisma.internalProgram.findUnique({ where: { companyId } })
+  if (!program) return DEFAULT_INTERNAL_PROGRAM_RULES
+  return {
+    pointsOnTimeCheckIn: program.pointsOnTimeCheckIn,
+    pointsChecklistOnTime: program.pointsChecklistOnTime,
+    pointsChecklistLateOrRejected: program.pointsChecklistLateOrRejected,
+    pointsOccurrencePenalty: program.pointsOccurrencePenalty,
+    minEfficiencyPercent: program.minEfficiencyPercent,
+    efficiencyBonusAmount: program.efficiencyBonusAmount ? Number(program.efficiencyBonusAmount) : null,
+  }
 }

@@ -16,6 +16,18 @@ const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process
 
 const PASSWORD = "123456"
 
+// listUsers() pagina 50 por padrão — com 150+ contas no projeto, precisa varrer todas as páginas.
+async function findAuthUserByEmail(email) {
+  for (let page = 1; page <= 50; page++) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 200 })
+    if (error) throw error
+    const found = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase())
+    if (found) return found
+    if (data.users.length < 200) return null
+  }
+  return null
+}
+
 async function createAuthUser(email) {
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email,
@@ -24,8 +36,7 @@ async function createAuthUser(email) {
   })
   if (error) {
     if (error.message.includes("already been registered") || error.status === 422) {
-      const { data: list } = await supabaseAdmin.auth.admin.listUsers()
-      const existing = list.users.find((u) => u.email === email)
+      const existing = await findAuthUserByEmail(email)
       if (existing) return existing
     }
     throw error

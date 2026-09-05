@@ -3,8 +3,19 @@ import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
 import { canOperateFrontDesk, canManageDailyOperations } from "@/lib/permissions"
 import { checkGeofence } from "@/lib/geofence"
-import { awardXp } from "@/lib/gamification"
+import { awardXp, getInternalProgramRules } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
+
+const PUNCTUALITY_GRACE_MINUTES = 5
+
+/** "HH:mm" -> minutos desde 00:00, para comparar com a hora local da batida. */
+function parseTimeToMinutes(hhmm: string) {
+  const [h, m] = hhmm.split(":").map(Number)
+  return h * 60 + m
+}
+function minutesSinceMidnight(date: Date) {
+  return date.getHours() * 60 + date.getMinutes()
+}
 
 /** Sequência esperada de batidas no dia. */
 const NEXT_TYPE: Record<"START" | TimeEntryType, TimeEntryType> = {
@@ -21,8 +32,6 @@ const TYPE_LABELS: Record<TimeEntryType, string> = {
   BREAK_END: "Retorno",
   CHECK_OUT: "Saída",
 }
-
-const CHECK_IN_XP = 5
 
 function startOfDay(date: Date) {
   const d = new Date(date)
@@ -97,20 +106,41 @@ export async function POST(request: Request) {
       data: { userId: user.id, companyId, type, latitude, longitude },
     })
 
-    if (type === "CHECK_IN") {
-      await awardXp({
-        companyId,
-        employeeId: user.id,
-        reason: "ATTENDANCE",
-        points: CHECK_IN_XP,
-        sourceId: entry.id,
-        note: "Ponto batido",
-      })
+    // Banco de horas: só quando o colaborador tem turno configurado — a
+    // diferença entre a batida real e o horário previsto vira minutos
+    // (positivo = extra, negativo = déficit), somados ao saldo corrente.
+    const schedule = await prisma.employeeProfile.findUnique({
+      where: { userId: user.id },
+      select: { workStartTime: true, workEndTime: true },
+    })
+    let bankMinutesDelta = 0
+    if (type === "CHECK_IN" && schedule?.workStartTime) {
+      bankMinutesDelta = parseTimeToMinutes(schedule.workStartTime) - minutesSinceMidnight(entry.createdAt)
+    } else if (type === "CHECK_OUT" && schedule?.workEndTime) {
+      bankMinutesDelta = minutesSinceMidnight(entry.createdAt) - parseTimeToMinutes(schedule.workEndTime)
+    }
+    if (bankMinutesDelta !== 0) {
+      await prisma.employeeProfile.update({ where: { userId: user.id }, data: { bankOfHoursMinutes: { increment: bankMinutesDelta } } })
     }
 
-    await logAudit({ userId: user.id, companyId, action: "CREATE", entity: "TimeEntry", entityId: entry.id, details: { type, latitude, longitude, distanceMeters: geofence.distanceMeters } })
+    if (type === "CHECK_IN") {
+      const rules = await getInternalProgramRules(companyId)
+      const isPunctual = !schedule?.workStartTime || minutesSinceMidnight(entry.createdAt) <= parseTimeToMinutes(schedule.workStartTime) + PUNCTUALITY_GRACE_MINUTES
+      if (isPunctual) {
+        await awardXp({
+          companyId,
+          employeeId: user.id,
+          reason: "ATTENDANCE",
+          points: rules.pointsOnTimeCheckIn,
+          sourceId: entry.id,
+          note: "Entrada pontual",
+        })
+      }
+    }
 
-    return Response.json({ ...entry, distanceMeters: geofence.distanceMeters }, { status: 201 })
+    await logAudit({ userId: user.id, companyId, action: "CREATE", entity: "TimeEntry", entityId: entry.id, details: { type, latitude, longitude, distanceMeters: geofence.distanceMeters, bankMinutesDelta } })
+
+    return Response.json({ ...entry, distanceMeters: geofence.distanceMeters, bankMinutesDelta }, { status: 201 })
   } catch (error) {
     return handleApiError(error)
   }

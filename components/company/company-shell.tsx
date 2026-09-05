@@ -15,11 +15,15 @@ import {
   Wallet,
   LogOut,
   FileClock,
+  Award,
+  Users2,
+  Target,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Role } from "@prisma/client"
 import { canManageDailyOperations, canManageFinance, canOperateFrontDesk } from "@/lib/permissions"
 import { CompanyUserProvider, type CompanyUser } from "@/lib/company-user-context"
+import { TermAcceptanceGate } from "./term-acceptance-gate"
 
 const ROLE_LABELS: Record<Role, string> = {
   ADMIN: "Administrador da Plataforma",
@@ -47,6 +51,9 @@ const NAV_ITEMS: NavItem[] = [
     show: (u) => canManageDailyOperations(u.role) || u.canRegisterOccurrences,
   },
   { href: "/company/fechamento", label: "Fechamento", icon: FileClock, show: (u) => canManageDailyOperations(u.role) },
+  { href: "/company/metas", label: "Metas", icon: Target, show: () => true },
+  { href: "/company/programa-interno", label: "Programa Interno", icon: Award, show: (u) => canManageDailyOperations(u.role) },
+  { href: "/company/setores", label: "Setores", icon: Users2, show: (u) => canManageDailyOperations(u.role) },
   { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: (u) => canManageFinance(u.role) },
 ]
 
@@ -66,6 +73,7 @@ export function CompanyShell({ user, children }: { user: CompanyUser; children: 
   return (
     <CompanyUserProvider user={user}>
       <div className="min-h-screen bg-[#F7F5F2]">
+        {user.role === "EMPLOYEE" && <TermAcceptanceGate />}
         {/* Desktop Sidebar */}
         <aside className="hidden lg:flex fixed left-0 top-0 h-screen w-[260px] flex-col border-r border-[#E8E3DC] bg-white">
           <div className="p-4 border-b border-[#E8E3DC] flex items-center gap-3">

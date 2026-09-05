@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Trophy, Gift, Plus, Trash2, Check, X, Package } from "lucide-react"
+import Link from "next/link"
+import { Trophy, Gift, Plus, Trash2, Check, X, Package, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,7 +14,7 @@ import { LoadingState, EmptyState, AdminCard, StatusBadge } from "@/components/a
 import { useCompanyUser } from "@/lib/company-user-context"
 import { canManageDailyOperations } from "@/lib/permissions"
 
-type Level = { id: string; name: string; order: number; requiredXp: number; bonusDescription: string | null; badgeColorHex: string }
+type Level = { id: string; name: string; order: number; pointsRequired: number; bonusDescription: string | null; badgeColorHex: string; imageUrl: string | null }
 type Reward = { id: string; name: string; description: string | null; costXp: number; stock: number | null; imageUrl: string | null; active: boolean }
 type LeaderboardRow = { rank: number; employeeId: string; name: string; xpPoints: number }
 type Redemption = {
@@ -196,7 +197,7 @@ function ManagerGrowthView() {
         </TabsContent>
 
         <TabsContent value="levels">
-          <LevelsTab levels={summary?.levels ?? []} isLoading={isLoading} onChanged={reload} />
+          <LevelsTab levels={summary?.levels ?? []} isLoading={isLoading} />
         </TabsContent>
 
         <TabsContent value="rewards">
@@ -211,28 +212,21 @@ function ManagerGrowthView() {
   )
 }
 
-function LevelsTab({ levels, isLoading, onChanged }: { levels: Level[]; isLoading: boolean; onChanged: () => void }) {
-  const [isCreateOpen, setIsCreateOpen] = useState(false)
-
-  const handleDelete = async (level: Level) => {
-    if (!confirm(`Excluir o nível "${level.name}"?`)) return
-    await adminFetch(`/api/company/gamification/levels/${level.id}`, { method: "DELETE" }).catch((e) =>
-      alert(e instanceof AdminApiError ? e.message : "Erro ao excluir"),
-    )
-    onChanged()
-  }
-
+function LevelsTab({ levels, isLoading }: { levels: Level[]; isLoading: boolean }) {
   if (isLoading) return <LoadingState />
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => setIsCreateOpen(true)} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
-          <Plus className="h-4 w-4 mr-1" /> Novo Nível
-        </Button>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-xs text-gray-500">A régua de cargos é configurada em Programa Interno.</p>
+        <Link href="/company/programa-interno">
+          <Button size="sm" variant="outline" className="text-[#F2680C] border-[#F2680C]/30">
+            <Settings className="h-4 w-4 mr-1" /> Gerenciar níveis
+          </Button>
+        </Link>
       </div>
       {levels.length === 0 ? (
-        <EmptyState message="Nenhum nível cadastrado. Crie a régua Trainee -> Supervisor." />
+        <EmptyState message="Nenhum nível cadastrado. Configure a régua em Programa Interno." />
       ) : (
         <div className="grid gap-2">
           {levels.map((l) => (
@@ -241,89 +235,14 @@ function LevelsTab({ levels, isLoading, onChanged }: { levels: Level[]; isLoadin
                 <span className="w-3 h-3 rounded-full" style={{ backgroundColor: l.badgeColorHex }} />
                 <div>
                   <p className="font-medium text-[#3E2415] text-sm">{l.name}</p>
-                  <p className="text-xs text-gray-500">{l.requiredXp} XP necessário {l.bonusDescription && `· ${l.bonusDescription}`}</p>
+                  <p className="text-xs text-gray-500">{l.pointsRequired} pontos necessários {l.bonusDescription && `· ${l.bonusDescription}`}</p>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(l)} className="text-red-600">
-                <Trash2 className="h-4 w-4" />
-              </Button>
             </div>
           ))}
         </div>
       )}
-      {isCreateOpen && (
-        <LevelDialog
-          onClose={() => setIsCreateOpen(false)}
-          onCreated={() => {
-            setIsCreateOpen(false)
-            onChanged()
-          }}
-        />
-      )}
     </div>
-  )
-}
-
-function LevelDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [name, setName] = useState("")
-  const [requiredXp, setRequiredXp] = useState("100")
-  const [bonusDescription, setBonusDescription] = useState("")
-  const [badgeColorHex, setBadgeColorHex] = useState("#F58220")
-  const [error, setError] = useState("")
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-    setIsSubmitting(true)
-    try {
-      await adminFetch("/api/company/gamification/levels", {
-        method: "POST",
-        body: JSON.stringify({ name, requiredXp: Number(requiredXp), bonusDescription, badgeColorHex }),
-      })
-      onCreated()
-    } catch (e) {
-      setError(e instanceof AdminApiError ? e.message : "Erro ao criar nível")
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Novo Nível da Trilha</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <div className="space-y-2">
-            <Label>Nome (ex: Trainee, Júnior, Pleno...)</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} required />
-          </div>
-          <div className="space-y-2">
-            <Label>XP necessário</Label>
-            <Input type="number" value={requiredXp} onChange={(e) => setRequiredXp(e.target.value)} required />
-          </div>
-          <div className="space-y-2">
-            <Label>Bônus associado</Label>
-            <Input value={bonusDescription} onChange={(e) => setBonusDescription(e.target.value)} placeholder="Ex: +R$100 no salário" />
-          </div>
-          <div className="space-y-2">
-            <Label>Cor do selo</Label>
-            <Input type="color" value={badgeColorHex} onChange={(e) => setBadgeColorHex(e.target.value)} className="h-10 w-20" />
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
-              Criar
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   )
 }
 

@@ -56,12 +56,18 @@ type LegacyWithdrawal = {
 type LegacyPartnerRecord = {
   companySlug: string // precisa já existir em Company.slug ("nomads-jeri", "nomads-lagoa", "in-on", ...)
   name: string
+  fullName?: string
+  nickname?: string // deve chegar já deduplicado pelo conversor — @unique no banco
   email: string
   phone?: string
+  whatsapp?: string
   document?: string // CPF (INDIVIDUAL) ou CNPJ (AGENCY)
   partnerType?: "INDIVIDUAL" | "AGENCY"
   pixKey?: string
   currentBalance: number
+  status?: "ACTIVE" | "INACTIVE"
+  registeredAt?: string // ISO date — aplicado só na criação, nunca sobrescreve em reimportação
+  bio?: string // notas livres preservadas da planilha original (observações, avisos de qualidade de dado, etc.)
   referrals?: LegacyReferral[]
   withdrawals?: LegacyWithdrawal[]
 }
@@ -77,6 +83,18 @@ function loadLegacyData(): LegacyPartnerRecord[] {
   return JSON.parse(readFileSync(DATA_FILE, "utf-8")) as LegacyPartnerRecord[]
 }
 
+/** `listUsers()` pagina 50 por padrão — com 150+ contas no projeto, a busca por e-mail precisa varrer todas as páginas. */
+async function findAuthUserByEmail(email: string) {
+  for (let page = 1; page <= 50; page++) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 200 })
+    if (error) throw error
+    const found = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase())
+    if (found) return found
+    if (data.users.length < 200) return null // última página
+  }
+  return null
+}
+
 async function createOrGetAuthUser(email: string) {
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email,
@@ -85,8 +103,7 @@ async function createOrGetAuthUser(email: string) {
   })
   if (error || !data.user) {
     if (error?.message.includes("already been registered") || error?.status === 422) {
-      const { data: list } = await supabaseAdmin.auth.admin.listUsers()
-      const existing = list.users.find((u) => u.email === email)
+      const existing = await findAuthUserByEmail(email)
       if (existing) return existing
     }
     throw error
@@ -105,8 +122,8 @@ async function importPartner(record: LegacyPartnerRecord) {
 
   const user = await prisma.user.upsert({
     where: { id: authUser.id },
-    update: { name: record.name },
-    create: { id: authUser.id, email: record.email, name: record.name, role: "PARTNER" },
+    update: { name: record.name, status: record.status ?? "ACTIVE" },
+    create: { id: authUser.id, email: record.email, name: record.name, role: "PARTNER", status: record.status ?? "ACTIVE" },
   })
 
   await prisma.partnerProfile.upsert({
@@ -114,17 +131,26 @@ async function importPartner(record: LegacyPartnerRecord) {
     update: {
       document: record.document,
       phone: record.phone,
+      whatsapp: record.whatsapp,
       pixKey: record.pixKey,
       partnerType: record.partnerType ?? "INDIVIDUAL",
       walletBalance: record.currentBalance,
+      fullName: record.fullName,
+      nickname: record.nickname,
+      bio: record.bio,
     },
     create: {
       userId: user.id,
       document: record.document,
       phone: record.phone,
+      whatsapp: record.whatsapp,
       pixKey: record.pixKey,
       partnerType: record.partnerType ?? "INDIVIDUAL",
       walletBalance: record.currentBalance,
+      fullName: record.fullName,
+      nickname: record.nickname,
+      bio: record.bio,
+      registeredAt: record.registeredAt ? new Date(record.registeredAt) : undefined,
     },
   })
 
@@ -194,11 +220,24 @@ async function main() {
     return
   }
 
+  let ok = 0
+  const failures: { email: string; error: string }[] = []
+
   for (const record of records) {
-    await importPartner(record)
+    try {
+      await importPartner(record)
+      ok++
+    } catch (e) {
+      failures.push({ email: record.email, error: e instanceof Error ? e.message : String(e) })
+      console.error(`✗ Falha ao importar ${record.email}:`, e instanceof Error ? e.message : e)
+    }
   }
 
-  console.log(`\nConcluído: ${records.length} parceiro(s) processado(s).`)
+  console.log(`\nConcluído: ${ok}/${records.length} parceiro(s) importado(s) com sucesso.`)
+  if (failures.length > 0) {
+    console.log(`${failures.length} falha(s):`)
+    for (const f of failures) console.log(`  - ${f.email}: ${f.error}`)
+  }
   await prisma.$disconnect()
 }
 

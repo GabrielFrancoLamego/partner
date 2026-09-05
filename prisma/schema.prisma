@@ -166,6 +166,31 @@ enum TicketStatus {
   RESOLVED
 }
 
+enum MeasurementPeriod {
+  MONTHLY
+  SEMIANNUAL
+  ANNUAL
+}
+
+enum ShiftType {
+  DAY
+  NIGHT
+}
+
+enum GoalScope {
+  COMPANY
+  SECTOR
+  EMPLOYEE
+}
+
+enum GoalPeriod {
+  DAILY
+  MONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+}
+
 model Company {
   id          String   @id @default(cuid())
   name        String
@@ -220,13 +245,15 @@ model Company {
   posts                   Post[]
   occurrences             Occurrence[]
   dailyEvaluations        DailyEvaluation[]
-  careerLevels            CareerLevel[]
   xpEntries               XpEntry[]
   rewardCatalogItems      RewardCatalogItem[]
   rewardRedemptions       RewardRedemption[]
   timeEntryJustifications TimeEntryJustification[]
   shiftClosings           ShiftClosing[]
-  revenueGoalTiers        RevenueGoalTier[]
+
+  internalProgram InternalProgram?
+  sectors         Sector[]
+  goals           Goal[]
 }
 
 // Licença SaaS da empresa dentro do grupo — hoje uso interno (Nomad's Jeri,
@@ -297,6 +324,12 @@ model User {
   timeJustificationsReviewed TimeEntryJustification[] @relation("TimeJustificationReviewedBy")
   shiftClosingsClosed        ShiftClosing[]           @relation("ShiftClosingClosedBy")
 
+  employeeTermAcceptances EmployeeTermAcceptance[] @relation("EmployeeTermAcceptanceUser")
+  partnerTermAcceptances  PartnerTermAcceptance[]  @relation("PartnerTermAcceptanceUser")
+  goalsAsIndividual       Goal[]                   @relation("GoalEmployee")
+  goalsCreated            Goal[]                   @relation("GoalCreatedBy")
+  goalRecordsReported     GoalRecord[]             @relation("GoalRecordReportedBy")
+
   @@index([companyId])
   @@index([role])
 }
@@ -340,13 +373,30 @@ model EmployeeProfile {
   isScannerOnly Boolean   @default(false)
   primaryUnitId String? // extensão para geofencing do ponto digital (fase futura)
   primaryUnit   Unit?     @relation(fields: [primaryUnitId], references: [id])
-  xpPoints      Int       @default(0) // gamificação — saldo vitalício de XP (trilha de cargos)
+  xpPoints      Int       @default(0) // pontos acumulados NO NÍVEL ATUAL — zera a cada promoção (ver currentInternalLevelId)
   lastXpSeenAt  DateTime? // último acesso em que o colaborador viu o extrato — base do pop-up +XX/-XX
+
+  // Nível atual no Programa Interno da empresa — ponteiro explícito, não mais
+  // derivado só por comparação de XP: uma promoção move este ponteiro E zera
+  // xpPoints, iniciando um novo ciclo de pontuação (ver lib/gamification.ts).
+  currentInternalLevelId String?
+  currentInternalLevel   InternalLevelRule? @relation(fields: [currentInternalLevelId], references: [id])
 
   // Permite que este colaborador registre Ocorrências em modo CREATE_ONLY
   // (sem ver histórico, editar ou excluir) — concedido pelo Master/Gerente.
   canRegisterOccurrences Boolean  @default(false)
   monthlySalary          Decimal? @db.Decimal(10, 2) // usado para calcular o abate de 1 dia em FALTA sem ATESTADO
+
+  // Setor, turno e janela de trabalho — usados para calcular o Banco de Horas
+  // a cada batida de ponto fora do horário previsto (ver app/api/company/timeclock).
+  sectorId           String?
+  sector             Sector?    @relation(fields: [sectorId], references: [id])
+  shiftType          ShiftType?
+  workStartTime      String? // "HH:mm"
+  workEndTime        String?
+  breakStartTime     String?
+  breakEndTime       String?
+  bankOfHoursMinutes Int        @default(0) // positivo = hora extra acumulada; negativo = déficit
 
   // Registro completo de RH — preenchimento opcional, feito por etapas.
   isProfileComplete Boolean @default(false)
@@ -424,9 +474,12 @@ model Unit {
   @@index([companyId])
 }
 
+// Programa de Parceiros — no MÁXIMO 1 por empresa (@@unique companyId).
+// Promoções ("1 Caipirinha grátis" etc, ver model Promotion) são ilimitadas e
+// táticas; este model é o programa de comissão/níveis/termos em si.
 model Program {
   id              String         @id @default(cuid())
-  companyId       String
+  companyId       String         @unique
   company         Company        @relation(fields: [companyId], references: [id])
   name            String
   description     String         @db.Text
@@ -437,14 +490,16 @@ model Program {
   autoUpgrade     Boolean        @default(false)
   active          Boolean        @default(true)
   contractUrl     String?
+  imageUrl        String? // imagem representativa do programa
+  pdfUrl          String? // anexo PDF com regras completas
+  termsContent    String?        @db.Text // termo de aceite (texto/markdown simples)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  levels    ProgramLevel[]
-  materials ProgramMaterial[]
-  referrals Referral[]
-
-  @@index([companyId])
+  levels          ProgramLevel[]
+  materials       ProgramMaterial[]
+  referrals       Referral[]
+  termAcceptances PartnerTermAcceptance[]
 }
 
 model ProgramLevel {
@@ -898,24 +953,169 @@ model DailyEvaluation {
   @@index([date])
 }
 
-// Régua do Programa de Crescimento (Trainee -> Junior -> ... -> Supervisor).
-// EmployeeProfile.xpPoints é o saldo corrente; o nível é derivado comparando
-// esse saldo contra requiredXp (não persistido no colaborador).
-model CareerLevel {
-  id               String   @id @default(cuid())
-  companyId        String
-  company          Company  @relation(fields: [companyId], references: [id])
-  name             String
-  order            Int      @default(0)
-  requiredXp       Int
-  bonusDescription String?
-  bonusAmount      Decimal? @db.Decimal(10, 2)
-  badgeColorHex    String   @default("#F58220")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+// Programa Interno de Colaboradores — no MÁXIMO 1 por empresa (@@unique
+// companyId). Reúne o termo de aceite, o período de avaliação e as regras de
+// pontuação/bônus que antes viviam hardcoded em lib/gamification.ts.
+model InternalProgram {
+  id           String  @id @default(cuid())
+  companyId    String  @unique
+  company      Company @relation(fields: [companyId], references: [id])
+  title        String
+  description  String? @db.Text
+  imageUrl     String? // imagem representativa do programa
+  pdfUrl       String? // anexo PDF com regras completas
+  termsContent String? @db.Text // termo de aceite (texto/markdown simples)
 
-  @@unique([companyId, order])
+  measurementPeriod MeasurementPeriod @default(MONTHLY)
+
+  // Regras de pontuação (aplicadas em lib/gamification.ts em vez de constantes fixas)
+  pointsOnTimeCheckIn           Int @default(5)
+  pointsChecklistOnTime         Int @default(5)
+  pointsChecklistLateOrRejected Int @default(-3)
+  pointsOccurrencePenalty       Int @default(-10)
+
+  // Bônus de eficiência: colaborador com % de checklist no prazo >= minEfficiencyPercent
+  // no período de medição recebe efficiencyBonusAmount (calculado em lib/gamification.ts)
+  minEfficiencyPercent  Int      @default(90)
+  efficiencyBonusAmount Decimal? @db.Decimal(10, 2)
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  levels          InternalLevelRule[]
+  termAcceptances EmployeeTermAcceptance[]
+}
+
+// Régua de cargos do Programa Interno (Trainee -> Junior -> ... -> Supervisor,
+// nomes livres por empresa). `pointsRequired` é RELATIVO ao nível — pontos que
+// o colaborador precisa acumular NESTE cargo para ser promovido ao próximo;
+// EmployeeProfile.xpPoints zera a cada promoção (ver regra de mudança de cargo).
+model InternalLevelRule {
+  id                    String          @id @default(cuid())
+  internalProgramId     String
+  internalProgram       InternalProgram @relation(fields: [internalProgramId], references: [id], onDelete: Cascade)
+  name                  String
+  order                 Int             @default(0)
+  pointsRequired        Int
+  salaryIncreasePercent Decimal?        @db.Decimal(5, 2)
+  imageUrl              String? // imagem/selo da promoção
+  bonusDescription      String?
+  bonusAmount           Decimal?        @db.Decimal(10, 2)
+  badgeColorHex         String          @default("#F58220")
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  employees EmployeeProfile[]
+
+  @@unique([internalProgramId, order])
+  @@index([internalProgramId])
+}
+
+// Confirmação de aceite do Termo do Programa Interno no primeiro acesso do colaborador.
+model EmployeeTermAcceptance {
+  id                String          @id @default(cuid())
+  employeeId        String
+  employee          User            @relation("EmployeeTermAcceptanceUser", fields: [employeeId], references: [id])
+  internalProgramId String
+  internalProgram   InternalProgram @relation(fields: [internalProgramId], references: [id], onDelete: Cascade)
+  acceptedAt        DateTime        @default(now())
+  ipAddress         String?
+
+  @@unique([employeeId, internalProgramId])
+}
+
+// Confirmação de aceite do Termo do Programa de Parceiros no primeiro acesso do parceiro.
+model PartnerTermAcceptance {
+  id         String   @id @default(cuid())
+  partnerId  String
+  partner    User     @relation("PartnerTermAcceptanceUser", fields: [partnerId], references: [id])
+  programId  String
+  program    Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  acceptedAt DateTime @default(now())
+  ipAddress  String?
+
+  @@unique([partnerId, programId])
+}
+
+// Setor da empresa (Cozinha, Atendimento, Recepção...) — usado para agrupar
+// colaboradores e para metas com scope=SECTOR.
+model Sector {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  name        String
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employees EmployeeProfile[]
+  goals     Goal[]
+
+  @@unique([companyId, name])
   @@index([companyId])
+}
+
+// Meta escalonada — por Empresa, Setor ou Colaborador individual, em qualquer
+// período. Substitui o antigo RevenueGoalTier (fixo, só diário, só empresa).
+model Goal {
+  id          String     @id @default(cuid())
+  companyId   String
+  company     Company    @relation(fields: [companyId], references: [id])
+  scope       GoalScope
+  sectorId    String? // obrigatório quando scope = SECTOR
+  sector      Sector?    @relation(fields: [sectorId], references: [id])
+  employeeId  String? // obrigatório quando scope = EMPLOYEE
+  employee    User?      @relation("GoalEmployee", fields: [employeeId], references: [id])
+  period      GoalPeriod
+  name        String
+  active      Boolean    @default(true)
+  startDate   DateTime   @default(now())
+  endDate     DateTime?
+  createdById String
+  createdBy   User       @relation("GoalCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  tiers   GoalTier[]
+  records GoalRecord[]
+
+  @@index([companyId])
+  @@index([sectorId])
+  @@index([employeeId])
+}
+
+// Faixa de bônus escalonado de uma Goal (ex: R$5k -> R$30, R$7k -> R$50, R$10k -> R$70).
+model GoalTier {
+  id           String   @id @default(cuid())
+  goalId       String
+  goal         Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  order        Int
+  targetAmount Decimal  @db.Decimal(10, 2)
+  bonusAmount  Decimal  @db.Decimal(10, 2)
+  createdAt    DateTime @default(now())
+
+  @@unique([goalId, order])
+}
+
+// Resultado diário reportado para uma Goal — fechamento obrigatório da
+// Gerente/Master na última hora do expediente (metas COMPANY sincronizam
+// automaticamente com ShiftClosing.revenueAmount do mesmo dia; SECTOR/
+// EMPLOYEE são reportadas à parte). Consolidações mensais/trimestrais/etc
+// são a SOMA destes registros diários no período — nunca um valor solto.
+model GoalRecord {
+  id           String   @id @default(cuid())
+  goalId       String
+  goal         Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  date         DateTime // normalizado para 00:00
+  amount       Decimal  @db.Decimal(10, 2)
+  receiptUrl   String?
+  reportedById String
+  reportedBy   User     @relation("GoalRecordReportedBy", fields: [reportedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@unique([goalId, date])
+  @@index([goalId])
 }
 
 // Extrato de pontos de XP — cada lançamento também ajusta
@@ -996,24 +1196,6 @@ model ShiftClosing {
   @@unique([companyId, date])
   @@index([companyId])
   @@index([status])
-}
-
-// Faixas escalonadas de meta de faturamento diário — bônus em dinheiro
-// liberado para a equipe ao bater cada faixa. Escopo por empresa (não por
-// colaborador) nesta versão; o progresso é calculado a partir da soma de
-// Commission.amount do dia (faturamento das comandas já escaneadas no PDV).
-model RevenueGoalTier {
-  id           String   @id @default(cuid())
-  companyId    String
-  company      Company  @relation(fields: [companyId], references: [id])
-  order        Int
-  targetAmount Decimal  @db.Decimal(10, 2)
-  bonusAmount  Decimal  @db.Decimal(10, 2)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@unique([companyId, order])
-  @@index([companyId])
 }
 
 // Espelho de ponto — pedido de justificativa (atestado, esquecimento etc.)

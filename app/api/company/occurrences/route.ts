@@ -3,10 +3,9 @@ import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, handleApiError, ApiError } from "@/lib/api-auth"
 import { canManageDailyOperations } from "@/lib/permissions"
 import { uploadImage } from "@/lib/storage"
-import { awardXp } from "@/lib/gamification"
+import { awardXp, getInternalProgramRules } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
 
-const WARNING_XP_PENALTY = -10
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
 
 const OCCURRENCE_TYPES: OccurrenceType[] = [
@@ -187,11 +186,12 @@ export async function POST(request: Request) {
     })
 
     if (type === "ADVERTENCIA" && employee) {
+      const rules = await getInternalProgramRules(companyId)
       await awardXp({
         companyId,
         employeeId: employee.id,
         reason: "OCCURRENCE_PENALTY",
-        points: WARNING_XP_PENALTY,
+        points: rules.pointsOccurrencePenalty,
         sourceId: occurrence.id,
         note: "Advertência registrada",
       })

@@ -1,12 +1,15 @@
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
 import { canManageDailyOperations } from "@/lib/permissions"
+import { getOrCreateInternalProgram } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
 
 export async function GET() {
   try {
     const user = await requireCompanyStaff()
-    const levels = await prisma.careerLevel.findMany({ where: { companyId: user.companyId }, orderBy: { order: "asc" } })
+    const program = await prisma.internalProgram.findUnique({ where: { companyId: user.companyId } })
+    if (!program) return Response.json([])
+    const levels = await prisma.internalLevelRule.findMany({ where: { internalProgramId: program.id }, orderBy: { order: "asc" } })
     return Response.json(levels)
   } catch (error) {
     return handleApiError(error)
@@ -20,24 +23,27 @@ export async function POST(request: Request) {
     const companyId = user.companyId
 
     const body = await request.json()
-    const { name, requiredXp, bonusDescription, bonusAmount, badgeColorHex } = body
-    if (!name || requiredXp === undefined) throw new ApiError(400, "Nome e XP necessário são obrigatórios")
+    const { name, pointsRequired, bonusDescription, bonusAmount, badgeColorHex, salaryIncreasePercent, imageUrl } = body
+    if (!name || pointsRequired === undefined) throw new ApiError(400, "Nome e pontuação exigida são obrigatórios")
 
-    const last = await prisma.careerLevel.findFirst({ where: { companyId }, orderBy: { order: "desc" } })
+    const program = await getOrCreateInternalProgram(companyId)
+    const last = await prisma.internalLevelRule.findFirst({ where: { internalProgramId: program.id }, orderBy: { order: "desc" } })
 
-    const level = await prisma.careerLevel.create({
+    const level = await prisma.internalLevelRule.create({
       data: {
-        companyId,
+        internalProgramId: program.id,
         name,
         order: (last?.order ?? -1) + 1,
-        requiredXp: Number(requiredXp),
+        pointsRequired: Number(pointsRequired),
         bonusDescription: bonusDescription || null,
         bonusAmount: bonusAmount ? Number(bonusAmount) : null,
+        salaryIncreasePercent: salaryIncreasePercent ? Number(salaryIncreasePercent) : null,
+        imageUrl: imageUrl || null,
         badgeColorHex: badgeColorHex || "#F58220",
       },
     })
 
-    await logAudit({ userId: user.id, companyId, action: "CREATE", entity: "CareerLevel", entityId: level.id, details: body })
+    await logAudit({ userId: user.id, companyId, action: "CREATE", entity: "InternalLevelRule", entityId: level.id, details: body })
 
     return Response.json(level, { status: 201 })
   } catch (error) {

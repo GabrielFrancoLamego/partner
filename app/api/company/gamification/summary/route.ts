@@ -8,27 +8,32 @@ export async function GET() {
     const user = await requireCompanyStaff()
     const companyId = user.companyId
 
-    const [levels, ranked] = await Promise.all([
-      prisma.careerLevel.findMany({ where: { companyId }, orderBy: { order: "asc" } }),
+    const [program, ranked] = await Promise.all([
+      prisma.internalProgram.findUnique({ where: { companyId }, include: { levels: { orderBy: { order: "asc" } } } }),
       prisma.employeeProfile.findMany({
         where: { user: { companyId, role: "EMPLOYEE", status: "ACTIVE" } },
-        select: { userId: true, xpPoints: true, user: { select: { name: true } } },
+        select: { userId: true, xpPoints: true, currentInternalLevel: { select: { name: true } }, user: { select: { name: true } } },
         orderBy: { xpPoints: "desc" },
         take: 20,
       }),
     ])
+    const levels = program?.levels ?? []
 
     const leaderboard = ranked.map((r, index) => ({
       rank: index + 1,
       employeeId: r.userId,
       name: r.user.name,
       xpPoints: r.xpPoints,
+      levelName: r.currentInternalLevel?.name ?? levels[0]?.name ?? null,
     }))
 
     let me: ReturnType<typeof resolveCareerProgress> | null = null
     if (user.role === "EMPLOYEE") {
-      const profile = await prisma.employeeProfile.findUnique({ where: { userId: user.id }, select: { xpPoints: true } })
-      me = resolveCareerProgress(profile?.xpPoints ?? 0, levels)
+      const profile = await prisma.employeeProfile.findUnique({
+        where: { userId: user.id },
+        select: { xpPoints: true, currentInternalLevelId: true },
+      })
+      me = resolveCareerProgress(profile?.xpPoints ?? 0, levels, profile?.currentInternalLevelId ?? null)
     }
 
     return Response.json({ levels, leaderboard, me })

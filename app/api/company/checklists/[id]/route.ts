@@ -1,11 +1,8 @@
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
 import { canManageDailyOperations } from "@/lib/permissions"
-import { awardXp } from "@/lib/gamification"
+import { awardXp, getInternalProgramRules } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
-
-const ON_TIME_XP = 5
-const REJECTED_XP = -3
 
 /** Gerente/Master aprova (concede XP se dentro do prazo) ou reprova (pequena penalidade) a execução. */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -25,6 +22,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     const now = new Date()
     const onTime = !checklist.dueAt || now <= checklist.dueAt
+    const rules = await getInternalProgramRules(companyId)
 
     const updated = await prisma.$transaction(async (tx) => {
       const saved = await tx.checklist.update({
@@ -33,7 +31,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         include: { employee: { select: { id: true, name: true } } },
       })
 
-      const points = status === "APPROVED" ? (onTime ? ON_TIME_XP : 0) : REJECTED_XP
+      const points = status === "APPROVED" ? (onTime ? rules.pointsChecklistOnTime : 0) : rules.pointsChecklistLateOrRejected
       if (points !== 0) {
         await awardXp(
           { companyId, employeeId: checklist.employeeId, reason: "CHECKLIST_ON_TIME", points, sourceId: id, note: status === "APPROVED" ? (onTime ? "No prazo" : "Fora do prazo") : "Reprovado" },

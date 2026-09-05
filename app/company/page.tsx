@@ -2,16 +2,12 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Users, TrendingUp, Boxes, Trophy, Star, AlertTriangle, Clock, DollarSign, Target, Plus, Trash2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
+import { Users, TrendingUp, Boxes, Trophy, Star, AlertTriangle, Clock, DollarSign, Target } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { adminFetch } from "@/lib/admin-api-client"
 import { PeriodFilter } from "@/components/admin/admin-filters"
 import { AdminCard, MetricRow, LoadingState } from "@/components/admin/admin-ui"
 import { useCompanyUser } from "@/lib/company-user-context"
-import { canManageDailyOperations } from "@/lib/permissions"
 
 type Medal = { stars: 1 | 2 | 3 | 4 | 5; label: string; colorHex: string; efficiencyPercent: number }
 
@@ -41,8 +37,8 @@ type DashboardData = {
     medal: Medal
     rank: number
     totalRanked: number
-    currentLevel: { name: string; requiredXp: number; badgeColorHex: string } | null
-    nextLevel: { name: string; requiredXp: number; badgeColorHex: string } | null
+    currentLevel: { name: string; pointsRequired: number; badgeColorHex: string } | null
+    nextLevel: { name: string; pointsRequired: number; badgeColorHex: string } | null
     progressToNextPercent: number
   } | null
   master: {
@@ -91,7 +87,7 @@ export default function CompanyDashboardPage() {
           {data.master && <MasterPanel master={data.master} />}
           {data.me && <EmployeeGamePanel me={data.me} />}
 
-          <GoalProgressWidget isManager={canManageDailyOperations(user.role)} />
+          <GoalProgressWidget />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <AdminCard title="Parceiros" icon={Users}>
@@ -353,167 +349,57 @@ function XpHistoryModal({ onClose }: { onClose: () => void }) {
 
 type GoalTier = { id: string; order: number; targetAmount: string; bonusAmount: string }
 type GoalProgress = {
-  currentRevenue: number
+  id: string
+  name: string
+  scope: "COMPANY" | "SECTOR" | "EMPLOYEE"
   tiers: GoalTier[]
+  currentAmount: number
   currentTier: GoalTier | null
   nextTier: GoalTier | null
   progressToNextPercent: number
   remainingToNext: number
 }
 
-function GoalProgressWidget({ isManager }: { isManager: boolean }) {
-  const [progress, setProgress] = useState<GoalProgress | null>(null)
-  const [isConfigOpen, setIsConfigOpen] = useState(false)
+/** Resumo somente-leitura das metas ativas visíveis ao usuário — gestão completa fica em /company/metas. */
+function GoalProgressWidget() {
+  const [goals, setGoals] = useState<GoalProgress[] | null>(null)
 
-  const reload = () => {
-    adminFetch<GoalProgress>("/api/company/goals/progress").then(setProgress)
-  }
-  useEffect(reload, [])
+  useEffect(() => {
+    adminFetch<GoalProgress[]>("/api/company/goals/progress").then(setGoals)
+  }, [])
 
-  if (!progress) return null
-  if (progress.tiers.length === 0 && !isManager) return null
+  if (!goals || goals.length === 0) return null
 
   return (
-    <AdminCard title="Meta do Dia" icon={Target}>
-      {progress.tiers.length === 0 ? (
-        <div className="text-center py-4">
-          <p className="text-sm text-gray-500 mb-3">Nenhuma faixa de meta configurada ainda.</p>
-          {isManager && (
-            <Button size="sm" variant="outline" onClick={() => setIsConfigOpen(true)}>
-              Configurar Metas
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-2xl font-bold text-[#3E2415]">{currency(progress.currentRevenue)}</p>
-            {isManager && (
-              <Button size="sm" variant="ghost" onClick={() => setIsConfigOpen(true)}>
-                Configurar
-              </Button>
+    <AdminCard title="Metas Ativas" icon={Target}>
+      <div className="space-y-4">
+        {goals.slice(0, 3).map((g) => (
+          <div key={g.id} className={goals.indexOf(g) > 0 ? "pt-4 border-t border-gray-50" : ""}>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-[#3E2415]">{g.name}</p>
+              <p className="text-lg font-bold text-[#3E2415]">{currency(g.currentAmount)}</p>
+            </div>
+            {g.nextTier ? (
+              <>
+                <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
+                  <span>
+                    Faltam {currency(g.remainingToNext)} para {currency(Number(g.nextTier.targetAmount))} — bônus de {currency(Number(g.nextTier.bonusAmount))}
+                  </span>
+                  <span>{g.progressToNextPercent}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-gray-100 overflow-hidden mt-1">
+                  <div className="h-full bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-full transition-all" style={{ width: `${g.progressToNextPercent}%` }} />
+                </div>
+              </>
+            ) : (
+              <p className="text-sm font-medium text-green-600 mt-1">Todas as faixas batidas! 🎉</p>
             )}
           </div>
-          {progress.nextTier ? (
-            <>
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <span>
-                  Faltam {currency(progress.remainingToNext)} para {currency(Number(progress.nextTier.targetAmount))} — bônus de{" "}
-                  {currency(Number(progress.nextTier.bonusAmount))}
-                </span>
-                <span>{progress.progressToNextPercent}%</span>
-              </div>
-              <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-full transition-all"
-                  style={{ width: `${progress.progressToNextPercent}%` }}
-                />
-              </div>
-            </>
-          ) : (
-            <p className="text-sm font-medium text-green-600">Todas as faixas de meta foram batidas hoje! 🎉</p>
-          )}
-          <div className="flex flex-wrap gap-2 pt-1">
-            {progress.tiers.map((t) => (
-              <span
-                key={t.id}
-                className={`text-xs font-medium px-3 py-1 rounded-full ${
-                  progress.currentTier && t.order <= progress.currentTier.order
-                    ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white"
-                    : "bg-gray-100 text-gray-500"
-                }`}
-              >
-                {currency(Number(t.targetAmount))} → {currency(Number(t.bonusAmount))}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {isConfigOpen && (
-        <GoalsConfigDialog
-          tiers={progress.tiers}
-          onClose={() => setIsConfigOpen(false)}
-          onChanged={() => {
-            reload()
-          }}
-        />
-      )}
+        ))}
+        <Link href="/company/metas" className="text-xs font-medium text-[#F58220] hover:underline block pt-1">
+          Ver todas as metas →
+        </Link>
+      </div>
     </AdminCard>
-  )
-}
-
-function GoalsConfigDialog({ tiers, onClose, onChanged }: { tiers: GoalTier[]; onClose: () => void; onChanged: () => void }) {
-  const [targetAmount, setTargetAmount] = useState("")
-  const [bonusAmount, setBonusAmount] = useState("")
-  const [error, setError] = useState("")
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-    setIsSubmitting(true)
-    try {
-      await adminFetch("/api/company/goals", { method: "POST", body: JSON.stringify({ targetAmount, bonusAmount }) })
-      setTargetAmount("")
-      setBonusAmount("")
-      onChanged()
-    } catch (e) {
-      setError(e instanceof AdminApiError ? e.message : "Erro ao criar meta")
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const handleDelete = async (id: string) => {
-    await adminFetch(`/api/company/goals/${id}`, { method: "DELETE" }).catch(() => {})
-    onChanged()
-  }
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Configurar Metas Escalonadas</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          {tiers.length > 0 && (
-            <div className="space-y-2">
-              {tiers.map((t) => (
-                <div key={t.id} className="flex items-center justify-between p-2 rounded-lg border border-gray-100">
-                  <span className="text-sm text-[#3E2415]">
-                    {currency(Number(t.targetAmount))} → bônus {currency(Number(t.bonusAmount))}
-                  </span>
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(t.id)} className="text-red-600">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-          <form onSubmit={handleAdd} className="space-y-3 pt-2 border-t border-gray-100">
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Meta de faturamento (R$)</Label>
-                <Input type="number" step="0.01" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} required />
-              </div>
-              <div className="space-y-2">
-                <Label>Bônus (R$)</Label>
-                <Input type="number" step="0.01" value={bonusAmount} onChange={(e) => setBonusAmount(e.target.value)} required />
-              </div>
-            </div>
-            <Button type="submit" disabled={isSubmitting} size="sm" className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
-              <Plus className="h-4 w-4 mr-1" /> Adicionar faixa
-            </Button>
-          </form>
-        </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
-            Fechar
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   )
 }

@@ -101,6 +101,22 @@ export async function POST(request: Request) {
       include: { closedBy: { select: { id: true, name: true } } },
     })
 
+    // Sincroniza com toda meta ativa COMPANY+DAILY: o fechamento do caixa É o
+    // resultado do dia para essas metas, sem exigir lançamento duplicado.
+    if (revenueAmount) {
+      const dailyCompanyGoals = await prisma.goal.findMany({
+        where: { companyId, scope: "COMPANY", period: "DAILY", active: true },
+        select: { id: true },
+      })
+      for (const goal of dailyCompanyGoals) {
+        await prisma.goalRecord.upsert({
+          where: { goalId_date: { goalId: goal.id, date } },
+          update: { amount: Number(revenueAmount), receiptUrl: receiptUrl ?? undefined, reportedById: user.id },
+          create: { goalId: goal.id, date, amount: Number(revenueAmount), receiptUrl, reportedById: user.id },
+        })
+      }
+    }
+
     await logAudit({
       userId: user.id,
       companyId,

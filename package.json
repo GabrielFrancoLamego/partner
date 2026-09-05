@@ -10,7 +10,9 @@
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:seed-partners": "tsx prisma/seed-partners.ts"
+    "db:seed-partners": "tsx prisma/seed-partners.ts",
+    "db:seed-demo": "tsx prisma/seed-demo-data.ts",
+    "db:seed-simulation": "tsx prisma/seed-simulation.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
