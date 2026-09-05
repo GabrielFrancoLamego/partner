@@ -83,14 +83,37 @@ enum PostStatus {
 }
 
 enum OccurrenceType {
-  WARNING // Advertência — exige documentUrl (foto do documento assinado)
-  SALARY_ADVANCE // Vale/Adiantamento
-  CASH_SHORTAGE // Quebra de caixa
-  SUSPENSION // Suspensão
-  DAY_OFF // Folga
-  HOLIDAY_PAY // Pagamento de feriado trabalhado
-  SUNDAY_WORKED_PAY // Pagamento de domingo trabalhado
-  SUNDAY_DAY_OFF // Folga de domingo
+  FOLGA_FERIADO // Folga ou feriado (trabalhado ou de descanso)
+  VALE // Vale/Adiantamento
+  CONSUMO // Consumo/quebra de caixa do colaborador
+  META // Bonificação por meta batida
+  FALTA // Falta — sem ATESTADO em 24h gera abate de 1 dia (ver discountWaived)
+  ATESTADO // Atestado médico — exige attachmentUrl; abona uma FALTA do mesmo dia em até 24h
+  ADVERTENCIA // Advertência — exige attachmentUrl (documento assinado)
+  SUSPENSAO // Suspensão
+  DIARIA // Diária de colaborador temporário/freelancer (frequentemente sem cadastro)
+  HORA_EXTRA // Hora extra trabalhada
+  BANCO_HORAS // Lançamento no banco de horas
+  DISPENSADO // Desligamento — exige attachmentUrl
+  FIXADO // Efetivação/fixação do colaborador
+}
+
+enum OccurrencePaymentMethod {
+  DINHEIRO
+  PIX
+  TRABALHO
+  FOLGA_ADICIONAL
+}
+
+enum OccurrencePaymentStatus {
+  PENDING
+  PAID
+}
+
+enum ShiftClosingStatus {
+  PENDING_GERENTE
+  PENDING_MASTER // Gerente perdeu o horário limite — transbordou para o Master
+  COMPLETED
 }
 
 enum XpReason {
@@ -167,6 +190,7 @@ model Company {
   latitude             Float? // renderização em mapa + centro do geofence do ponto digital
   longitude            Float?
   geofenceRadiusMeters Int     @default(150) // raio (m) a partir de lat/lng aceito na batida de ponto
+  shiftClosingDeadline String  @default("22:00") // horário-limite (HH:mm) do fechamento diário da Gerente
   phone                String?
   email                String?
   website              String?
@@ -201,6 +225,8 @@ model Company {
   rewardCatalogItems      RewardCatalogItem[]
   rewardRedemptions       RewardRedemption[]
   timeEntryJustifications TimeEntryJustification[]
+  shiftClosings           ShiftClosing[]
+  revenueGoalTiers        RevenueGoalTier[]
 }
 
 // Licença SaaS da empresa dentro do grupo — hoje uso interno (Nomad's Jeri,
@@ -269,6 +295,7 @@ model User {
   rewardRedemptionsReviewed  RewardRedemption[]       @relation("RewardRedemptionReviewedBy")
   timeJustifications         TimeEntryJustification[] @relation("TimeJustificationEmployee")
   timeJustificationsReviewed TimeEntryJustification[] @relation("TimeJustificationReviewedBy")
+  shiftClosingsClosed        ShiftClosing[]           @relation("ShiftClosingClosedBy")
 
   @@index([companyId])
   @@index([role])
@@ -307,13 +334,19 @@ model PartnerProfile {
 }
 
 model EmployeeProfile {
-  id            String  @id @default(cuid())
-  userId        String  @unique
-  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  isScannerOnly Boolean @default(false)
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isScannerOnly Boolean   @default(false)
   primaryUnitId String? // extensão para geofencing do ponto digital (fase futura)
-  primaryUnit   Unit?   @relation(fields: [primaryUnitId], references: [id])
-  xpPoints      Int     @default(0) // gamificação — pontos de experiência do colaborador
+  primaryUnit   Unit?     @relation(fields: [primaryUnitId], references: [id])
+  xpPoints      Int       @default(0) // gamificação — saldo vitalício de XP (trilha de cargos)
+  lastXpSeenAt  DateTime? // último acesso em que o colaborador viu o extrato — base do pop-up +XX/-XX
+
+  // Permite que este colaborador registre Ocorrências em modo CREATE_ONLY
+  // (sem ver histórico, editar ou excluir) — concedido pelo Master/Gerente.
+  canRegisterOccurrences Boolean  @default(false)
+  monthlySalary          Decimal? @db.Decimal(10, 2) // usado para calcular o abate de 1 dia em FALTA sem ATESTADO
 
   // Registro completo de RH — preenchimento opcional, feito por etapas.
   isProfileComplete Boolean @default(false)
@@ -814,22 +847,30 @@ model PostComment {
   @@index([postId])
 }
 
-// Ocorrências operacionais de RH/Financeiro registradas pela Gerente — painel
-// de fechamento mensal consultado pelo Master no dia do pagamento.
+// Ocorrências operacionais de RH/Financeiro registradas pela Gerente/Master —
+// painel de fechamento mensal consultado pelo Master no dia do pagamento.
+// `employeeId` é opcional: colaboradores temporários/diaristas sem cadastro
+// na plataforma entram apenas com `employeeNameFreeText`.
 model Occurrence {
-  id          String         @id @default(cuid())
-  companyId   String
-  company     Company        @relation(fields: [companyId], references: [id])
-  employeeId  String
-  employee    User           @relation("OccurrenceEmployee", fields: [employeeId], references: [id])
-  type        OccurrenceType
-  date        DateTime       @default(now())
-  amount      Decimal?       @db.Decimal(10, 2) // vale, feriado, domingo trabalhado etc.
-  description String?        @db.Text
-  documentUrl String? // obrigatório para WARNING — foto do documento assinado
-  createdById String
-  createdBy   User           @relation("OccurrenceCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime       @default(now())
+  id                   String                   @id @default(cuid())
+  companyId            String
+  company              Company                  @relation(fields: [companyId], references: [id])
+  employeeId           String?
+  employee             User?                    @relation("OccurrenceEmployee", fields: [employeeId], references: [id])
+  employeeNameFreeText String? // usado quando employeeId é nulo (temporário/diarista)
+  type                 OccurrenceType
+  date                 DateTime                 @default(now())
+  value                Decimal?                 @db.Decimal(10, 2) // valor unitário (R$ ou equivalente em horas)
+  quantity             Decimal                  @default(1) @db.Decimal(6, 2) // multiplicador (ex: dias, horas)
+  total                Decimal?                 @db.Decimal(10, 2) // value * quantity, calculado no servidor
+  paymentMethod        OccurrencePaymentMethod?
+  paymentStatus        OccurrencePaymentStatus  @default(PENDING)
+  description          String?                  @db.Text
+  attachmentUrl        String? // obrigatório para ADVERTENCIA, ATESTADO e DISPENSADO
+  discountWaived       Boolean                  @default(false) // FALTA abonada por ATESTADO em até 24h
+  createdById          String
+  createdBy            User                     @relation("OccurrenceCreatedBy", fields: [createdById], references: [id])
+  createdAt            DateTime                 @default(now())
 
   @@index([companyId])
   @@index([employeeId])
@@ -930,6 +971,49 @@ model RewardRedemption {
 
   @@index([companyId])
   @@index([employeeId])
+}
+
+// Fechamento diário obrigatório de expediente — 1 registro por empresa/dia.
+// Nasce PENDING_GERENTE; se ninguém fechar até Company.shiftClosingDeadline,
+// a rota de leitura sinaliza PENDING_MASTER para o painel do Master assumir
+// (isMasterOverride=true quando ele efetivamente conclui).
+model ShiftClosing {
+  id               String             @id @default(cuid())
+  companyId        String
+  company          Company            @relation(fields: [companyId], references: [id])
+  date             DateTime // normalizado para 00:00 do dia do fechamento
+  revenueAmount    Decimal?           @db.Decimal(10, 2)
+  receiptUrl       String? // foto do comprovante de fechamento do caixa
+  summary          String?            @db.Text
+  status           ShiftClosingStatus @default(PENDING_GERENTE)
+  isMasterOverride Boolean            @default(false)
+  closedById       String?
+  closedBy         User?              @relation("ShiftClosingClosedBy", fields: [closedById], references: [id])
+  closedAt         DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@unique([companyId, date])
+  @@index([companyId])
+  @@index([status])
+}
+
+// Faixas escalonadas de meta de faturamento diário — bônus em dinheiro
+// liberado para a equipe ao bater cada faixa. Escopo por empresa (não por
+// colaborador) nesta versão; o progresso é calculado a partir da soma de
+// Commission.amount do dia (faturamento das comandas já escaneadas no PDV).
+model RevenueGoalTier {
+  id           String   @id @default(cuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id])
+  order        Int
+  targetAmount Decimal  @db.Decimal(10, 2)
+  bonusAmount  Decimal  @db.Decimal(10, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([companyId, order])
+  @@index([companyId])
 }
 
 // Espelho de ponto — pedido de justificativa (atestado, esquecimento etc.)

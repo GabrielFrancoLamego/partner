@@ -14,6 +14,7 @@ const COMPANY_PROFILE_FIELDS = [
   "latitude",
   "longitude",
   "geofenceRadiusMeters",
+  "shiftClosingDeadline",
   "phone",
   "email",
   "website",

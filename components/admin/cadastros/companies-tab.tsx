@@ -156,6 +156,7 @@ function CompanyDialog({
   const [latitude, setLatitude] = useState(company?.latitude?.toString() ?? "")
   const [longitude, setLongitude] = useState(company?.longitude?.toString() ?? "")
   const [geofenceRadiusMeters, setGeofenceRadiusMeters] = useState(String(company?.geofenceRadiusMeters ?? 150))
+  const [shiftClosingDeadline, setShiftClosingDeadline] = useState(company?.shiftClosingDeadline ?? "22:00")
   const [phone, setPhone] = useState(company?.phone ?? "")
   const [companyEmail, setCompanyEmail] = useState(company?.email ?? "")
   const [website, setWebsite] = useState(company?.website ?? "")
@@ -196,6 +197,7 @@ function CompanyDialog({
             latitude: latitude ? Number(latitude) : null,
             longitude: longitude ? Number(longitude) : null,
             geofenceRadiusMeters: Number(geofenceRadiusMeters) || 150,
+            shiftClosingDeadline,
             phone,
             email: companyEmail,
             website,
@@ -307,6 +309,13 @@ function CompanyDialog({
                 <p className="text-xs text-gray-400">
                   Latitude/longitude definem o centro da unidade para validação de GPS no Ponto Digital da empresa.
                 </p>
+                <div className="space-y-2 pt-2 border-t border-gray-100">
+                  <Label>Horário-limite do fechamento diário</Label>
+                  <Input type="time" value={shiftClosingDeadline} onChange={(e) => setShiftClosingDeadline(e.target.value)} className="w-40" />
+                  <p className="text-xs text-gray-400">
+                    Após esse horário, o fechamento de expediente pendente é sinalizado como PENDENTE_MASTER.
+                  </p>
+                </div>
               </TabsContent>
 
               <TabsContent value="contato" className="space-y-4 pt-4">

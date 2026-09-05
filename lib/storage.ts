@@ -9,7 +9,7 @@ const BUCKET = "uploads"
  * aqui já passou por requireUser()/requireCapability() na própria API.
  */
 export async function uploadImage(
-  folder: "checklists" | "receipts" | "occurrences" | "posts" | "justifications" | "rewards",
+  folder: "checklists" | "receipts" | "occurrences" | "posts" | "justifications" | "rewards" | "closings",
   file: File,
 ) {
   const supabase = createAdminClient()

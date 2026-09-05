@@ -9,6 +9,8 @@ export type CompanyUser = {
   role: Role
   companyId: string
   companyName: string
+  /** EMPLOYEE autorizado pelo Master/Gerente a registrar Ocorrências em modo CREATE_ONLY (sem ver histórico). */
+  canRegisterOccurrences: boolean
 }
 
 const CompanyUserContext = createContext<CompanyUser | null>(null)

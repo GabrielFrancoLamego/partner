@@ -14,6 +14,7 @@ import {
   ScanLine,
   Wallet,
   LogOut,
+  FileClock,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Role } from "@prisma/client"
@@ -29,24 +30,30 @@ const ROLE_LABELS: Record<Role, string> = {
   PARTNER: "Parceiro",
 }
 
-type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; show: (role: Role) => boolean }
+type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; show: (user: CompanyUser) => boolean }
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/company", label: "Dashboard", icon: LayoutDashboard, show: () => true },
   { href: "/company/mural", label: "Mural", icon: Newspaper, show: () => true },
-  { href: "/company/ponto", label: "Ponto Digital", icon: Clock, show: canOperateFrontDesk },
-  { href: "/company/checklists", label: "Checklists", icon: ListChecks, show: canOperateFrontDesk },
-  { href: "/company/pdv", label: "Scanner PDV", icon: ScanLine, show: canOperateFrontDesk },
+  { href: "/company/ponto", label: "Ponto Digital", icon: Clock, show: (u) => canOperateFrontDesk(u.role) },
+  { href: "/company/checklists", label: "Checklists", icon: ListChecks, show: (u) => canOperateFrontDesk(u.role) },
+  { href: "/company/pdv", label: "Scanner PDV", icon: ScanLine, show: (u) => canOperateFrontDesk(u.role) },
   { href: "/company/avaliacoes", label: "Avaliação Diária", icon: ClipboardCheck, show: () => true },
   { href: "/company/crescimento", label: "Crescimento", icon: Trophy, show: () => true },
-  { href: "/company/ocorrencias", label: "Ocorrências", icon: AlertTriangle, show: canManageDailyOperations },
-  { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: canManageFinance },
+  {
+    href: "/company/ocorrencias",
+    label: "Ocorrências",
+    icon: AlertTriangle,
+    show: (u) => canManageDailyOperations(u.role) || u.canRegisterOccurrences,
+  },
+  { href: "/company/fechamento", label: "Fechamento", icon: FileClock, show: (u) => canManageDailyOperations(u.role) },
+  { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: (u) => canManageFinance(u.role) },
 ]
 
 export function CompanyShell({ user, children }: { user: CompanyUser; children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const items = NAV_ITEMS.filter((item) => item.show(user.role))
+  const items = NAV_ITEMS.filter((item) => item.show(user))
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})

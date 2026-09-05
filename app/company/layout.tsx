@@ -13,9 +13,21 @@ export default async function CompanyLayout({ children }: { children: React.Reac
   const company = await prisma.company.findUnique({ where: { id: user.companyId }, select: { name: true } })
   if (!company) redirect("/")
 
+  const employeeProfile = await prisma.employeeProfile.findUnique({
+    where: { userId: user.id },
+    select: { canRegisterOccurrences: true },
+  })
+
   return (
     <CompanyShell
-      user={{ id: user.id, name: user.name, role: user.role, companyId: user.companyId, companyName: company.name }}
+      user={{
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        companyId: user.companyId,
+        companyName: company.name,
+        canRegisterOccurrences: employeeProfile?.canRegisterOccurrences ?? false,
+      }}
     >
       {children}
     </CompanyShell>

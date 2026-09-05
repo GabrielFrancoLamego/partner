@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, handleApiError } from "@/lib/api-auth"
+import { canManageDailyOperations } from "@/lib/permissions"
 import { periodStart } from "@/lib/period-range"
-import { resolveCareerProgress } from "@/lib/gamification"
+import { resolveCareerProgress, getMonthlyScore, computeDailyEfficiency, type EfficiencyMedal } from "@/lib/gamification"
+
+/** Tipos de ocorrência com impacto financeiro somado no "Custo Operacional" do Master (vales, diárias, quebra de caixa, metas batidas). */
+const COST_OCCURRENCE_TYPES = ["VALE", "DIARIA", "CONSUMO", "META"] as const
 
 /**
  * Dashboard unificado de /company/dashboard. Métricas de Parceiros +
@@ -89,6 +93,9 @@ export async function GET(request: Request) {
     let me: {
       xpPoints: number
       todayXp: number
+      monthlyScore: number
+      dailyEfficiencyPercent: number
+      medal: EfficiencyMedal
       rank: number
       totalRanked: number
       currentLevel: ReturnType<typeof resolveCareerProgress>["currentLevel"]
@@ -97,7 +104,7 @@ export async function GET(request: Request) {
     } | null = null
 
     if (user.role === "EMPLOYEE") {
-      const [profile, levels, todayXpAgg, ranked] = await Promise.all([
+      const [profile, levels, todayXpAgg, ranked, monthlyScore, efficiency] = await Promise.all([
         prisma.employeeProfile.findUnique({ where: { userId: user.id }, select: { xpPoints: true } }),
         prisma.careerLevel.findMany({
           where: { companyId },
@@ -112,6 +119,8 @@ export async function GET(request: Request) {
           select: { userId: true, xpPoints: true },
           orderBy: { xpPoints: "desc" },
         }),
+        getMonthlyScore(companyId, user.id, now),
+        computeDailyEfficiency(companyId, user.id, now),
       ])
 
       const xpPoints = profile?.xpPoints ?? 0
@@ -121,11 +130,88 @@ export async function GET(request: Request) {
       me = {
         xpPoints,
         todayXp: todayXpAgg._sum.points ?? 0,
+        monthlyScore,
+        dailyEfficiencyPercent: efficiency.efficiencyPercent,
+        medal: efficiency.medal,
         rank: rank || ranked.length + 1,
         totalRanked: ranked.length,
         currentLevel: progress.currentLevel,
         nextLevel: progress.nextLevel,
         progressToNextPercent: progress.progressToNextPercent,
+      }
+    }
+
+    let master: {
+      shiftClosingToday: {
+        status: string
+        overdue: boolean
+        revenueAmount: number | null
+        receiptUrl: string | null
+        isMasterOverride: boolean
+        closedByName: string | null
+      } | null
+      realRevenue: number
+      occurrenceCost: number
+      riskEmployees: { id: string; name: string; monthlyScore: number; recentFlags: number }[]
+    } | null = null
+
+    if (canManageDailyOperations(user.role)) {
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+
+      const [companyDeadline, todayClosing, revenueAgg, occurrenceCostRows, employeesForRisk] = await Promise.all([
+        prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { shiftClosingDeadline: true } }),
+        prisma.shiftClosing.findUnique({
+          where: { companyId_date: { companyId, date: startOfToday } },
+          include: { closedBy: { select: { name: true } } },
+        }),
+        prisma.shiftClosing.aggregate({ where: { companyId, ...dateWhere("date") }, _sum: { revenueAmount: true } }),
+        prisma.occurrence.findMany({
+          where: { companyId, type: { in: [...COST_OCCURRENCE_TYPES] }, ...dateWhere("date") },
+          select: { total: true, discountWaived: true },
+        }),
+        prisma.user.findMany({
+          where: { companyId, role: "EMPLOYEE", status: "ACTIVE" },
+          select: { id: true, name: true },
+        }),
+      ])
+
+      const [h, m] = companyDeadline.shiftClosingDeadline.split(":").map(Number)
+      const cutoff = new Date(startOfToday)
+      cutoff.setHours(h, m, 0, 0)
+      const overdue = (!todayClosing || todayClosing.status !== "COMPLETED") && now > cutoff
+
+      const occurrenceCost = occurrenceCostRows
+        .filter((o) => !o.discountWaived)
+        .reduce((sum, o) => sum + Math.abs(Number(o.total ?? 0)), 0)
+
+      const riskEmployees = (
+        await Promise.all(
+          employeesForRisk.map(async (e) => {
+            const [score, recentFlags] = await Promise.all([
+              getMonthlyScore(companyId, e.id, now),
+              prisma.occurrence.count({
+                where: { companyId, employeeId: e.id, type: { in: ["ADVERTENCIA", "FALTA"] }, date: { gte: thirtyDaysAgo } },
+              }),
+            ])
+            return { id: e.id, name: e.name, monthlyScore: score, recentFlags }
+          }),
+        )
+      ).filter((e) => e.monthlyScore < 50 || e.recentFlags >= 2)
+
+      master = {
+        shiftClosingToday: todayClosing
+          ? {
+              status: todayClosing.status,
+              overdue,
+              revenueAmount: todayClosing.revenueAmount ? Number(todayClosing.revenueAmount) : null,
+              receiptUrl: todayClosing.receiptUrl,
+              isMasterOverride: todayClosing.isMasterOverride,
+              closedByName: todayClosing.closedBy?.name ?? null,
+            }
+          : { status: "PENDING_GERENTE", overdue, revenueAmount: null, receiptUrl: null, isMasterOverride: false, closedByName: null },
+        realRevenue: Number(revenueAgg._sum.revenueAmount ?? 0),
+        occurrenceCost,
+        riskEmployees,
       }
     }
 
@@ -148,6 +234,7 @@ export async function GET(request: Request) {
         occurrencesThisMonth,
       },
       me,
+      master,
     })
   } catch (error) {
     return handleApiError(error)
