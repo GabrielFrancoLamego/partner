@@ -19,6 +19,8 @@ type Partner = {
   email: string
   status: "ACTIVE" | "INACTIVE"
   createdAt: string
+  lastActiveAt: string | null
+  metrics: { qrGenerated: number; qrUsed: number; grossRevenueGenerated: number; convertedReferrals: number }
   partnerProfile: {
     partnerType: "INDIVIDUAL" | "AGENCY"
     document: string | null
@@ -33,26 +35,39 @@ type Partner = {
     pixKey: string | null
     photoUrl: string | null
     parent: { id: string; user: { name: string } } | null
+    currentLevel: { id: string; name: string; badgeColorHex: string } | null
   } | null
 }
+
+const SORT_OPTIONS = [
+  { value: "createdAt:desc", label: "Mais novos" },
+  { value: "createdAt:asc", label: "Mais antigos" },
+  { value: "qrGenerated:desc", label: "Mais QR codes gerados" },
+  { value: "qrUsed:desc", label: "Mais QR codes usados" },
+  { value: "lastActiveAt:desc", label: "Último acesso (recente)" },
+]
+
+const currency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
 export function PartnersTab() {
   const [partners, setPartners] = useState<Partner[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [query, setQuery] = useState("")
+  const [sortValue, setSortValue] = useState("createdAt:desc")
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editing, setEditing] = useState<Partner | null>(null)
   const [resetLink, setResetLink] = useState<string | null>(null)
 
   const reload = () => {
     setIsLoading(true)
-    const params = new URLSearchParams(query ? { q: query } : {})
+    const [sort, order] = sortValue.split(":")
+    const params = new URLSearchParams({ ...(query ? { q: query } : {}), sort, order })
     adminFetch<Partner[]>(`/api/admin/partners?${params}`)
       .then(setPartners)
       .finally(() => setIsLoading(false))
   }
 
-  useEffect(reload, [query])
+  useEffect(reload, [query, sortValue])
 
   const handleToggleStatus = async (partner: Partner) => {
     await adminFetch(`/api/admin/partners/${partner.id}`, {
@@ -85,14 +100,28 @@ export function PartnersTab() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-2 sm:justify-between">
-        <div className="relative sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Buscar por nome, apelido ou bio..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-9"
-          />
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Buscar por nome, apelido ou bio..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Select value={sortValue} onValueChange={setSortValue}>
+            <SelectTrigger className="sm:w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SORT_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <Button
           onClick={() => setIsCreateOpen(true)}
@@ -122,7 +151,10 @@ export function PartnersTab() {
                     value: partner.partnerProfile?.partnerType === "AGENCY" ? "Agência (PJ)" : "Pessoa física",
                   },
                   { label: "WhatsApp", value: partner.partnerProfile?.whatsapp ?? "—" },
-                  { label: "Agência", value: partner.partnerProfile?.parent?.user.name ?? "—" },
+                  { label: "Nível", value: partner.partnerProfile?.currentLevel?.name ?? "—" },
+                  { label: "Indicações convertidas", value: partner.metrics.convertedReferrals },
+                  { label: "Faturamento gerado", value: currency(partner.metrics.grossRevenueGenerated) },
+                  { label: "QR gerados/usados", value: `${partner.metrics.qrGenerated} / ${partner.metrics.qrUsed}` },
                 ]}
                 actions={
                   <>
@@ -149,9 +181,10 @@ export function PartnersTab() {
             <thead className="bg-gray-50 text-left text-xs text-gray-500">
               <tr>
                 <th className="px-4 py-3 font-medium">Nome</th>
-                <th className="px-4 py-3 font-medium">Tipo</th>
+                <th className="px-4 py-3 font-medium">Nível</th>
+                <th className="px-4 py-3 font-medium">Indicações conv.</th>
+                <th className="px-4 py-3 font-medium">Faturamento gerado</th>
                 <th className="px-4 py-3 font-medium">WhatsApp</th>
-                <th className="px-4 py-3 font-medium">Agência</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium text-right">Ações</th>
               </tr>
@@ -171,11 +204,10 @@ export function PartnersTab() {
                       <p className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">{partner.partnerProfile.bio}</p>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {partner.partnerProfile?.partnerType === "AGENCY" ? "Agência (PJ)" : "Pessoa física"}
-                  </td>
+                  <td className="px-4 py-3 text-gray-600">{partner.partnerProfile?.currentLevel?.name ?? "—"}</td>
+                  <td className="px-4 py-3 text-gray-600 font-medium">{partner.metrics.convertedReferrals}</td>
+                  <td className="px-4 py-3 text-gray-600">{currency(partner.metrics.grossRevenueGenerated)}</td>
                   <td className="px-4 py-3 text-gray-600">{partner.partnerProfile?.whatsapp ?? "—"}</td>
-                  <td className="px-4 py-3 text-gray-600">{partner.partnerProfile?.parent?.user.name ?? "—"}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={partner.status} />
                   </td>

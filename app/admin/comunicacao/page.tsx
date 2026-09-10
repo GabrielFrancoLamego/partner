@@ -1,13 +1,18 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Search } from "lucide-react"
+import { Search, Plus } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { adminFetch } from "@/lib/admin-api-client"
+import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { useCompanies } from "@/components/admin/use-companies"
 import { CompanyFilter } from "@/components/admin/admin-filters"
 import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
+import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 import { TicketDialog } from "@/components/admin/comunicacao/ticket-dialog"
 
 type Ticket = {
@@ -20,6 +25,8 @@ type Ticket = {
   _count: { messages: number }
 }
 
+type SearchableUser = { id: string; name: string; email: string; role: string }
+
 export default function AdminComunicacaoPage() {
   const { companies } = useCompanies()
   const [companyId, setCompanyId] = useState("all")
@@ -28,6 +35,7 @@ export default function AdminComunicacaoPage() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [openTicketId, setOpenTicketId] = useState<string | null>(null)
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
 
   const reload = () => {
     setIsLoading(true)
@@ -43,9 +51,14 @@ export default function AdminComunicacaoPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Central de Comunicação</h1>
-        <p className="text-gray-600 mt-1 text-sm">Chamados e ocorrências de toda a plataforma</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Central de Comunicação</h1>
+          <p className="text-gray-600 mt-1 text-sm">Chamados e ocorrências de toda a plataforma</p>
+        </div>
+        <Button onClick={() => setIsCreateOpen(true)} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white self-start sm:self-auto">
+          <Plus className="h-4 w-4 mr-2" /> Novo Chamado
+        </Button>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-2">
@@ -79,7 +92,24 @@ export default function AdminComunicacaoPage() {
         ) : tickets.length === 0 ? (
           <EmptyState message="Nenhum chamado encontrado." />
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <>
+            <MobileCardList>
+              {tickets.map((ticket) => (
+                <button key={ticket.id} onClick={() => setOpenTicketId(ticket.id)} className="w-full text-left">
+                  <MobileCard
+                    title={ticket.subject}
+                    subtitle={`${ticket.author.name} (${ticket.author.role})`}
+                    badges={<StatusBadge status={ticket.status} />}
+                    fields={[
+                      { label: "Empresa", value: ticket.company?.name ?? "—" },
+                      { label: "Atualizado", value: new Date(ticket.updatedAt).toLocaleDateString("pt-BR") },
+                    ]}
+                  />
+                </button>
+              ))}
+            </MobileCardList>
+
+            <TableDesktop>
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left text-xs text-gray-500">
                 <tr>
@@ -112,13 +142,105 @@ export default function AdminComunicacaoPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </TableDesktop>
+          </>
         )}
       </div>
 
       {openTicketId && (
         <TicketDialog ticketId={openTicketId} onClose={() => setOpenTicketId(null)} onUpdated={reload} />
       )}
+
+      {isCreateOpen && (
+        <NewTicketDialog
+          onClose={() => setIsCreateOpen(false)}
+          onCreated={() => {
+            setIsCreateOpen(false)
+            reload()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+function NewTicketDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [query, setQuery] = useState("")
+  const [users, setUsers] = useState<SearchableUser[]>([])
+  const [targetUserId, setTargetUserId] = useState("")
+  const [subject, setSubject] = useState("")
+  const [message, setMessage] = useState("")
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    adminFetch<SearchableUser[]>(`/api/admin/users${query ? `?q=${encodeURIComponent(query)}` : ""}`)
+      .then(setUsers)
+      .catch(() => setUsers([]))
+  }, [query])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    if (!targetUserId) {
+      setError("Selecione o usuário")
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      await adminFetch("/api/admin/tickets", { method: "POST", body: JSON.stringify({ targetUserId, subject, message }) })
+      onCreated()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao abrir chamado")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Novo Chamado</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="space-y-2">
+            <Label>Usuário</Label>
+            <Select value={targetUserId} onValueChange={setTargetUserId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Buscar usuário..." />
+              </SelectTrigger>
+              <SelectContent>
+                <div className="p-2">
+                  <Input placeholder="Buscar por nome/email..." value={query} onChange={(e) => setQuery(e.target.value)} />
+                </div>
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name} — {u.email} ({u.role})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Assunto</Label>
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} required />
+          </div>
+          <div className="space-y-2">
+            <Label>Mensagem</Label>
+            <Textarea value={message} onChange={(e) => setMessage(e.target.value)} required rows={4} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+              Enviar
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

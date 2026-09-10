@@ -1,8 +1,15 @@
 import { prisma } from "@/lib/prisma"
 import { CompanyJoinForm } from "@/components/public/company-join-form"
 
-export default async function CompanyJoinPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function CompanyJoinPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>
+  searchParams: Promise<{ token?: string }>
+}) {
   const { slug } = await params
+  const { token } = await searchParams
   const company = await prisma.company.findUnique({
     where: { slug },
     select: { name: true, status: true, logoWithLabelUrl: true, profilePictureUrl: true },
@@ -19,5 +26,12 @@ export default async function CompanyJoinPage({ params }: { params: Promise<{ sl
     )
   }
 
-  return <CompanyJoinForm companyName={company.name} logoUrl={company.logoWithLabelUrl ?? company.profilePictureUrl} slug={slug} />
+  return (
+    <CompanyJoinForm
+      companyName={company.name}
+      logoUrl={company.logoWithLabelUrl ?? company.profilePictureUrl}
+      slug={slug}
+      linkToken={token ?? null}
+    />
+  )
 }

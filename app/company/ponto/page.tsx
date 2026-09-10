@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, StatusBadge, AdminCard } from "@/components/admin/admin-ui"
+import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
 import { canManageDailyOperations, canOperateFrontDesk } from "@/lib/permissions"
 
@@ -161,26 +162,45 @@ function Mirror({ scope }: { scope: "me" | "team" }) {
   if (entries.length === 0) return <EmptyState message="Nenhuma batida registrada nos últimos 15 dias." />
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-100">
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50 text-left text-xs text-gray-500">
-          <tr>
-            {scope === "team" && <th className="px-4 py-3 font-medium">Colaborador</th>}
-            <th className="px-4 py-3 font-medium">Tipo</th>
-            <th className="px-4 py-3 font-medium">Data/Hora</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {entries.map((e) => (
-            <tr key={e.id} className="hover:bg-gray-50">
-              {scope === "team" && <td className="px-4 py-3 font-medium text-[#3E2415]">{e.user.name}</td>}
-              <td className="px-4 py-3 text-gray-600">{TYPE_LABELS[e.type]}</td>
-              <td className="px-4 py-3 text-gray-600">{new Date(e.createdAt).toLocaleString("pt-BR")}</td>
+    <>
+      <TableDesktop>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs text-gray-500">
+            <tr>
+              {scope === "team" && <th className="px-4 py-3 font-medium">Colaborador</th>}
+              <th className="px-4 py-3 font-medium">Tipo</th>
+              <th className="px-4 py-3 font-medium">Data/Hora</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {entries.map((e) => (
+              <tr key={e.id} className="hover:bg-gray-50">
+                {scope === "team" && <td className="px-4 py-3 font-medium text-[#3E2415]">{e.user.name}</td>}
+                <td className="px-4 py-3 text-gray-600">{TYPE_LABELS[e.type]}</td>
+                <td className="px-4 py-3 text-gray-600">{new Date(e.createdAt).toLocaleString("pt-BR")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableDesktop>
+
+      <MobileCardList>
+        {entries.map((e) => (
+          <MobileCard
+            key={e.id}
+            title={scope === "team" ? e.user.name : TYPE_LABELS[e.type]}
+            subtitle={new Date(e.createdAt).toLocaleString("pt-BR")}
+            badges={
+              scope === "team" ? (
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 whitespace-nowrap">
+                  {TYPE_LABELS[e.type]}
+                </span>
+              ) : undefined
+            }
+          />
+        ))}
+      </MobileCardList>
+    </>
   )
 }
 

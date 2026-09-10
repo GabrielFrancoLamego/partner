@@ -132,9 +132,16 @@ enum RewardRedemptionStatus {
   DELIVERED
 }
 
+// PENDING = instancia do dia criada, colaborador ainda nao entregou.
+// SUBMITTED = colaborador entregou (com foto se exigido), aguardando o double-check da Gerente.
+// APPROVED = Gerente confirmou — credita XP.
+// RETURNED = Gerente devolveu para o colaborador refazer, com observacao.
+// REJECTED = "nao entregue" — prazo estourado ou marcado manualmente, penaliza XP.
 enum ChecklistStatus {
   PENDING
+  SUBMITTED
   APPROVED
+  RETURNED
   REJECTED
 }
 
@@ -145,6 +152,8 @@ enum ChecklistRecurrence {
   MONTHLY
   BIMONTHLY
   TRIMONTHLY
+  SEMIANNUAL
+  ANNUAL
 }
 
 enum ChecklistPriority {
@@ -214,6 +223,20 @@ enum AffiliatePayoutType {
 enum AffiliatePayoutStatus {
   PENDING
   PAID
+}
+
+enum AffiliateRewardType {
+  FIXED // bonusPerPartner é um valor fixo em R$
+  PERCENTAGE // bonusPercentage é aplicado sobre a primeira comissão aprovada do parceiro indicado
+}
+
+// Tipo do link publico gerado em /admin/links — decide o formulario e a regra
+// de aprovacao em app/join/**.
+enum RegistrationLinkType {
+  COMPANY_SIGNUP // cria uma nova Empresa (plano/isencao pre-configurados no link)
+  EMPLOYEE_SIGNUP // vincula a uma Company especifica (companyId) + setor inicial
+  PARTNER_GENERIC // parceiro sem empresa vinculada
+  PARTNER_FOR_COMPANY // parceiro pre-vinculado a uma Company especifica (companyId)
 }
 
 // Catálogo de planos SaaS — id é fixo (STANDARD/PREMIUM/ENTERPRISE, o mesmo
@@ -307,20 +330,22 @@ model Company {
 // Nomad's Lagoa, IN-ON), mas o schema já fica pronto para comercialização
 // multi-tenant futura. Gerenciada pelo ADMIN em /admin/cadastros.
 model License {
-  id           String    @id @default(cuid())
-  companyId    String    @unique
-  company      Company   @relation(fields: [companyId], references: [id])
-  plan         String    @default("ENTERPRISE") // STANDARD, PREMIUM, ENTERPRISE
-  status       String    @default("ACTIVE") // ACTIVE, SUSPENDED, EXPIRED, TRIAL, CANCELED
-  maxEmployees Int       @default(50)
-  maxPartners  Int       @default(500)
-  billingCycle String    @default("MONTHLY") // MONTHLY, YEARLY
-  isExempt     Boolean   @default(false) // isenta de cobrança (uso interno do grupo)
-  billingDay   Int? // dia do mês (1-28) em que a cobrança recorrente é gerada
-  expiresAt    DateTime?
-  canceledAt   DateTime? // preenchido quando status vira CANCELED — base do cálculo de churn
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  companyId          String    @unique
+  company            Company   @relation(fields: [companyId], references: [id])
+  plan               String    @default("ENTERPRISE") // STANDARD, PREMIUM, ENTERPRISE
+  status             String    @default("ACTIVE") // ACTIVE, SUSPENDED, EXPIRED, TRIAL, CANCELED
+  maxEmployees       Int       @default(50)
+  maxPartners        Int       @default(500)
+  billingCycle       String    @default("MONTHLY") // MONTHLY, YEARLY
+  isExempt           Boolean   @default(false) // isenta de cobrança (uso interno do grupo)
+  exemptionMonths    Int? // duração configurada da isenção — referência para exibição na UI
+  exemptionExpiresAt DateTime? // quando passar, um job sob demanda reverte isExempt para false automaticamente
+  billingDay         Int? // dia do mês (1-28) em que a cobrança recorrente é gerada
+  expiresAt          DateTime?
+  canceledAt         DateTime? // preenchido quando status vira CANCELED — base do cálculo de churn
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 }
 
 model User {
@@ -353,6 +378,8 @@ model User {
   checklistsApproved    Checklist[]         @relation("ChecklistApprover")
 
   checklistTemplatesCreated    ChecklistTemplate[]         @relation("ChecklistTemplateCreatedBy")
+  checklistTemplatesPrimary    ChecklistTemplate[]         @relation("ChecklistTemplatePrimary")
+  checklistTemplatesSecondary  ChecklistTemplate[]         @relation("ChecklistTemplateSecondary")
   checklistReassignedFrom      ChecklistReassignment[]     @relation("ChecklistReassignFrom")
   checklistReassignedTo        ChecklistReassignment[]     @relation("ChecklistReassignTo")
   checklistReassignmentsMade   ChecklistReassignment[]     @relation("ChecklistReassignedBy")
@@ -420,6 +447,7 @@ model PartnerProfile {
   affiliate            Affiliate?        @relation(fields: [affiliateId], references: [id])
   affiliateMilestoneAt DateTime? // preenchido quando o bônus de milestone (10 clientes) já foi pago — evita pagar 2x
   affiliatePayouts     AffiliatePayout[]
+  affiliateSelf        Affiliate?        @relation("AffiliateSelf")
 
   @@index([parentId])
   @@index([affiliateId])
@@ -553,7 +581,9 @@ model Program {
   imageUrl         String? // imagem/foto de capa representativa do programa
   pdfUrl           String? // anexo PDF com regras completas
   videoUrl         String? // vídeo institucional (URL externa — YouTube/Vimeo)
-  termsContent     String?          @db.Text // regulamento/termo de aceite (texto/markdown simples)
+  termsContent     String?          @db.Text // regulamento/termo de aceite (HTML do editor rico)
+  validFrom        DateTime? // null junto com validUntil = prazo indeterminado
+  validUntil       DateTime?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -779,56 +809,85 @@ model TimeEntry {
 // ou pelo Gerente da empresa. Cada execução do colaborador vira um Checklist
 // (instância) vinculado a este template.
 model ChecklistTemplate {
-  id          String              @id @default(cuid())
-  companyId   String
-  company     Company             @relation(fields: [companyId], references: [id])
-  unitId      String?
-  unit        Unit?               @relation(fields: [unitId], references: [id])
-  title       String
-  description String?             @db.Text
-  recurrence  ChecklistRecurrence
-  priority    ChecklistPriority   @default(MEDIUM)
-  dueTime     String // horário limite diário de conclusão, formato "HH:mm"
-  active      Boolean             @default(true)
-  createdById String
-  createdBy   User                @relation("ChecklistTemplateCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id                   String              @id @default(cuid())
+  companyId            String
+  company              Company             @relation(fields: [companyId], references: [id])
+  unitId               String?
+  unit                 Unit?               @relation(fields: [unitId], references: [id])
+  title                String
+  description          String?             @db.Text
+  recurrence           ChecklistRecurrence
+  // Só usados conforme a recorrência: WEEKLY usa recurrenceDayOfWeek (0=domingo..6=sábado);
+  // MONTHLY/BIMONTHLY/TRIMONTHLY/SEMIANNUAL/ANNUAL usam recurrenceDayOfMonth (1-31, ou -1 = último dia do mês).
+  recurrenceDayOfWeek  Int?
+  recurrenceDayOfMonth Int?
+  // Mês de início/âncora (0=janeiro..11=dezembro) a partir do qual se conta o
+  // ciclo de BIMONTHLY/TRIMONTHLY/SEMIANNUAL/ANNUAL — null equivale a 0 (janeiro),
+  // preservando o comportamento anterior (ex: trimestral = jan/abr/jul/out).
+  recurrenceAnchorMonth Int?
+  priority             ChecklistPriority   @default(MEDIUM)
+  dueTime              String // horário limite diário de conclusão, formato "HH:mm"
+  requiresPhoto        Boolean             @default(true)
+  active               Boolean             @default(true)
+  createdById          String
+  createdBy            User                @relation("ChecklistTemplateCreatedBy", fields: [createdById], references: [id])
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  // Responsável principal e secundário — se nenhum for definido, a tarefa fica
+  // aberta para qualquer colaborador (comportamento antigo). Se o principal
+  // faltar (sem check-in no dia) ou estiver inativo, a instância do dia é
+  // automaticamente transferida para o secundário; se ambos faltarem, cai no
+  // Checklist Master da Gerente/Master (ver lib/checklist-engine.ts).
+  primaryEmployeeId   String?
+  primaryEmployee     User?   @relation("ChecklistTemplatePrimary", fields: [primaryEmployeeId], references: [id])
+  secondaryEmployeeId String?
+  secondaryEmployee   User?   @relation("ChecklistTemplateSecondary", fields: [secondaryEmployeeId], references: [id])
 
   instances Checklist[]
 
   @@index([companyId])
 }
 
-// Checklist operacional registrado com foto pelo colaborador,
-// aprovado ou rejeitado pelo Gerente/Master.
+// Instância diária de um ChecklistTemplate (ou tarefa avulsa quando templateId
+// é null) — criada preventivamente por ensureTodayChecklistInstances() para o
+// dia corrente (forDate), e só recebe foto/observação quando o colaborador
+// efetivamente entrega (submittedAt). Aprovada/devolvida/reprovada pela Gerente.
 model Checklist {
-  id           String             @id @default(cuid())
-  companyId    String
-  company      Company            @relation(fields: [companyId], references: [id])
-  unitId       String?
-  unit         Unit?              @relation(fields: [unitId], references: [id])
-  templateId   String? // null = tarefa avulsa, não vinculada a uma recorrência
-  template     ChecklistTemplate? @relation(fields: [templateId], references: [id])
-  employeeId   String
-  employee     User               @relation("ChecklistEmployee", fields: [employeeId], references: [id])
-  title        String
-  notes        String?
-  photoUrl     String
-  priority     ChecklistPriority  @default(MEDIUM)
-  dueAt        DateTime?
-  status       ChecklistStatus    @default(PENDING)
-  approvedById String?
-  approvedBy   User?              @relation("ChecklistApprover", fields: [approvedById], references: [id])
-  approvedAt   DateTime?
-  createdAt    DateTime           @default(now())
+  id               String             @id @default(cuid())
+  companyId        String
+  company          Company            @relation(fields: [companyId], references: [id])
+  unitId           String?
+  unit             Unit?              @relation(fields: [unitId], references: [id])
+  templateId       String? // null = tarefa avulsa, não vinculada a uma recorrência
+  template         ChecklistTemplate? @relation(fields: [templateId], references: [id])
+  employeeId       String
+  employee         User               @relation("ChecklistEmployee", fields: [employeeId], references: [id])
+  forDate          DateTime // dia (00:00) a que esta instância pertence — chave de deduplicação com templateId
+  title            String
+  notes            String?
+  photoUrl         String?
+  priority         ChecklistPriority  @default(MEDIUM)
+  dueAt            DateTime?
+  status           ChecklistStatus    @default(PENDING)
+  submittedAt      DateTime? // quando o colaborador entregou (distinto de createdAt = quando a instância foi gerada)
+  isAutoReassigned Boolean            @default(false) // true = caiu aqui por ausência do responsável original (alerta visual)
+  rejectionReason  String? // motivo de "Devolver" ou "Não Entregue"
+  approvedById     String?
+  approvedBy       User?              @relation("ChecklistApprover", fields: [approvedById], references: [id])
+  approvedAt       DateTime?
+  createdAt        DateTime           @default(now())
 
   reassignments ChecklistReassignment[]
 
+  // Sem constraint única de (templateId, forDate) no banco — dados históricos de
+  // antes desta feature já têm múltiplas execuções no mesmo dia/template.
+  // ensureTodayChecklistInstances() deduplica em código (findFirst + create).
   @@index([companyId])
   @@index([employeeId])
   @@index([status])
   @@index([templateId])
+  @@index([forDate])
 }
 
 // Histórico de transferência de atribuição de um checklist entre colaboradores
@@ -854,12 +913,27 @@ model ChecklistReassignment {
 // Cada pessoa que se cadastra através do link gera um PublicRegistrationRequest
 // separado, com status próprio — o link em si permanece ativo/reutilizável.
 model PublicRegistrationLink {
-  id          String    @id @default(cuid())
-  companyId   String
-  company     Company   @relation(fields: [companyId], references: [id])
-  token       String    @unique @default(cuid())
-  role        Role      @default(EMPLOYEE)
-  active      Boolean   @default(true)
+  id     String               @id @default(cuid())
+  type   RegistrationLinkType @default(EMPLOYEE_SIGNUP)
+  token  String               @unique @default(cuid())
+  active Boolean              @default(true)
+
+  // EMPLOYEE_SIGNUP e PARTNER_FOR_COMPANY apontam para uma empresa; COMPANY_SIGNUP
+  // e PARTNER_GENERIC deixam null.
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+  role      Role     @default(EMPLOYEE) // papel concedido — só relevante para EMPLOYEE_SIGNUP
+  sectorId  String? // setor/cargo inicial — só relevante para EMPLOYEE_SIGNUP
+  sector    Sector?  @relation(fields: [sectorId], references: [id])
+
+  // Configuração pré-definida para links do tipo COMPANY_SIGNUP.
+  plan            String?
+  isExempt        Boolean @default(false)
+  exemptionMonths Int?
+
+  // Rastreio de origem/campanha (ex: "utm_source=instagram_influencer1").
+  origin String?
+
   createdById String
   createdBy   User      @relation("RegistrationLinkCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime  @default(now())
@@ -868,6 +942,7 @@ model PublicRegistrationLink {
   requests PublicRegistrationRequest[]
 
   @@index([companyId])
+  @@index([type])
 }
 
 // Cadastro submetido por alguém de fora da plataforma, pendente de aprovação
@@ -878,25 +953,29 @@ model PublicRegistrationLink {
 //      link/token pré-gerado, então linkId e companyId ficam null e `role`
 //      (default EMPLOYEE, ou PARTNER quando vindo de /join/partner) é usado direto.
 model PublicRegistrationRequest {
-  id              String                  @id @default(cuid())
-  linkId          String?
-  link            PublicRegistrationLink? @relation(fields: [linkId], references: [id], onDelete: SetNull)
-  companyId       String?
-  company         Company?                @relation(fields: [companyId], references: [id])
-  role            Role                    @default(EMPLOYEE)
-  name            String
-  email           String
-  phone           String
-  document        String?
-  affiliateId     String?
-  affiliate       Affiliate?              @relation(fields: [affiliateId], references: [id])
-  status          RegistrationStatus      @default(PENDING_APPROVAL)
-  reviewedById    String?
-  reviewedBy      User?                   @relation("RegistrationRequestReviewedBy", fields: [reviewedById], references: [id])
-  reviewedAt      DateTime?
-  rejectionReason String?
-  createdUserId   String? // preenchido quando aprovado e o User real é provisionado
-  createdAt       DateTime                @default(now())
+  id                 String                  @id @default(cuid())
+  linkId             String?
+  link               PublicRegistrationLink? @relation(fields: [linkId], references: [id], onDelete: SetNull)
+  companyId          String?
+  company            Company?                @relation(fields: [companyId], references: [id])
+  role               Role                    @default(EMPLOYEE)
+  sectorId           String? // setor inicial escolhido (herdado do link ou selecionado no formulário público)
+  sector             Sector?                 @relation(fields: [sectorId], references: [id])
+  name               String // COMPANY_SIGNUP: nome da empresa. Demais tipos: nome da pessoa.
+  desiredCompanySlug String? // só para links do tipo COMPANY_SIGNUP — slug pretendido da nova empresa
+  masterName         String? // só para links do tipo COMPANY_SIGNUP — nome do responsável/Master
+  email              String
+  phone              String
+  document           String?
+  affiliateId        String?
+  affiliate          Affiliate?              @relation(fields: [affiliateId], references: [id])
+  status             RegistrationStatus      @default(PENDING_APPROVAL)
+  reviewedById       String?
+  reviewedBy         User?                   @relation("RegistrationRequestReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt         DateTime?
+  rejectionReason    String?
+  createdUserId      String? // preenchido quando aprovado e o User real é provisionado
+  createdAt          DateTime                @default(now())
 
   @@index([companyId])
   @@index([status])
@@ -907,19 +986,28 @@ model PublicRegistrationRequest {
 // Recebe bônus quando um parceiro que ele indicou é aprovado, e um bônus extra
 // de milestone quando esse parceiro atinge seus primeiros N clientes convertidos.
 model Affiliate {
-  id                   String   @id @default(cuid())
+  id                   String              @id @default(cuid())
   name                 String
-  email                String?  @unique
+  email                String?             @unique
   phone                String?
-  code                 String   @unique @default(cuid()) // usado em /join/partner?ref=CODE
-  active               Boolean  @default(true)
-  bonusPerPartner      Decimal  @default(0) @db.Decimal(10, 2) // pago quando o parceiro indicado é aprovado
-  milestoneClientCount Int      @default(10) // "10 primeiros clientes convertidos"
-  milestoneBonus       Decimal  @default(0) @db.Decimal(10, 2) // pago ao atingir o milestone acima
+  code                 String              @unique @default(cuid()) // usado em /join/partner?ref=CODE ou /join/partner/[affiliateCode]
+  active               Boolean             @default(true)
+  rewardType           AffiliateRewardType @default(FIXED)
+  bonusPerPartner      Decimal             @default(0) @db.Decimal(10, 2) // valor fixo pago quando o parceiro indicado é aprovado (rewardType = FIXED)
+  bonusPercentage      Decimal?            @db.Decimal(5, 2) // % sobre a 1ª comissão aprovada do parceiro indicado (rewardType = PERCENTAGE)
+  milestoneClientCount Int                 @default(10) // "10 primeiros clientes convertidos"
+  milestoneBonus       Decimal             @default(0) @db.Decimal(10, 2) // pago ao atingir o milestone acima
   pixKey               String?
-  walletBalance        Decimal  @default(0) @db.Decimal(12, 2)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  walletBalance        Decimal             @default(0) @db.Decimal(12, 2)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  // Quando o Afiliado é um Parceiro real da plataforma (promovido pelo Admin) —
+  // a desativação do User correspondente desativa este Affiliate automaticamente
+  // (ver lib/affiliate.ts). Fica null para afiliados externos (influencers sem
+  // conta de parceiro).
+  partnerProfileId String?         @unique
+  partnerProfile   PartnerProfile? @relation("AffiliateSelf", fields: [partnerProfileId], references: [id])
 
   partners     PartnerProfile[]
   joinRequests PublicRegistrationRequest[]
@@ -1179,8 +1267,10 @@ model Sector {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  employees EmployeeProfile[]
-  goals     Goal[]
+  employees            EmployeeProfile[]
+  goals                Goal[]
+  registrationLinks    PublicRegistrationLink[]
+  registrationRequests PublicRegistrationRequest[]
 
   @@unique([companyId, name])
   @@index([companyId])

@@ -1,0 +1,336 @@
+"use client"
+
+import { useEffect, useRef, useState } from "react"
+import { Power, Upload, FileText, Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
+import { LoadingState, StatusBadge } from "@/components/admin/admin-ui"
+import { RichTextEditor } from "@/components/admin/rich-text-editor"
+
+type CommissionFormat = "PERCENTAGE" | "FIXED_VALUE" | "PRODUCT_UNIT"
+
+type Program = {
+  id: string
+  name: string
+  description: string
+  commissionType: "FIXED" | "VARIABLE"
+  commissionValue: string
+  commissionFormat: CommissionFormat
+  productUnitLabel: string | null
+  imageUrl: string | null
+  pdfUrl: string | null
+  videoUrl: string | null
+  termsContent: string | null
+  validFrom: string | null
+  validUntil: string | null
+  active: boolean
+} | null
+
+const FORMAT_LABELS: Record<CommissionFormat, string> = {
+  PERCENTAGE: "Percentual (%)",
+  FIXED_VALUE: "Valor fixo (R$)",
+  PRODUCT_UNIT: "Unidade de produto",
+}
+
+export default function CompanyProgramsPage() {
+  const [program, setProgram] = useState<Program>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  const [name, setName] = useState("")
+  const [description, setDescription] = useState("")
+  const [commissionType, setCommissionType] = useState<"FIXED" | "VARIABLE">("VARIABLE")
+  const [commissionFormat, setCommissionFormat] = useState<CommissionFormat>("PERCENTAGE")
+  const [commissionValue, setCommissionValue] = useState("")
+  const [productUnitLabel, setProductUnitLabel] = useState("")
+  const [imageUrl, setImageUrl] = useState("")
+  const [pdfUrl, setPdfUrl] = useState("")
+  const [videoUrl, setVideoUrl] = useState("")
+  const [termsContent, setTermsContent] = useState("")
+  const [indeterminate, setIndeterminate] = useState(true)
+  const [validFrom, setValidFrom] = useState("")
+  const [validUntil, setValidUntil] = useState("")
+  const [error, setError] = useState("")
+  const [message, setMessage] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+  const [isUploadingCover, setIsUploadingCover] = useState(false)
+  const [isUploadingPdf, setIsUploadingPdf] = useState(false)
+
+  const coverInputRef = useRef<HTMLInputElement>(null)
+  const pdfInputRef = useRef<HTMLInputElement>(null)
+
+  const load = () => {
+    setIsLoading(true)
+    adminFetch<Program>("/api/company/program")
+      .then((p) => {
+        setProgram(p)
+        if (p) {
+          setName(p.name)
+          setDescription(p.description)
+          setCommissionType(p.commissionType)
+          setCommissionFormat(p.commissionFormat)
+          setCommissionValue(p.commissionValue)
+          setProductUnitLabel(p.productUnitLabel ?? "")
+          setImageUrl(p.imageUrl ?? "")
+          setPdfUrl(p.pdfUrl ?? "")
+          setVideoUrl(p.videoUrl ?? "")
+          setTermsContent(p.termsContent ?? "")
+          setIndeterminate(!p.validFrom && !p.validUntil)
+          setValidFrom(p.validFrom?.slice(0, 10) ?? "")
+          setValidUntil(p.validUntil?.slice(0, 10) ?? "")
+        }
+      })
+      .finally(() => setIsLoading(false))
+  }
+  useEffect(load, [])
+
+  const handleUpload = async (file: File, kind: "program-cover" | "program-pdf") => {
+    const setUploading = kind === "program-cover" ? setIsUploadingCover : setIsUploadingPdf
+    setUploading(true)
+    try {
+      const body = new FormData()
+      body.append("kind", kind)
+      body.append("file", file)
+      const { url } = await adminFetch<{ url: string }>("/api/company/uploads", { method: "POST", body })
+      if (kind === "program-cover") setImageUrl(url)
+      else setPdfUrl(url)
+    } catch (e) {
+      alert(e instanceof AdminApiError ? e.message : "Erro ao enviar arquivo")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleToggleActive = async () => {
+    if (!program) return
+    await adminFetch("/api/company/program", { method: "PATCH", body: JSON.stringify({ active: !program.active }) }).catch((e) =>
+      alert(e instanceof AdminApiError ? e.message : "Erro"),
+    )
+    load()
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    setMessage("")
+    if (commissionFormat === "PRODUCT_UNIT" && !productUnitLabel.trim()) {
+      setError("Informe o rótulo da unidade de produto")
+      return
+    }
+    setIsSaving(true)
+    try {
+      await adminFetch("/api/company/program", {
+        method: "PUT",
+        body: JSON.stringify({
+          name,
+          description,
+          commissionType,
+          commissionValue: Number(commissionValue),
+          commissionFormat,
+          productUnitLabel: commissionFormat === "PRODUCT_UNIT" ? productUnitLabel : null,
+          imageUrl: imageUrl || null,
+          pdfUrl: pdfUrl || null,
+          videoUrl: videoUrl || null,
+          termsContent: termsContent || null,
+          validFrom: !indeterminate && validFrom ? validFrom : null,
+          validUntil: !indeterminate && validUntil ? validUntil : null,
+        }),
+      })
+      setMessage("Programa salvo com sucesso!")
+      load()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao salvar")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  if (isLoading) return <LoadingState />
+
+  const valueSuffix = commissionFormat === "PERCENTAGE" ? "%" : commissionFormat === "FIXED_VALUE" ? "R$" : "un."
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Programa de Parceria</h1>
+          <p className="text-gray-600 mt-1 text-sm">Como sua empresa recompensa parceiros que indicam clientes.</p>
+        </div>
+        {program && (
+          <Button variant="outline" onClick={handleToggleActive} className="self-start sm:self-auto">
+            <Power className="h-4 w-4 mr-2" />
+            {program.active ? "Desativar" : "Ativar"}
+            <span className="ml-2">
+              <StatusBadge status={program.active ? "ACTIVE" : "INACTIVE"} />
+            </span>
+          </Button>
+        )}
+      </div>
+
+      <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-4 md:p-6 shadow-md border border-gray-100 space-y-5">
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        {message && <p className="text-sm text-green-600">{message}</p>}
+
+        <div className="space-y-2">
+          <Label>Nome do programa</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} required />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Descrição</Label>
+          <RichTextEditor value={description} onChange={setDescription} placeholder="Conte sobre o programa — use negrito, títulos e listas." />
+        </div>
+
+        <Tabs defaultValue="comissao">
+          <TabsList className="flex-wrap h-auto">
+            <TabsTrigger value="comissao">Comissão</TabsTrigger>
+            <TabsTrigger value="midia">Mídias</TabsTrigger>
+            <TabsTrigger value="validade">Validade & Regulamento</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="comissao" className="space-y-4 pt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Tipo de comissão</Label>
+                <Select value={commissionType} onValueChange={(v) => setCommissionType(v as "FIXED" | "VARIABLE")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FIXED">Fixa</SelectItem>
+                    <SelectItem value="VARIABLE">Variável</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Formato do valor</Label>
+                <Select value={commissionFormat} onValueChange={(v) => setCommissionFormat(v as CommissionFormat)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(FORMAT_LABELS) as CommissionFormat[]).map((key) => (
+                      <SelectItem key={key} value={key}>
+                        {FORMAT_LABELS[key]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Valor da comissão ({valueSuffix})</Label>
+              <div className="relative max-w-xs">
+                {commissionFormat === "FIXED_VALUE" && (
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">R$</span>
+                )}
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={commissionValue}
+                  onChange={(e) => setCommissionValue(e.target.value)}
+                  className={commissionFormat === "FIXED_VALUE" ? "pl-9 pr-3" : "pr-10"}
+                  required
+                />
+                {commissionFormat !== "FIXED_VALUE" && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">{valueSuffix}</span>
+                )}
+              </div>
+            </div>
+            {commissionFormat === "PRODUCT_UNIT" && (
+              <div className="space-y-2 max-w-xs">
+                <Label>Rótulo da unidade</Label>
+                <Input value={productUnitLabel} onChange={(e) => setProductUnitLabel(e.target.value)} placeholder="ex: diária grátis" required />
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="midia" className="space-y-5 pt-4">
+            <div className="space-y-2">
+              <Label>Capa do programa</Label>
+              <p className="text-xs text-gray-400">Tamanho recomendado: 1200x630px · Máx: 5MB</p>
+              <div className="flex items-center gap-3">
+                {imageUrl && <img src={imageUrl} alt="Capa" className="w-24 h-14 object-cover rounded-lg border border-gray-200" />}
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0], "program-cover")}
+                />
+                <Button type="button" variant="outline" size="sm" disabled={isUploadingCover} onClick={() => coverInputRef.current?.click()}>
+                  {isUploadingCover ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+                  {imageUrl ? "Trocar" : "Enviar"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>PDF de regulamento (apresentação)</Label>
+              <div className="flex items-center gap-3">
+                {pdfUrl && (
+                  <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#F58220] flex items-center gap-1">
+                    <FileText className="h-4 w-4" /> Ver PDF atual
+                  </a>
+                )}
+                <input
+                  ref={pdfInputRef}
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0], "program-pdf")}
+                />
+                <Button type="button" variant="outline" size="sm" disabled={isUploadingPdf} onClick={() => pdfInputRef.current?.click()}>
+                  {isUploadingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+                  {pdfUrl ? "Trocar" : "Enviar"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2 max-w-sm">
+              <Label>Vídeo institucional (YouTube/Vimeo)</Label>
+              <Input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/..." />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="validade" className="space-y-4 pt-4">
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <Checkbox checked={indeterminate} onCheckedChange={(v) => setIndeterminate(v === true)} />
+              Prazo indeterminado
+            </label>
+            {!indeterminate && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Início</Label>
+                  <Input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fim</Label>
+                  <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+                </div>
+              </div>
+            )}
+            <div className="space-y-2 pt-2 border-t border-gray-100">
+              <Label>Regulamento / Termo de aceite</Label>
+              <RichTextEditor
+                value={termsContent}
+                onChange={setTermsContent}
+                placeholder="Texto exibido ao parceiro no primeiro acesso — ele precisa aceitar antes de continuar."
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        <div className="flex justify-end pt-2">
+          <Button type="submit" disabled={isSaving} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+            {isSaving ? "Salvando..." : "Salvar Programa"}
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
+}

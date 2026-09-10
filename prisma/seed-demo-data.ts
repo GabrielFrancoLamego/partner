@@ -270,6 +270,7 @@ async function seedEmployeeHistory(params: {
           companyId,
           templateId: template.id,
           employeeId,
+          forDate: dayAt(daysAgo, 0, 0),
           title: template.title,
           photoUrl: PLACEHOLDER_PHOTO,
           priority: template.priority,

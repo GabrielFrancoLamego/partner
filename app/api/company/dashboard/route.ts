@@ -7,6 +7,12 @@ import { resolveCareerProgress, getMonthlyScore, computeDailyEfficiency, type Ef
 /** Tipos de ocorrência com impacto financeiro somado no "Custo Operacional" do Master (vales, diárias, quebra de caixa, metas batidas). */
 const COST_OCCURRENCE_TYPES = ["VALE", "DIARIA", "CONSUMO", "META"] as const
 
+function startOfDay(date: Date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
 /**
  * Dashboard unificado de /company/dashboard. Métricas de Parceiros +
  * Operação/RH sempre presentes (Master/Gerente/Financeiro/Colaborador podem
@@ -150,13 +156,16 @@ export async function GET(request: Request) {
       realRevenue: number
       occurrenceCost: number
       riskEmployees: { id: string; name: string; monthlyScore: number; recentFlags: number }[]
+      unclosedPastDaysCount: number
     } | null = null
 
     if (canManageDailyOperations(user.role)) {
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-      const [companyDeadline, todayClosing, revenueAgg, occurrenceCostRows, employeesForRisk] = await Promise.all([
-        prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { shiftClosingDeadline: true } }),
+      const fourteenDaysAgo = new Date(startOfToday.getTime() - 14 * 24 * 60 * 60 * 1000)
+
+      const [companyRow, todayClosing, revenueAgg, occurrenceCostRows, employeesForRisk, completedPastClosings] = await Promise.all([
+        prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { shiftClosingDeadline: true, createdAt: true } }),
         prisma.shiftClosing.findUnique({
           where: { companyId_date: { companyId, date: startOfToday } },
           include: { closedBy: { select: { name: true } } },
@@ -170,12 +179,26 @@ export async function GET(request: Request) {
           where: { companyId, role: "EMPLOYEE", status: "ACTIVE" },
           select: { id: true, name: true },
         }),
+        prisma.shiftClosing.findMany({
+          where: { companyId, date: { gte: fourteenDaysAgo, lt: startOfToday }, status: "COMPLETED" },
+          select: { date: true },
+        }),
       ])
+      const companyDeadline = companyRow
 
       const [h, m] = companyDeadline.shiftClosingDeadline.split(":").map(Number)
       const cutoff = new Date(startOfToday)
       cutoff.setHours(h, m, 0, 0)
       const overdue = (!todayClosing || todayClosing.status !== "COMPLETED") && now > cutoff
+
+      // "Não bloqueia": mesmo com o dia seguinte já rolando normalmente, o caixa
+      // de dias anteriores sem fechamento continua sinalizado até regularizar.
+      const searchStart = new Date(Math.max(fourteenDaysAgo.getTime(), startOfDay(companyRow.createdAt).getTime()))
+      const completedDates = new Set(completedPastClosings.map((c) => c.date.toISOString()))
+      let unclosedPastDaysCount = 0
+      for (let d = new Date(searchStart); d < startOfToday; d.setDate(d.getDate() + 1)) {
+        if (!completedDates.has(startOfDay(d).toISOString())) unclosedPastDaysCount++
+      }
 
       const occurrenceCost = occurrenceCostRows
         .filter((o) => !o.discountWaived)
@@ -209,6 +232,7 @@ export async function GET(request: Request) {
         realRevenue: Number(revenueAgg._sum.revenueAmount ?? 0),
         occurrenceCost,
         riskEmployees,
+        unclosedPastDaysCount,
       }
     }
 

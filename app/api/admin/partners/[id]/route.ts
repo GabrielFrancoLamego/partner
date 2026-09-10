@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { requirePlatformAdmin, handleApiError } from "@/lib/api-auth"
 import { deleteAuthUser } from "@/lib/admin-user"
 import { logAudit } from "@/lib/audit"
+import { deactivateAffiliateForUser } from "@/lib/affiliate"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -45,6 +46,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       },
       include: { partnerProfile: true },
     })
+
+    if (status === "INACTIVE") {
+      await deactivateAffiliateForUser(id)
+    }
 
     await logAudit({
       userId: admin.id,

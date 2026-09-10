@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { CheckCircle2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { CheckCircle2, Link2Off } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,10 +11,12 @@ export function CompanyJoinForm({
   companyName,
   logoUrl,
   slug,
+  linkToken,
 }: {
   companyName: string
   logoUrl: string | null
   slug: string
+  linkToken?: string | null
 }) {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
@@ -23,6 +25,17 @@ export function CompanyJoinForm({
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [done, setDone] = useState(false)
+  const [linkExpired, setLinkExpired] = useState(false)
+  const [isCheckingLink, setIsCheckingLink] = useState(!!linkToken)
+
+  useEffect(() => {
+    if (!linkToken) return
+    fetch(`/api/public/links/${linkToken}`)
+      .then((r) => r.json())
+      .then((data) => setLinkExpired(!data.valid))
+      .catch(() => setLinkExpired(true))
+      .finally(() => setIsCheckingLink(false))
+  }, [linkToken])
 
   const emailError = email && !isValidEmail(email) ? "Email inválido" : ""
   const phoneError = phone && !isValidPhone(phone) ? "Telefone inválido" : ""
@@ -39,9 +52,13 @@ export function CompanyJoinForm({
       const response = await fetch(`/api/public/company-join/${slug}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, phone, document: document || undefined }),
+        body: JSON.stringify({ name, email, phone, document: document || undefined, token: linkToken ?? undefined }),
       })
       const data = await response.json().catch(() => null)
+      if (response.status === 410) {
+        setLinkExpired(true)
+        return
+      }
       if (!response.ok) throw new Error(data?.error ?? "Erro ao enviar cadastro")
       setDone(true)
     } catch (e) {
@@ -49,6 +66,22 @@ export function CompanyJoinForm({
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  if (isCheckingLink) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#F7F5F2]" />
+  }
+
+  if (linkExpired) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F7F5F2] px-4">
+        <div className="max-w-sm w-full bg-white rounded-2xl shadow-md border border-gray-100 p-6 text-center">
+          <Link2Off className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+          <h1 className="text-lg font-bold text-[#3E2415]">Link expirado</h1>
+          <p className="text-sm text-gray-600 mt-2">Este link de cadastro não está mais ativo ou venceu.</p>
+        </div>
+      </div>
+    )
   }
 
   return (

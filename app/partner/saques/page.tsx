@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, StatusBadge, AdminCard } from "@/components/admin/admin-ui"
+import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 
 type Commission = { company: { id: string; name: string } }
 type Withdrawal = {
@@ -148,7 +149,33 @@ export default function PartnerWithdrawalsPage() {
         {withdrawals.length === 0 ? (
           <EmptyState message="Nenhum saque solicitado ainda." />
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+          <>
+            <MobileCardList>
+              {withdrawals.map((w) => (
+                <MobileCard
+                  key={w.id}
+                  title={w.company.name}
+                  subtitle={new Date(w.requestDate).toLocaleDateString("pt-BR")}
+                  badges={<StatusBadge status={w.status} />}
+                  fields={[
+                    { label: "Valor", value: currency(w.amount) },
+                    {
+                      label: "Comprovante",
+                      value: w.proofOfPaymentUrl ? (
+                        <a href={w.proofOfPaymentUrl} target="_blank" rel="noopener noreferrer" className="text-[#F58220] underline">
+                          Ver
+                        </a>
+                      ) : (
+                        "—"
+                      ),
+                    },
+                    ...(w.rejectionReason ? [{ label: "Motivo", value: w.rejectionReason }] : []),
+                  ]}
+                />
+              ))}
+            </MobileCardList>
+
+            <TableDesktop>
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left text-xs text-gray-500">
                 <tr>
@@ -182,7 +209,8 @@ export default function PartnerWithdrawalsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </TableDesktop>
+          </>
         )}
       </div>
     </div>

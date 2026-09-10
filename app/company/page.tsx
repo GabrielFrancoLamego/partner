@@ -52,6 +52,7 @@ type DashboardData = {
     realRevenue: number
     occurrenceCost: number
     riskEmployees: { id: string; name: string; monthlyScore: number; recentFlags: number }[]
+    unclosedPastDaysCount: number
   } | null
 }
 
@@ -147,6 +148,21 @@ function MasterPanel({ master }: { master: NonNullable<DashboardData["master"]> 
           <div className="flex-1">
             <p className="text-sm font-bold text-red-800">Fechamento de hoje está PENDENTE_MASTER</p>
             <p className="text-xs text-red-600">O horário-limite da Gerente estourou — clique para assumir o encerramento.</p>
+          </div>
+        </Link>
+      )}
+      {master.unclosedPastDaysCount > 0 && (
+        <Link
+          href="/company/fechamento"
+          className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl hover:bg-amber-100 transition-colors"
+        >
+          <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-bold text-amber-800">
+              {master.unclosedPastDaysCount} {master.unclosedPastDaysCount === 1 ? "dia anterior" : "dias anteriores"} sem
+              fechamento de caixa
+            </p>
+            <p className="text-xs text-amber-600">A operação continua normal — regularize quando puder.</p>
           </div>
         </Link>
       )}

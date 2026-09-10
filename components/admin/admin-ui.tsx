@@ -54,6 +54,9 @@ const STATUS_STYLES: Record<string, string> = {
   LOW: "bg-gray-100 text-gray-600",
   MEDIUM: "bg-amber-100 text-amber-700",
   HIGH: "bg-red-100 text-red-700",
+  SUBMITTED: "bg-blue-100 text-blue-700",
+  RETURNED: "bg-orange-100 text-orange-700",
+  CANCELED: "bg-gray-100 text-gray-600",
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -72,6 +75,9 @@ const STATUS_LABELS: Record<string, string> = {
   LOW: "Baixa",
   MEDIUM: "Média",
   HIGH: "Alta",
+  SUBMITTED: "Entregue",
+  RETURNED: "Devolvida",
+  CANCELED: "Cancelada",
 }
 
 export function StatusBadge({ status }: { status: string }) {

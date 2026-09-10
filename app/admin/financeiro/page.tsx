@@ -10,6 +10,7 @@ import { LoadingState } from "@/components/admin/admin-ui"
 import { WithdrawalsTab } from "@/components/admin/financeiro/withdrawals-tab"
 import { TransactionsTab } from "@/components/admin/financeiro/transactions-tab"
 import { BonusesTab } from "@/components/admin/financeiro/bonuses-tab"
+import { SaasTab } from "@/components/admin/financeiro/saas-tab"
 
 type Summary = {
   pendingCommissions: { total: number; count: number }
@@ -93,10 +94,11 @@ export default function AdminFinanceiroPage() {
       )}
 
       <Tabs defaultValue="withdrawals">
-        <TabsList>
+        <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="withdrawals">Saques PIX</TabsTrigger>
           <TabsTrigger value="transactions">Extrato</TabsTrigger>
           <TabsTrigger value="bonuses">Bônus & Premiações</TabsTrigger>
+          <TabsTrigger value="saas">Receita SaaS</TabsTrigger>
         </TabsList>
 
         <div className="bg-white rounded-2xl p-4 md:p-6 shadow-md border border-gray-100 mt-4">
@@ -108,6 +110,9 @@ export default function AdminFinanceiroPage() {
           </TabsContent>
           <TabsContent value="bonuses">
             <BonusesTab companyId={companyId} />
+          </TabsContent>
+          <TabsContent value="saas">
+            <SaasTab />
           </TabsContent>
         </div>
       </Tabs>

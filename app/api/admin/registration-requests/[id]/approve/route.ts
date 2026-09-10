@@ -3,6 +3,7 @@ import { requirePlatformAdmin, handleApiError, ApiError } from "@/lib/api-auth"
 import { createPlatformUser } from "@/lib/admin-user"
 import { logAudit } from "@/lib/audit"
 import { payAffiliateSignupBonus } from "@/lib/affiliate"
+import { provisionCompanyWithMaster } from "@/lib/company-provisioning"
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -19,6 +20,40 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       throw new ApiError(400, "Este cadastro já foi avaliado")
     }
 
+    // Link COMPANY_SIGNUP: não cria um User solto — provisiona Company + License + Master.
+    if (registrationRequest.link?.type === "COMPANY_SIGNUP") {
+      if (!registrationRequest.desiredCompanySlug || !registrationRequest.masterName) {
+        throw new ApiError(400, "Cadastro de empresa incompleto")
+      }
+
+      const { company, master } = await provisionCompanyWithMaster({
+        name: registrationRequest.name,
+        slug: registrationRequest.desiredCompanySlug,
+        masterName: registrationRequest.masterName,
+        masterEmail: registrationRequest.email,
+        masterWhatsapp: registrationRequest.phone,
+        plan: registrationRequest.link.plan,
+        isExempt: registrationRequest.link.isExempt,
+        exemptionMonths: registrationRequest.link.exemptionMonths,
+      })
+
+      const updated = await prisma.publicRegistrationRequest.update({
+        where: { id },
+        data: { status: "APPROVED", reviewedById: admin.id, reviewedAt: new Date(), createdUserId: master.id },
+      })
+
+      await logAudit({
+        userId: admin.id,
+        companyId: company.id,
+        action: "APPROVE_REGISTRATION",
+        entity: "PublicRegistrationRequest",
+        entityId: id,
+        details: { createdCompanyId: company.id, createdUserId: master.id },
+      })
+
+      return Response.json(updated)
+    }
+
     // Cadastros vindos de um link tokenizado (admin) herdam o papel do link;
     // cadastros vindos direto de /join/company/[slug] ou /join/partner usam
     // `role` gravado no próprio request (ver app/api/public/**).
@@ -33,6 +68,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       document: registrationRequest.document ?? undefined,
       fullName: registrationRequest.name,
     })
+
+    if (role === "EMPLOYEE" && registrationRequest.sectorId) {
+      await prisma.employeeProfile.update({
+        where: { userId: user.id },
+        data: { sectorId: registrationRequest.sectorId },
+      })
+    }
 
     if (role === "PARTNER" && registrationRequest.affiliateId) {
       const partnerProfile = await prisma.partnerProfile.update({

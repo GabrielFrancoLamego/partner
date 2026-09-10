@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, AdminCard } from "@/components/admin/admin-ui"
+import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
 import { canManageDailyOperations } from "@/lib/permissions"
 
@@ -175,38 +176,68 @@ function EmployeeScheduleTable() {
       {employees.length === 0 ? (
         <EmptyState message="Nenhum colaborador cadastrado ainda." />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs text-gray-500">
-              <tr>
-                <th className="px-4 py-3 font-medium">Colaborador</th>
-                <th className="px-4 py-3 font-medium">Setor</th>
-                <th className="px-4 py-3 font-medium">Turno</th>
-                <th className="px-4 py-3 font-medium">Horário</th>
-                <th className="px-4 py-3 font-medium">Banco de horas</th>
-                <th className="px-4 py-3 font-medium text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {employees.map((e) => (
-                <tr key={e.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-semibold text-[#3E2415]">{e.name}</td>
-                  <td className="px-4 py-3 text-gray-600">{sectors.find((s) => s.id === e.sectorId)?.name ?? "—"}</td>
-                  <td className="px-4 py-3 text-gray-600">{e.shiftType === "DAY" ? "Diurno" : e.shiftType === "NIGHT" ? "Noturno" : "—"}</td>
-                  <td className="px-4 py-3 text-gray-600">{e.workStartTime && e.workEndTime ? `${e.workStartTime} – ${e.workEndTime}` : "—"}</td>
-                  <td className={`px-4 py-3 font-medium ${e.bankOfHoursMinutes < 0 ? "text-red-600" : e.bankOfHoursMinutes > 0 ? "text-green-600" : "text-gray-400"}`}>
-                    {formatBank(e.bankOfHoursMinutes)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Button variant="ghost" size="sm" onClick={() => setEditing(e)}>
-                      Editar
-                    </Button>
-                  </td>
+        <>
+          <TableDesktop>
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-left text-xs text-gray-500">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Colaborador</th>
+                  <th className="px-4 py-3 font-medium">Setor</th>
+                  <th className="px-4 py-3 font-medium">Turno</th>
+                  <th className="px-4 py-3 font-medium">Horário</th>
+                  <th className="px-4 py-3 font-medium">Banco de horas</th>
+                  <th className="px-4 py-3 font-medium text-right">Ações</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {employees.map((e) => (
+                  <tr key={e.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-semibold text-[#3E2415]">{e.name}</td>
+                    <td className="px-4 py-3 text-gray-600">{sectors.find((s) => s.id === e.sectorId)?.name ?? "—"}</td>
+                    <td className="px-4 py-3 text-gray-600">{e.shiftType === "DAY" ? "Diurno" : e.shiftType === "NIGHT" ? "Noturno" : "—"}</td>
+                    <td className="px-4 py-3 text-gray-600">{e.workStartTime && e.workEndTime ? `${e.workStartTime} – ${e.workEndTime}` : "—"}</td>
+                    <td className={`px-4 py-3 font-medium ${e.bankOfHoursMinutes < 0 ? "text-red-600" : e.bankOfHoursMinutes > 0 ? "text-green-600" : "text-gray-400"}`}>
+                      {formatBank(e.bankOfHoursMinutes)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(e)}>
+                        Editar
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableDesktop>
+
+          <MobileCardList>
+            {employees.map((e) => (
+              <MobileCard
+                key={e.id}
+                title={e.name}
+                subtitle={sectors.find((s) => s.id === e.sectorId)?.name ?? "Sem setor"}
+                badges={
+                  <span
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
+                      e.bankOfHoursMinutes < 0 ? "bg-red-50 text-red-600" : e.bankOfHoursMinutes > 0 ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-500"
+                    }`}
+                  >
+                    {formatBank(e.bankOfHoursMinutes)}
+                  </span>
+                }
+                fields={[
+                  { label: "Turno", value: e.shiftType === "DAY" ? "Diurno" : e.shiftType === "NIGHT" ? "Noturno" : "—" },
+                  { label: "Horário", value: e.workStartTime && e.workEndTime ? `${e.workStartTime} – ${e.workEndTime}` : "—" },
+                ]}
+                actions={
+                  <Button variant="ghost" size="sm" onClick={() => setEditing(e)}>
+                    Editar
+                  </Button>
+                }
+              />
+            ))}
+          </MobileCardList>
+        </>
       )}
 
       {editing && (

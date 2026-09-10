@@ -72,7 +72,7 @@ export function MobileCardAction({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium border transition-colors ${
+      className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium border transition-colors cursor-pointer ${
         tone === "danger"
           ? "border-red-200 text-red-600 bg-red-50 active:bg-red-100"
           : "border-gray-200 text-gray-700 bg-gray-50 active:bg-gray-100"

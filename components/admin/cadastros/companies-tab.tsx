@@ -335,6 +335,7 @@ function CompanyDialog({
   const [masterWhatsapp, setMasterWhatsapp] = useState("")
   const [plan, setPlan] = useState<string>("ENTERPRISE")
   const [isExemptNew, setIsExemptNew] = useState(false)
+  const [exemptionMonthsNew, setExemptionMonthsNew] = useState("")
   const [billingDayNew, setBillingDayNew] = useState("")
 
   const [tradeName, setTradeName] = useState(company?.tradeName ?? "")
@@ -370,6 +371,7 @@ function CompanyDialog({
   const [billingCycle, setBillingCycle] = useState(company?.license?.billingCycle ?? "MONTHLY")
   const [expiresAt, setExpiresAt] = useState(company?.license?.expiresAt?.slice(0, 10) ?? "")
   const [isExempt, setIsExempt] = useState(company?.license?.isExempt ?? false)
+  const [exemptionMonths, setExemptionMonths] = useState(company?.license?.exemptionMonths?.toString() ?? "")
   const [billingDay, setBillingDay] = useState(company?.license?.billingDay?.toString() ?? "")
 
   const [isLookingUpCep, setIsLookingUpCep] = useState(false)
@@ -469,6 +471,7 @@ function CompanyDialog({
             billingCycle,
             expiresAt: expiresAt || null,
             isExempt,
+            exemptionMonths: isExempt && exemptionMonths ? Number(exemptionMonths) : null,
             billingDay: billingDay ? Number(billingDay) : null,
           }),
         })
@@ -484,6 +487,7 @@ function CompanyDialog({
             masterWhatsapp: masterWhatsapp || undefined,
             plan,
             isExempt: isExemptNew,
+            exemptionMonths: isExemptNew && exemptionMonthsNew ? Number(exemptionMonthsNew) : undefined,
             billingDay: billingDayNew ? Number(billingDayNew) : undefined,
           }),
         })
@@ -520,7 +524,7 @@ function CompanyDialog({
                 <Label>Nome do Master</Label>
                 <Input value={masterName} onChange={(e) => setMasterName(e.target.value)} required />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Email do Master</Label>
                   <Input type="email" value={masterEmail} onChange={(e) => setMasterEmail(e.target.value)} required />
@@ -538,22 +542,22 @@ function CompanyDialog({
               </div>
 
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide pt-2">Plano & Cobrança</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Plano</Label>
-                  <Select value={plan} onValueChange={setPlan}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {plans.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.label} — {p.maxEmployees} colab. / {p.maxPartners} parc.
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label>Plano</Label>
+                <Select value={plan} onValueChange={setPlan}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {plans.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.label} — {p.maxEmployees} colab. / {p.maxPartners} parc.
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Dia de cobrança</Label>
                   <Input
@@ -565,11 +569,31 @@ function CompanyDialog({
                     placeholder="ex: 5"
                   />
                 </div>
+                {isExemptNew && (
+                  <div className="space-y-2">
+                    <Label>Duração da isenção (meses)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={exemptionMonthsNew}
+                      onChange={(e) => setExemptionMonthsNew(e.target.value)}
+                      placeholder="ex: 2"
+                    />
+                  </div>
+                )}
               </div>
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <Checkbox checked={isExemptNew} onCheckedChange={(v) => setIsExemptNew(v === true)} />
-                Isenta de pagamento (uso interno do grupo)
+                Isentar pagamento
               </label>
+              {isExemptNew && (
+                <p className="text-xs text-gray-400 -mt-2">
+                  {exemptionMonthsNew
+                    ? `Cobrança volta a ficar ativa automaticamente após ${exemptionMonthsNew} ${Number(exemptionMonthsNew) === 1 ? "mês" : "meses"}.`
+                    : "Deixe em branco para isenção sem prazo (reverta manualmente quando quiser)."}
+                </p>
+              )}
             </div>
           )}
 
@@ -582,7 +606,7 @@ function CompanyDialog({
               </TabsList>
 
               <TabsContent value="dados" className="space-y-4 pt-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Nome Fantasia</Label>
                     <Input value={tradeName} onChange={(e) => setTradeName(e.target.value)} />
@@ -616,7 +640,7 @@ function CompanyDialog({
                   <Label>Endereço</Label>
                   <Input value={address} onChange={(e) => setAddress(e.target.value)} />
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-2">
                     <Label>Bairro</Label>
                     <Input value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} />
@@ -634,7 +658,7 @@ function CompanyDialog({
                   <Label>Descrição curta</Label>
                   <Textarea value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} />
                 </div>
-                <div className="grid grid-cols-3 gap-3 pt-2 border-t border-gray-100">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-gray-100">
                   <div className="space-y-2">
                     <Label>Latitude</Label>
                     <Input type="number" step="0.000001" value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="-2.797500" />
@@ -663,7 +687,7 @@ function CompanyDialog({
 
                 <div className="space-y-3 pt-2 border-t border-gray-100">
                   <Label>Horário de funcionamento (até 2 turnos/dia)</Label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <p className="text-xs text-gray-500">Turno 1 — início</p>
                       <Input type="time" value={shift1Start} onChange={(e) => setShift1Start(e.target.value)} />
@@ -686,7 +710,7 @@ function CompanyDialog({
               </TabsContent>
 
               <TabsContent value="contato" className="space-y-4 pt-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Telefone</Label>
                     <Input value={phone} onChange={(e) => setPhone(formatPhone(e.target.value))} />
@@ -702,7 +726,7 @@ function CompanyDialog({
                   <Label>Site</Label>
                   <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-2">
                     <Label>Instagram</Label>
                     <Input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@perfil" />
@@ -749,7 +773,7 @@ function CompanyDialog({
               </TabsContent>
 
               <TabsContent value="licenca" className="space-y-4 pt-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Plano</Label>
                     <Select value={editPlan} onValueChange={setEditPlan}>
@@ -781,7 +805,7 @@ function CompanyDialog({
                     </Select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Limite de colaboradores</Label>
                     <Input type="number" value={maxEmployees} onChange={(e) => setMaxEmployees(e.target.value)} />
@@ -791,7 +815,7 @@ function CompanyDialog({
                     <Input type="number" value={maxPartners} onChange={(e) => setMaxPartners(e.target.value)} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Ciclo de cobrança</Label>
                     <Select value={billingCycle} onValueChange={setBillingCycle}>
@@ -809,15 +833,41 @@ function CompanyDialog({
                     <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Dia de cobrança</Label>
-                    <Input type="number" min={1} max={28} value={billingDay} onChange={(e) => setBillingDay(e.target.value)} />
-                  </div>
-                  <label className="flex items-center gap-2 text-sm text-gray-700 pt-6">
+                <div className="space-y-2">
+                  <Label>Dia de cobrança</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={28}
+                    value={billingDay}
+                    onChange={(e) => setBillingDay(e.target.value)}
+                    className="w-full sm:w-40"
+                  />
+                </div>
+                <div className="space-y-2 pt-2 border-t border-gray-100">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
                     <Checkbox checked={isExempt} onCheckedChange={(v) => setIsExempt(v === true)} />
-                    Isenta de pagamento
+                    Isentar pagamento
                   </label>
+                  {isExempt && (
+                    <div className="space-y-2 pt-1">
+                      <Label>Duração da isenção (meses)</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={exemptionMonths}
+                        onChange={(e) => setExemptionMonths(e.target.value)}
+                        placeholder="ex: 2"
+                        className="w-full sm:w-40"
+                      />
+                      <p className="text-xs text-gray-400">
+                        {exemptionMonths
+                          ? `Cobrança volta a ficar ativa automaticamente após ${exemptionMonths} ${Number(exemptionMonths) === 1 ? "mês" : "meses"}${company?.license?.exemptionExpiresAt ? ` (vence em ${new Date(company.license.exemptionExpiresAt).toLocaleDateString("pt-BR")})` : ""}.`
+                          : "Deixe em branco para isenção sem prazo."}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </TabsContent>
             </Tabs>

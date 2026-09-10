@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { adminFetch } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, StatusBadge } from "@/components/admin/admin-ui"
+import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 
 type Commission = {
   id: string
@@ -66,7 +67,24 @@ export default function PartnerCommissionsPage() {
       ) : commissions.length === 0 ? (
         <EmptyState message="Nenhuma comissão encontrada para este filtro." />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+        <>
+          <MobileCardList>
+            {commissions.map((c) => (
+              <MobileCard
+                key={c.id}
+                title={c.clientName}
+                subtitle={`${c.company.name}${c.promotion ? ` · ${c.promotion.title}` : ""}`}
+                badges={<StatusBadge status={c.status} />}
+                fields={[
+                  { label: "Data", value: new Date(c.date).toLocaleDateString("pt-BR") },
+                  { label: "Valor da conta", value: currency(c.amount) },
+                  { label: "Comissão", value: currency(c.commissionValue) },
+                ]}
+              />
+            ))}
+          </MobileCardList>
+
+          <TableDesktop>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs text-gray-500">
               <tr>
@@ -96,7 +114,8 @@ export default function PartnerCommissionsPage() {
               ))}
             </tbody>
           </table>
-        </div>
+          </TableDesktop>
+        </>
       )}
     </div>
   )

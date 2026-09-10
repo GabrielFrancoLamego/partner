@@ -18,10 +18,12 @@ import {
   Award,
   Users2,
   Target,
+  Gift,
+  MessagesSquare,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Role } from "@prisma/client"
-import { canManageDailyOperations, canManageFinance, canOperateFrontDesk } from "@/lib/permissions"
+import { canManageDailyOperations, canManageFinance, canOperateFrontDesk, canConfigureCompany } from "@/lib/permissions"
 import { CompanyUserProvider, type CompanyUser } from "@/lib/company-user-context"
 import { TermAcceptanceGate } from "./term-acceptance-gate"
 
@@ -34,15 +36,21 @@ const ROLE_LABELS: Record<Role, string> = {
   PARTNER: "Parceiro",
 }
 
-type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; show: (user: CompanyUser) => boolean }
+type NavItem = {
+  href: string
+  label: string
+  shortLabel?: string
+  icon: typeof LayoutDashboard
+  show: (user: CompanyUser) => boolean
+}
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/company", label: "Dashboard", icon: LayoutDashboard, show: () => true },
   { href: "/company/mural", label: "Mural", icon: Newspaper, show: () => true },
-  { href: "/company/ponto", label: "Ponto Digital", icon: Clock, show: (u) => canOperateFrontDesk(u.role) },
-  { href: "/company/checklists", label: "Checklists", icon: ListChecks, show: (u) => canOperateFrontDesk(u.role) },
-  { href: "/company/pdv", label: "Scanner PDV", icon: ScanLine, show: (u) => canOperateFrontDesk(u.role) },
-  { href: "/company/avaliacoes", label: "Avaliação Diária", icon: ClipboardCheck, show: () => true },
+  { href: "/company/ponto", label: "Ponto Digital", shortLabel: "Ponto", icon: Clock, show: (u) => canOperateFrontDesk(u.role) },
+  { href: "/company/checklists", label: "Checklists", shortLabel: "Checklist", icon: ListChecks, show: (u) => canOperateFrontDesk(u.role) },
+  { href: "/company/pdv", label: "Scanner PDV", shortLabel: "Scanner", icon: ScanLine, show: (u) => canOperateFrontDesk(u.role) },
+  { href: "/company/avaliacoes", label: "Avaliação Diária", shortLabel: "Avaliação", icon: ClipboardCheck, show: () => true },
   { href: "/company/crescimento", label: "Crescimento", icon: Trophy, show: () => true },
   {
     href: "/company/ocorrencias",
@@ -52,8 +60,11 @@ const NAV_ITEMS: NavItem[] = [
   },
   { href: "/company/fechamento", label: "Fechamento", icon: FileClock, show: (u) => canManageDailyOperations(u.role) },
   { href: "/company/metas", label: "Metas", icon: Target, show: () => true },
-  { href: "/company/programa-interno", label: "Programa Interno", icon: Award, show: (u) => canManageDailyOperations(u.role) },
+  { href: "/company/programa-interno", label: "Programa Interno", shortLabel: "Interno", icon: Award, show: (u) => canManageDailyOperations(u.role) },
   { href: "/company/setores", label: "Setores", icon: Users2, show: (u) => canManageDailyOperations(u.role) },
+  { href: "/company/programas", label: "Programa de Parceria", shortLabel: "Parceria", icon: Award, show: (u) => canConfigureCompany(u.role) },
+  { href: "/company/promocoes", label: "Promoções", icon: Gift, show: (u) => canConfigureCompany(u.role) },
+  { href: "/company/comunicacao", label: "Comunicação", icon: MessagesSquare, show: () => true },
   { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: (u) => canManageFinance(u.role) },
 ]
 
@@ -134,7 +145,7 @@ export function CompanyShell({ user, children }: { user: CompanyUser; children: 
               Sair
             </button>
           </div>
-          <div className="flex gap-1 overflow-x-auto px-3 pb-2 scrollbar-hide">
+          <div className="flex gap-1.5 overflow-x-auto whitespace-nowrap px-3 pb-2 scrollbar-hide">
             {items.map((item) => {
               const Icon = item.icon
               const active = isActive(item.href)
@@ -143,12 +154,14 @@ export function CompanyShell({ user, children }: { user: CompanyUser; children: 
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex flex-shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors",
+                    "flex flex-shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2.5 py-2 min-w-[60px] text-center transition-colors",
                     active ? "bg-[#3E2415] text-white" : "bg-[#F7F5F2] text-[#3E2415]",
                   )}
                 >
-                  <Icon className="h-3.5 w-3.5" />
-                  {item.label}
+                  <Icon className="h-5 w-5" />
+                  <span className="text-[10px] font-medium leading-tight whitespace-nowrap">
+                    {item.shortLabel ?? item.label}
+                  </span>
                 </Link>
               )
             })}

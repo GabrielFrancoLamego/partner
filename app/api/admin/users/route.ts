@@ -13,14 +13,22 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const companyId = searchParams.get("companyId")
     const role = searchParams.get("role")
+    const q = searchParams.get("q")?.trim()
 
+    // Busca textual (usada pelo seletor de "Novo Chamado") enxerga TODOS os
+    // papéis, inclusive Parceiro — a listagem padrão (sem `q`) continua só
+    // staff, para não quebrar telas que já esperam esse recorte.
     const users = await prisma.user.findMany({
       where: {
-        role: role ? (role as (typeof STAFF_ROLES)[number]) : { in: [...STAFF_ROLES] },
+        role: role ? (role as (typeof STAFF_ROLES)[number]) : q ? undefined : { in: [...STAFF_ROLES] },
         ...(companyId && companyId !== "all" ? { companyId } : {}),
+        ...(q
+          ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }] }
+          : {}),
       },
       include: { company: { select: { id: true, name: true } } },
       orderBy: { createdAt: "desc" },
+      take: q ? 20 : undefined,
     })
 
     return Response.json(users)

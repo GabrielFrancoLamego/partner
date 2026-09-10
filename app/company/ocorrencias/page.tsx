@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, AdminCard, StatusBadge } from "@/components/admin/admin-ui"
+import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
 import { canManageDailyOperations } from "@/lib/permissions"
 
@@ -191,7 +192,38 @@ function ManagerOccurrences() {
         ) : occurrences.length === 0 ? (
           <EmptyState message="Nenhuma ocorrência registrada neste mês." />
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+          <>
+            <MobileCardList>
+              {occurrences.map((o) => (
+                <MobileCard
+                  key={o.id}
+                  title={o.employee?.name ?? o.employeeNameFreeText ?? "—"}
+                  subtitle={new Date(o.date).toLocaleDateString("pt-BR")}
+                  badges={<StatusBadge status={o.paymentStatus} />}
+                  fields={[
+                    { label: "Tipo", value: TYPE_LABELS[o.type] ?? o.type },
+                    { label: "Total", value: currency(o.total) },
+                    { label: "Pagamento", value: o.paymentMethod ? PAYMENT_METHOD_LABELS[o.paymentMethod] : "—" },
+                  ]}
+                  actions={
+                    <>
+                      {o.attachmentUrl && (
+                        <a href={o.attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#F58220] underline">
+                          Ver anexo
+                        </a>
+                      )}
+                      {o.paymentStatus === "PENDING" && o.total !== null && (
+                        <MobileCardAction icon={CheckCircle2} label="Marcar como pago" onClick={() => handleMarkPaid(o)} />
+                      )}
+                      <MobileCardAction icon={Pencil} label="Editar" onClick={() => setEditing(o)} />
+                      <MobileCardAction icon={Trash2} label="Excluir" tone="danger" onClick={() => handleDelete(o)} />
+                    </>
+                  }
+                />
+              ))}
+            </MobileCardList>
+
+            <TableDesktop>
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left text-xs text-gray-500">
                 <tr>
@@ -255,7 +287,8 @@ function ManagerOccurrences() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </TableDesktop>
+          </>
         )}
       </TabsContent>
 

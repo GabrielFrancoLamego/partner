@@ -8,6 +8,7 @@ import { adminFetch } from "@/lib/admin-api-client"
 import { useCompanies } from "@/components/admin/use-companies"
 import { CompanyFilter } from "@/components/admin/admin-filters"
 import { LoadingState, EmptyState } from "@/components/admin/admin-ui"
+import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 
 type AuditLog = {
   id: string
@@ -81,54 +82,89 @@ export default function AdminAuditoriaPage() {
         ) : logs.length === 0 ? (
           <EmptyState message="Nenhum registro de auditoria encontrado para os filtros selecionados." />
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-100">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-left text-xs text-gray-500">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Data</th>
-                  <th className="px-4 py-3 font-medium">Usuário</th>
-                  <th className="px-4 py-3 font-medium">Ação</th>
-                  <th className="px-4 py-3 font-medium">Entidade</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {logs.map((log) => (
-                  <Fragment key={log.id}>
-                    <tr
-                      className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => setExpanded(expanded === log.id ? null : log.id)}
-                    >
-                      <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                        {new Date(log.createdAt).toLocaleString("pt-BR")}
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-[#3E2415]">{log.user.name}</p>
-                        <p className="text-xs text-gray-400">{log.user.role}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                          {log.action}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">
-                        {log.entity}
-                        {log.entityId ? ` #${log.entityId.slice(0, 8)}` : ""}
-                      </td>
-                    </tr>
-                    {expanded === log.id && log.details != null && (
-                      <tr>
-                        <td colSpan={4} className="px-4 py-3 bg-gray-50">
-                          <pre className="text-xs text-gray-600 whitespace-pre-wrap break-all">
-                            {JSON.stringify(log.details, null, 2)}
-                          </pre>
+          <>
+            <TableDesktop>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-left text-xs text-gray-500">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Data</th>
+                    <th className="px-4 py-3 font-medium">Usuário</th>
+                    <th className="px-4 py-3 font-medium">Ação</th>
+                    <th className="px-4 py-3 font-medium">Entidade</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {logs.map((log) => (
+                    <Fragment key={log.id}>
+                      <tr
+                        className="hover:bg-gray-50 cursor-pointer"
+                        onClick={() => setExpanded(expanded === log.id ? null : log.id)}
+                      >
+                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                          {new Date(log.createdAt).toLocaleString("pt-BR")}
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-[#3E2415]">{log.user.name}</p>
+                          <p className="text-xs text-gray-400">{log.user.role}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                            {log.action}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {log.entity}
+                          {log.entityId ? ` #${log.entityId.slice(0, 8)}` : ""}
                         </td>
                       </tr>
-                    )}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      {expanded === log.id && log.details != null && (
+                        <tr>
+                          <td colSpan={4} className="px-4 py-3 bg-gray-50">
+                            <pre className="text-xs text-gray-600 whitespace-pre-wrap break-all">
+                              {JSON.stringify(log.details, null, 2)}
+                            </pre>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </TableDesktop>
+
+            <MobileCardList>
+              {logs.map((log) => (
+                <div
+                  key={log.id}
+                  onClick={() => setExpanded(expanded === log.id ? null : log.id)}
+                  className="cursor-pointer"
+                >
+                  <MobileCard
+                    title={log.user.name}
+                    subtitle={`${log.user.role} · ${new Date(log.createdAt).toLocaleString("pt-BR")}`}
+                    badges={
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                        {log.action}
+                      </span>
+                    }
+                    fields={[
+                      {
+                        label: "Entidade",
+                        value: `${log.entity}${log.entityId ? ` #${log.entityId.slice(0, 8)}` : ""}`,
+                      },
+                    ]}
+                    actions={
+                      expanded === log.id && log.details != null ? (
+                        <pre className="w-full text-xs text-gray-600 whitespace-pre-wrap break-all">
+                          {JSON.stringify(log.details, null, 2)}
+                        </pre>
+                      ) : undefined
+                    }
+                  />
+                </div>
+              ))}
+            </MobileCardList>
+          </>
         )}
       </div>
     </div>

@@ -1,16 +1,18 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Power, Trash2, Check, X, Camera } from "lucide-react"
+import { Plus, Power, Trash2, Check, X, Camera, Undo2, PartyPopper, RefreshCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, StatusBadge } from "@/components/admin/admin-ui"
+import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
 import { canManageDailyOperations } from "@/lib/permissions"
 
@@ -21,17 +23,44 @@ const RECURRENCE_LABELS: Record<string, string> = {
   MONTHLY: "Mensal",
   BIMONTHLY: "Bimestral",
   TRIMONTHLY: "Trimestral",
+  SEMIANNUAL: "Semestral",
+  ANNUAL: "Anual",
 }
+
+const WEEKDAY_LABELS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"]
+
+const MONTH_LABELS = [
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+]
+
+type Employee = { id: string; name: string }
 
 type Template = {
   id: string
   title: string
   description: string | null
   recurrence: string
+  recurrenceDayOfWeek: number | null
+  recurrenceDayOfMonth: number | null
+  recurrenceAnchorMonth: number | null
   priority: string
   dueTime: string
+  requiresPhoto: boolean
   active: boolean
   unit: { id: string; name: string } | null
+  primaryEmployee: Employee | null
+  secondaryEmployee: Employee | null
   _count: { instances: number }
 }
 
@@ -39,13 +68,16 @@ type ChecklistInstance = {
   id: string
   title: string
   notes: string | null
-  photoUrl: string
+  photoUrl: string | null
   priority: string
   status: string
   dueAt: string | null
+  forDate: string
   createdAt: string
+  isAutoReassigned: boolean
+  rejectionReason: string | null
   employee: { id: string; name: string }
-  template: { id: string; title: string } | null
+  template: { id: string; title: string; requiresPhoto: boolean } | null
 }
 
 export default function CompanyChecklistsPage() {
@@ -64,21 +96,73 @@ export default function CompanyChecklistsPage() {
   )
 }
 
+function EfficiencyBar({ percent, onCelebrationSeen }: { percent: number; onCelebrationSeen: () => void }) {
+  const [showCelebration, setShowCelebration] = useState(false)
+  const [seen, setSeen] = useState(false)
+
+  useEffect(() => {
+    if (percent >= 100 && !seen) {
+      setShowCelebration(true)
+      setSeen(true)
+    }
+  }, [percent, seen])
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-medium text-gray-600">Eficiência do dia</span>
+        <span className="font-bold text-[#3E2415]">{percent}%</span>
+      </div>
+      <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] transition-all duration-700 ease-out"
+          style={{ width: `${Math.min(100, percent)}%` }}
+        />
+      </div>
+
+      {showCelebration && (
+        <Dialog open onOpenChange={() => setShowCelebration(false)}>
+          <DialogContent className="text-center">
+            <div className="py-6 space-y-3">
+              <PartyPopper className="h-12 w-12 text-[#FB9C08] mx-auto animate-bounce" />
+              <p className="text-lg font-bold text-[#3E2415]">100% concluído hoje!</p>
+              <p className="text-sm text-gray-500">+5 XP · Medalha do dia conquistada 🎉</p>
+              <Button
+                onClick={() => {
+                  setShowCelebration(false)
+                  onCelebrationSeen()
+                }}
+                className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white"
+              >
+                Fechar
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  )
+}
+
 function EmployeeView() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [instances, setInstances] = useState<ChecklistInstance[]>([])
+  const [efficiency, setEfficiency] = useState<{ total: number; approved: number; percent: number } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [executing, setExecuting] = useState<Template | "custom" | null>(null)
+  const [submitting, setSubmitting] = useState<ChecklistInstance | null>(null)
+  const [markingNotExecuted, setMarkingNotExecuted] = useState<ChecklistInstance | null>(null)
 
   const reload = () => {
     setIsLoading(true)
     Promise.all([
       adminFetch<Template[]>("/api/company/checklists/templates"),
-      adminFetch<ChecklistInstance[]>("/api/company/checklists"),
+      adminFetch<{ checklists: ChecklistInstance[]; efficiency: typeof efficiency }>("/api/company/checklists"),
     ])
-      .then(([t, i]) => {
+      .then(([t, res]) => {
         setTemplates(t)
-        setInstances(i)
+        setInstances(res.checklists)
+        setEfficiency(res.efficiency)
       })
       .finally(() => setIsLoading(false))
   }
@@ -86,15 +170,80 @@ function EmployeeView() {
 
   if (isLoading) return <LoadingState />
 
+  const pending = instances.filter((i) => i.status === "PENDING")
+  const awaitingReview = instances.filter((i) => i.status === "SUBMITTED")
+  const finished = instances.filter((i) => ["APPROVED", "REJECTED"].includes(i.status)).slice(0, 20)
+  const freeTemplates = templates.filter((t) => !t.primaryEmployee)
+
   return (
     <div className="space-y-6">
+      {efficiency && efficiency.total > 0 && (
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <EfficiencyBar percent={efficiency.percent} onCelebrationSeen={reload} />
+        </div>
+      )}
+
+      {pending.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-semibold text-[#3E2415]">Minhas tarefas de hoje</h4>
+          <div className="grid gap-2">
+            {pending.map((i) => (
+              <div key={i.id} className="p-3 rounded-xl border border-gray-100 bg-white">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-medium text-[#3E2415] text-sm">{i.title}</p>
+                  <StatusBadge status={i.priority} />
+                  {i.isAutoReassigned && (
+                    <span className="text-[10px] font-medium text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">
+                      Reatribuída a você
+                    </span>
+                  )}
+                </div>
+                {i.dueAt && <p className="text-xs text-gray-500 mt-0.5">Prazo: {new Date(i.dueAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>}
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <Button size="sm" variant="outline" disabled className="text-xs">
+                    Em andamento
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setSubmitting(i)}
+                    className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white text-xs"
+                  >
+                    <Camera className="h-3.5 w-3.5 mr-1" /> Concluído
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setMarkingNotExecuted(i)} className="text-xs text-red-600 border-red-200">
+                    Não executado
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {awaitingReview.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-semibold text-[#3E2415]">Aguardando aprovação da Gerente</h4>
+          <div className="grid gap-2">
+            {awaitingReview.map((i) => (
+              <div key={i.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-white">
+                <div>
+                  <p className="font-medium text-[#3E2415] text-sm">{i.title}</p>
+                  <p className="text-xs text-gray-500">Entregue em {new Date(i.createdAt).toLocaleString("pt-BR")}</p>
+                </div>
+                <StatusBadge status={i.status} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3">
-        <h4 className="font-semibold text-[#3E2415]">Tarefas de hoje</h4>
-        {templates.length === 0 ? (
-          <EmptyState message="Nenhuma tarefa recorrente configurada." />
+        <h4 className="font-semibold text-[#3E2415]">Tarefas livres (sem responsável fixo)</h4>
+        {freeTemplates.length === 0 ? (
+          <EmptyState message="Nenhuma tarefa livre configurada." />
         ) : (
           <div className="grid gap-2">
-            {templates.map((t) => (
+            {freeTemplates.map((t) => (
               <div key={t.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-white">
                 <div>
                   <p className="font-medium text-[#3E2415] text-sm">{t.title}</p>
@@ -114,24 +263,23 @@ function EmployeeView() {
         </Button>
       </div>
 
-      <div className="space-y-3">
-        <h4 className="font-semibold text-[#3E2415]">Minhas execuções</h4>
-        {instances.length === 0 ? (
-          <EmptyState message="Nenhuma execução registrada ainda." />
-        ) : (
+      {finished.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-semibold text-[#3E2415]">Histórico recente</h4>
           <div className="grid gap-2">
-            {instances.map((i) => (
+            {finished.map((i) => (
               <div key={i.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-white">
                 <div>
                   <p className="font-medium text-[#3E2415] text-sm">{i.title}</p>
                   <p className="text-xs text-gray-500">{new Date(i.createdAt).toLocaleString("pt-BR")}</p>
+                  {i.rejectionReason && <p className="text-xs text-red-500 mt-0.5">{i.rejectionReason}</p>}
                 </div>
                 <StatusBadge status={i.status} />
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {executing && (
         <ExecuteDialog
@@ -143,7 +291,140 @@ function EmployeeView() {
           }}
         />
       )}
+
+      {submitting && (
+        <SubmitCompleteDialog
+          checklist={submitting}
+          onClose={() => setSubmitting(null)}
+          onDone={() => {
+            setSubmitting(null)
+            reload()
+          }}
+        />
+      )}
+
+      {markingNotExecuted && (
+        <SubmitNotExecutedDialog
+          checklist={markingNotExecuted}
+          onClose={() => setMarkingNotExecuted(null)}
+          onDone={() => {
+            setMarkingNotExecuted(null)
+            reload()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+function SubmitCompleteDialog({ checklist, onClose, onDone }: { checklist: ChecklistInstance; onClose: () => void; onDone: () => void }) {
+  const requiresPhoto = checklist.template?.requiresPhoto ?? true
+  const [notes, setNotes] = useState("")
+  const [file, setFile] = useState<File | null>(null)
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    if (requiresPhoto && !file) {
+      setError("Foto de comprovação é obrigatória")
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      const body = new FormData()
+      body.append("action", "COMPLETE")
+      if (notes) body.append("notes", notes)
+      if (file) body.append("file", file)
+      await adminFetch(`/api/company/checklists/${checklist.id}/submit`, { method: "POST", body })
+      onDone()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao entregar tarefa")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Concluir "{checklist.title}"</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="space-y-2">
+            <Label>Observações (opcional)</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>{requiresPhoto ? "Foto de comprovação *" : "Foto (opcional)"}</Label>
+            <Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required={requiresPhoto} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+              Enviar
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function SubmitNotExecutedDialog({ checklist, onClose, onDone }: { checklist: ChecklistInstance; onClose: () => void; onDone: () => void }) {
+  const [justification, setJustification] = useState("")
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    if (!justification.trim()) {
+      setError("Justifique por que a tarefa não foi executada")
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      const body = new FormData()
+      body.append("action", "NOT_EXECUTED")
+      body.append("justification", justification)
+      await adminFetch(`/api/company/checklists/${checklist.id}/submit`, { method: "POST", body })
+      onDone()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao registrar")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Não executado: "{checklist.title}"</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="space-y-2">
+            <Label>Justificativa *</Label>
+            <Textarea value={justification} onChange={(e) => setJustification(e.target.value)} required />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className="bg-red-600 hover:bg-red-700 text-white">
+              Enviar justificativa
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -215,31 +496,97 @@ function ExecuteDialog({ template, onClose, onDone }: { template: Template | nul
 
 function ManagerView() {
   return (
-    <Tabs defaultValue="templates">
-      <TabsList>
+    <Tabs defaultValue="master">
+      <TabsList className="flex-wrap h-auto">
+        <TabsTrigger value="master">Checklist Master</TabsTrigger>
         <TabsTrigger value="templates">Tarefas Recorrentes</TabsTrigger>
-        <TabsTrigger value="instances">Execuções</TabsTrigger>
+        <TabsTrigger value="review">Aprovações</TabsTrigger>
       </TabsList>
       <div className="bg-white rounded-2xl p-4 md:p-6 shadow-md border border-gray-100 mt-4">
+        <TabsContent value="master">
+          <MasterTab />
+        </TabsContent>
         <TabsContent value="templates">
           <TemplatesTab />
         </TabsContent>
-        <TabsContent value="instances">
-          <InstancesTab />
+        <TabsContent value="review">
+          <ReviewTab />
         </TabsContent>
       </div>
     </Tabs>
   )
 }
 
+/** Visão consolidada de TODAS as tarefas de hoje da empresa — quem é o responsável atual, prazo e status em tempo real. */
+function MasterTab() {
+  const [instances, setInstances] = useState<ChecklistInstance[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  const reload = () => {
+    setIsLoading(true)
+    adminFetch<{ checklists: ChecklistInstance[] }>("/api/company/checklists?scope=team")
+      .then((res) => setInstances(res.checklists))
+      .finally(() => setIsLoading(false))
+  }
+  useEffect(reload, [])
+
+  if (isLoading) return <LoadingState />
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const todays = instances.filter((i) => new Date(i.forDate).getTime() === today.getTime())
+
+  if (todays.length === 0) return <EmptyState message="Nenhuma tarefa atribuída para hoje." />
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={reload}>
+          <RefreshCcw className="h-3.5 w-3.5 mr-1" /> Atualizar
+        </Button>
+      </div>
+      <div className="grid gap-2">
+        {todays.map((i) => (
+          <div key={i.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 flex-wrap">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-medium text-[#3E2415] text-sm">{i.title}</p>
+                <StatusBadge status={i.status} />
+                {i.isAutoReassigned && (
+                  <span className="text-[10px] font-medium text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">
+                    Reatribuída
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Responsável: {i.employee.name}
+                {i.dueAt && ` · Prazo: ${new Date(i.dueAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function TemplatesTab() {
   const [templates, setTemplates] = useState<Template[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
 
   const reload = () => {
     setIsLoading(true)
-    adminFetch<Template[]>("/api/company/checklists/templates").then(setTemplates).finally(() => setIsLoading(false))
+    Promise.all([
+      adminFetch<Template[]>("/api/company/checklists/templates"),
+      adminFetch<Employee[]>("/api/company/employees"),
+    ])
+      .then(([t, e]) => {
+        setTemplates(t)
+        setEmployees(e)
+      })
+      .finally(() => setIsLoading(false))
   }
   useEffect(reload, [])
 
@@ -270,15 +617,25 @@ function TemplatesTab() {
       ) : (
         <div className="grid gap-2">
           {templates.map((t) => (
-            <div key={t.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100">
-              <div>
+            <div key={t.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 flex-wrap">
+              <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-medium text-[#3E2415] text-sm">{t.title}</p>
                   <StatusBadge status={t.priority} />
                   <StatusBadge status={t.active ? "ACTIVE" : "INACTIVE"} />
                 </div>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {RECURRENCE_LABELS[t.recurrence]} até às {t.dueTime} · {t._count.instances} execuções
+                  {RECURRENCE_LABELS[t.recurrence]}
+                  {t.recurrenceDayOfWeek != null && ` · ${WEEKDAY_LABELS[t.recurrenceDayOfWeek]}`}
+                  {t.recurrenceDayOfMonth != null && ` · dia ${t.recurrenceDayOfMonth === -1 ? "último" : t.recurrenceDayOfMonth}`}
+                  {["BIMONTHLY", "TRIMONTHLY", "SEMIANNUAL", "ANNUAL"].includes(t.recurrence) &&
+                    ` · a partir de ${MONTH_LABELS[t.recurrenceAnchorMonth ?? 0]}`}
+                  {" "}até às {t.dueTime} · {t._count.instances} execuções
+                </p>
+                <p className="text-xs text-gray-500">
+                  Principal: {t.primaryEmployee?.name ?? "livre (qualquer colaborador)"}
+                  {t.secondaryEmployee && ` · Secundário: ${t.secondaryEmployee.name}`}
+                  {!t.requiresPhoto && " · sem exigência de foto"}
                 </p>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
@@ -295,6 +652,7 @@ function TemplatesTab() {
       )}
       {isCreateOpen && (
         <TemplateDialog
+          employees={employees}
           onClose={() => setIsCreateOpen(false)}
           onCreated={() => {
             setIsCreateOpen(false)
@@ -306,14 +664,24 @@ function TemplatesTab() {
   )
 }
 
-function TemplateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function TemplateDialog({ employees, onClose, onCreated }: { employees: Employee[]; onClose: () => void; onCreated: () => void }) {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [recurrence, setRecurrence] = useState("DAILY")
+  const [dayOfWeek, setDayOfWeek] = useState<string>("none")
+  const [dayOfMonth, setDayOfMonth] = useState<string>("none")
+  const [anchorMonth, setAnchorMonth] = useState<string>("0")
   const [priority, setPriority] = useState("MEDIUM")
   const [dueTime, setDueTime] = useState("18:00")
+  const [requiresPhoto, setRequiresPhoto] = useState(true)
+  const [primaryEmployeeId, setPrimaryEmployeeId] = useState<string>("none")
+  const [secondaryEmployeeId, setSecondaryEmployeeId] = useState<string>("none")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const showWeekday = recurrence === "WEEKLY" || recurrence === "FORTNIGHTLY"
+  const showMonthDay = ["MONTHLY", "BIMONTHLY", "TRIMONTHLY", "SEMIANNUAL", "ANNUAL"].includes(recurrence)
+  const showAnchorMonth = ["BIMONTHLY", "TRIMONTHLY", "SEMIANNUAL", "ANNUAL"].includes(recurrence)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -322,7 +690,19 @@ function TemplateDialog({ onClose, onCreated }: { onClose: () => void; onCreated
     try {
       await adminFetch("/api/company/checklists/templates", {
         method: "POST",
-        body: JSON.stringify({ title, description, recurrence, priority, dueTime }),
+        body: JSON.stringify({
+          title,
+          description,
+          recurrence,
+          recurrenceDayOfWeek: showWeekday && dayOfWeek !== "none" ? Number(dayOfWeek) : null,
+          recurrenceDayOfMonth: showMonthDay && dayOfMonth !== "none" ? Number(dayOfMonth) : null,
+          recurrenceAnchorMonth: showAnchorMonth ? Number(anchorMonth) : null,
+          priority,
+          dueTime,
+          requiresPhoto,
+          primaryEmployeeId: primaryEmployeeId !== "none" ? primaryEmployeeId : null,
+          secondaryEmployeeId: secondaryEmployeeId !== "none" ? secondaryEmployeeId : null,
+        }),
       })
       onCreated()
     } catch (e) {
@@ -348,7 +728,7 @@ function TemplateDialog({ onClose, onCreated }: { onClose: () => void; onCreated
             <Label>Descrição</Label>
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Recorrência</Label>
               <Select value={recurrence} onValueChange={setRecurrence}>
@@ -378,10 +758,119 @@ function TemplateDialog({ onClose, onCreated }: { onClose: () => void; onCreated
               </Select>
             </div>
           </div>
+
+          {showWeekday && (
+            <div className="space-y-2">
+              <Label>Dia da semana</Label>
+              <Select value={dayOfWeek} onValueChange={setDayOfWeek}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Qualquer dia" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Qualquer dia</SelectItem>
+                  {WEEKDAY_LABELS.map((label, idx) => (
+                    <SelectItem key={idx} value={String(idx)}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {showMonthDay && (
+            <div className="space-y-2">
+              <Label>Dia do mês</Label>
+              <Select value={dayOfMonth} onValueChange={setDayOfMonth}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Qualquer dia" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Qualquer dia</SelectItem>
+                  <SelectItem value="-1">Último dia do mês</SelectItem>
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                    <SelectItem key={d} value={String(d)}>
+                      Dia {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {showAnchorMonth && (
+            <div className="space-y-2">
+              <Label>Mês de início/âncora</Label>
+              <Select value={anchorMonth} onValueChange={setAnchorMonth}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MONTH_LABELS.map((label, idx) => (
+                    <SelectItem key={idx} value={String(idx)}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-400">
+                Define a partir de qual mês o ciclo passa a se repetir (ex: trimestral a partir de fevereiro = fev/mai/ago/nov).
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label>Horário limite diário</Label>
             <Input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} required />
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <Checkbox checked={requiresPhoto} onCheckedChange={(v) => setRequiresPhoto(v === true)} />
+            Exige foto de comprovação na entrega
+          </label>
+
+          <div className="space-y-3 pt-2 border-t border-gray-100">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Responsáveis (opcional)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Principal</Label>
+                <Select value={primaryEmployeeId} onValueChange={setPrimaryEmployeeId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Livre (qualquer colaborador)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Livre (qualquer colaborador)</SelectItem>
+                    {employees.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Secundário</Label>
+                <Select value={secondaryEmployeeId} onValueChange={setSecondaryEmployeeId} disabled={primaryEmployeeId === "none"}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Nenhum" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhum</SelectItem>
+                    {employees.filter((e) => e.id !== primaryEmployeeId).map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400">
+              Com principal definido, a tarefa é atribuída automaticamente todo dia. Se ele faltar (sem check-in ou
+              inativo), cai no secundário; se os dois faltarem, cai no Checklist Master da Gerente.
+            </p>
+          </div>
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
@@ -396,69 +885,205 @@ function TemplateDialog({ onClose, onCreated }: { onClose: () => void; onCreated
   )
 }
 
-function InstancesTab() {
+/** Double-check: Aprovar / Devolver / Não entregue (com justificativa) das tarefas entregues pelos colaboradores. */
+function ReviewTab() {
   const [instances, setInstances] = useState<ChecklistInstance[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [returning, setReturning] = useState<ChecklistInstance | null>(null)
+  const [rejecting, setRejecting] = useState<ChecklistInstance | null>(null)
 
   const reload = () => {
     setIsLoading(true)
-    adminFetch<ChecklistInstance[]>("/api/company/checklists?scope=team")
-      .then(setInstances)
+    adminFetch<{ checklists: ChecklistInstance[] }>("/api/company/checklists?scope=team&status=SUBMITTED")
+      .then((res) => setInstances(res.checklists))
       .finally(() => setIsLoading(false))
   }
   useEffect(reload, [])
 
-  const handleReview = async (i: ChecklistInstance, status: "APPROVED" | "REJECTED") => {
-    await adminFetch(`/api/company/checklists/${i.id}`, { method: "PATCH", body: JSON.stringify({ status }) }).catch(
+  const handleApprove = async (i: ChecklistInstance) => {
+    await adminFetch(`/api/company/checklists/${i.id}`, { method: "PATCH", body: JSON.stringify({ status: "APPROVED" }) }).catch(
       (e) => alert(e instanceof AdminApiError ? e.message : "Erro"),
     )
     reload()
   }
 
   if (isLoading) return <LoadingState />
-  if (instances.length === 0) return <EmptyState message="Nenhuma execução registrada ainda." />
+  if (instances.length === 0) return <EmptyState message="Nenhuma entrega aguardando aprovação." />
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-100">
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50 text-left text-xs text-gray-500">
-          <tr>
-            <th className="px-4 py-3 font-medium">Tarefa</th>
-            <th className="px-4 py-3 font-medium">Colaborador</th>
-            <th className="px-4 py-3 font-medium">Foto</th>
-            <th className="px-4 py-3 font-medium">Status</th>
-            <th className="px-4 py-3 font-medium text-right">Ações</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {instances.map((i) => (
-            <tr key={i.id} className="hover:bg-gray-50">
-              <td className="px-4 py-3 text-[#3E2415] font-medium">{i.title}</td>
-              <td className="px-4 py-3 text-gray-600">{i.employee.name}</td>
-              <td className="px-4 py-3">
-                <a href={i.photoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#F58220] hover:underline">
-                  Ver foto
-                </a>
-              </td>
-              <td className="px-4 py-3">
-                <StatusBadge status={i.status} />
-              </td>
-              <td className="px-4 py-3 text-right">
-                {i.status === "PENDING" && (
+    <>
+      <MobileCardList>
+        {instances.map((i) => (
+          <MobileCard
+            key={i.id}
+            title={i.title}
+            subtitle={i.employee.name}
+            badges={<StatusBadge status={i.status} />}
+            fields={[
+              ...(i.rejectionReason ? [{ label: "Obs. do colaborador", value: i.rejectionReason }] : []),
+              { label: "Foto", value: i.photoUrl ? "Anexada" : "—" },
+            ]}
+            actions={
+              <>
+                {i.photoUrl && (
+                  <a href={i.photoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#F58220] underline">
+                    Ver foto
+                  </a>
+                )}
+                <MobileCardAction icon={Check} label="Aprovar" onClick={() => handleApprove(i)} />
+                <MobileCardAction icon={Undo2} label="Devolver" onClick={() => setReturning(i)} />
+                <MobileCardAction icon={X} label="Não entregue" tone="danger" onClick={() => setRejecting(i)} />
+              </>
+            }
+          />
+        ))}
+      </MobileCardList>
+
+      <TableDesktop>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs text-gray-500">
+            <tr>
+              <th className="px-4 py-3 font-medium">Tarefa</th>
+              <th className="px-4 py-3 font-medium">Colaborador</th>
+              <th className="px-4 py-3 font-medium">Foto</th>
+              <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 font-medium text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {instances.map((i) => (
+              <tr key={i.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3 text-[#3E2415] font-medium">
+                  {i.title}
+                  {i.rejectionReason && <p className="text-xs text-gray-500 font-normal mt-0.5">{i.rejectionReason}</p>}
+                </td>
+                <td className="px-4 py-3 text-gray-600">{i.employee.name}</td>
+                <td className="px-4 py-3">
+                  {i.photoUrl ? (
+                    <a href={i.photoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#F58220] hover:underline">
+                      Ver foto
+                    </a>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <StatusBadge status={i.status} />
+                </td>
+                <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="icon" className="text-green-600" onClick={() => handleReview(i, "APPROVED")}>
+                    <Button variant="ghost" size="icon" className="text-green-600" onClick={() => handleApprove(i)} title="Aprovar">
                       <Check className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="text-red-600" onClick={() => handleReview(i, "REJECTED")}>
+                    <Button variant="ghost" size="icon" className="text-amber-600" onClick={() => setReturning(i)} title="Devolver">
+                      <Undo2 className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="text-red-600" onClick={() => setRejecting(i)} title="Não entregue">
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableDesktop>
+
+      {returning && (
+        <ReviewNoteDialog
+          checklist={returning}
+          title="Devolver tarefa"
+          confirmLabel="Devolver"
+          status="RETURNED"
+          onClose={() => setReturning(null)}
+          onDone={() => {
+            setReturning(null)
+            reload()
+          }}
+        />
+      )}
+      {rejecting && (
+        <ReviewNoteDialog
+          checklist={rejecting}
+          title="Marcar como não entregue"
+          confirmLabel="Confirmar"
+          status="REJECTED"
+          onClose={() => setRejecting(null)}
+          onDone={() => {
+            setRejecting(null)
+            reload()
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+function ReviewNoteDialog({
+  checklist,
+  title,
+  confirmLabel,
+  status,
+  onClose,
+  onDone,
+}: {
+  checklist: ChecklistInstance
+  title: string
+  confirmLabel: string
+  status: "RETURNED" | "REJECTED"
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [note, setNote] = useState("")
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    if (!note.trim()) {
+      setError("Descreva o motivo")
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      await adminFetch(`/api/company/checklists/${checklist.id}`, { method: "PATCH", body: JSON.stringify({ status, note }) })
+      onDone()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {title}: "{checklist.title}"
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="space-y-2">
+            <Label>Motivo *</Label>
+            <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ex: Limpeza incompleta, refazer" required />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className={status === "REJECTED" ? "bg-red-600 hover:bg-red-700 text-white" : "bg-amber-600 hover:bg-amber-700 text-white"}
+            >
+              {confirmLabel}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

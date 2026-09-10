@@ -2,14 +2,15 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { requirePlatformAdmin, handleApiError, ApiError } from "@/lib/api-auth"
 import { logAudit } from "@/lib/audit"
-import { createPlatformUser, generatePasswordResetLink } from "@/lib/admin-user"
 import { isPlanId } from "@/lib/plans"
-import { getPlanCatalog } from "@/lib/plan-catalog"
 import { isValidEmail, isValidPhone } from "@/lib/validators"
+import { revertExpiredExemptions } from "@/lib/license-exemption"
+import { provisionCompanyWithMaster } from "@/lib/company-provisioning"
 
 export async function GET() {
   try {
     await requirePlatformAdmin()
+    await revertExpiredExemptions()
 
     const companies = await prisma.company.findMany({
       orderBy: { name: "asc" },
@@ -45,6 +46,7 @@ const CreateCompanySchema = z.object({
     .refine((v) => !v || isPlanId(v), "Plano inválido")
     .default("ENTERPRISE"),
   isExempt: z.boolean().optional().default(false),
+  exemptionMonths: z.number().int().min(1).max(60).nullable().optional(),
   billingDay: z.number().int().min(1).max(28).nullable().optional(),
 })
 
@@ -56,54 +58,19 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       throw new ApiError(400, parsed.error.issues[0]?.message ?? "Dados inválidos")
     }
-    const { name, slug, masterName, masterEmail, masterWhatsapp, isExempt, billingDay } = parsed.data
-    const plan = isPlanId(parsed.data.plan) ? parsed.data.plan : "ENTERPRISE"
-    const catalog = await getPlanCatalog()
-    const planDef = catalog[plan]
 
-    const company = await prisma.company.create({
-      data: {
-        name,
-        slug,
-        license: {
-          create: {
-            plan,
-            maxEmployees: planDef.maxEmployees,
-            maxPartners: planDef.maxPartners,
-            isExempt,
-            billingDay: billingDay ?? null,
-          },
-        },
-      },
-      include: { license: true },
+    const { company, master, inviteLink } = await provisionCompanyWithMaster(parsed.data)
+
+    await logAudit({
+      userId: admin.id,
+      companyId: company.id,
+      action: "CREATE",
+      entity: "Company",
+      entityId: company.id,
+      details: { ...parsed.data, masterEmail: parsed.data.masterEmail },
     })
 
-    try {
-      const master = await createPlatformUser({
-        email: masterEmail,
-        name: masterName,
-        role: "COMPANY_MASTER",
-        companyId: company.id,
-        phone: masterWhatsapp,
-      })
-
-      const inviteLink = await generatePasswordResetLink(masterEmail)
-
-      await logAudit({
-        userId: admin.id,
-        companyId: company.id,
-        action: "CREATE",
-        entity: "Company",
-        entityId: company.id,
-        details: { name, slug, plan, isExempt, billingDay, masterEmail },
-      })
-
-      return Response.json({ company, master: { id: master.id, email: master.email }, inviteLink }, { status: 201 })
-    } catch (masterError) {
-      // Compensação: não deixar uma empresa "órfã" sem Master se o provisionamento falhar.
-      await prisma.company.delete({ where: { id: company.id } }).catch(() => {})
-      throw masterError
-    }
+    return Response.json({ company, master: { id: master.id, email: master.email }, inviteLink }, { status: 201 })
   } catch (error) {
     return handleApiError(error)
   }

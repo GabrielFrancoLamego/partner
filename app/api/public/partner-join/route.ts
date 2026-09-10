@@ -1,12 +1,14 @@
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { isValidCpfOrCnpj, isValidEmail, isValidPhone } from "@/lib/validators"
+import { resolveValidLink } from "@/lib/link-validation"
 
 /**
- * Auto-cadastro público de Parceiro (/join/partner, opcionalmente com
- * ?ref=CODIGO de um Afiliado) — sem autenticação. Parceiro não pertence a uma
- * empresa fixa, então companyId e linkId ficam null; a fila de aprovação é a
- * mesma que os demais PublicRegistrationRequest (Admin ou Master aprovam).
+ * Auto-cadastro público de Parceiro (/join/partner ou /join/partner/[affiliateCode],
+ * opcionalmente com ?ref=CODIGO de Afiliado ou ?token=X de um link
+ * PARTNER_GENERIC/PARTNER_FOR_COMPANY gerado em /admin/links) — sem
+ * autenticação. Parceiro não pertence a uma empresa fixa, então companyId
+ * fica sempre null; linkId é gravado só para atribuição/relatório.
  */
 const JoinPartnerSchema = z.object({
   name: z.string().trim().min(1, "Nome é obrigatório"),
@@ -14,6 +16,7 @@ const JoinPartnerSchema = z.object({
   phone: z.string().trim().refine(isValidPhone, "Telefone inválido"),
   document: z.string().trim().refine(isValidCpfOrCnpj, "CPF/CNPJ inválido"),
   ref: z.string().trim().optional(),
+  token: z.string().trim().optional(),
 })
 
 export async function POST(request: Request) {
@@ -21,6 +24,17 @@ export async function POST(request: Request) {
     const parsed = JoinPartnerSchema.safeParse(await request.json())
     if (!parsed.success) {
       return Response.json({ error: parsed.error.issues[0]?.message ?? "Dados inválidos" }, { status: 400 })
+    }
+
+    let linkId: string | null = null
+    if (parsed.data.token) {
+      const link = await resolveValidLink(parsed.data.token)
+      if (!link) {
+        return Response.json({ error: "Este link de indicação expirou ou não está mais ativo" }, { status: 410 })
+      }
+      if (link.type === "PARTNER_GENERIC" || link.type === "PARTNER_FOR_COMPANY") {
+        linkId = link.id
+      }
     }
 
     const existingUser = await prisma.user.findUnique({ where: { email: parsed.data.email } })
@@ -39,11 +53,14 @@ export async function POST(request: Request) {
     if (parsed.data.ref) {
       const affiliate = await prisma.affiliate.findUnique({ where: { code: parsed.data.ref } })
       if (affiliate?.active) affiliateId = affiliate.id
+      else {
+        return Response.json({ error: "Este link de indicação expirou ou não está mais ativo" }, { status: 410 })
+      }
     }
 
     await prisma.publicRegistrationRequest.create({
       data: {
-        linkId: null,
+        linkId,
         companyId: null,
         role: "PARTNER",
         name: parsed.data.name,

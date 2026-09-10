@@ -1,13 +1,13 @@
 "use client"
 
-import { useState } from "react"
-import { CheckCircle2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { CheckCircle2, Link2Off } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { formatCpfCnpj, formatPhone, isValidCpfOrCnpj, isValidEmail, isValidPhone } from "@/lib/validators"
 
-export function PartnerJoinForm({ refCode }: { refCode: string | null }) {
+export function PartnerJoinForm({ refCode, linkToken }: { refCode: string | null; linkToken?: string | null }) {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
@@ -15,6 +15,17 @@ export function PartnerJoinForm({ refCode }: { refCode: string | null }) {
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [done, setDone] = useState(false)
+  const [linkExpired, setLinkExpired] = useState(false)
+  const [isCheckingLink, setIsCheckingLink] = useState(!!linkToken)
+
+  useEffect(() => {
+    if (!linkToken) return
+    fetch(`/api/public/links/${linkToken}`)
+      .then((r) => r.json())
+      .then((data) => setLinkExpired(!data.valid))
+      .catch(() => setLinkExpired(true))
+      .finally(() => setIsCheckingLink(false))
+  }, [linkToken])
 
   const emailError = email && !isValidEmail(email) ? "Email inválido" : ""
   const phoneError = phone && !isValidPhone(phone) ? "Telefone inválido" : ""
@@ -32,9 +43,20 @@ export function PartnerJoinForm({ refCode }: { refCode: string | null }) {
       const response = await fetch("/api/public/partner-join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, phone, document, ref: refCode ?? undefined }),
+        body: JSON.stringify({
+          name,
+          email,
+          phone,
+          document,
+          ref: refCode ?? undefined,
+          token: linkToken ?? undefined,
+        }),
       })
       const data = await response.json().catch(() => null)
+      if (response.status === 410) {
+        setLinkExpired(true)
+        return
+      }
       if (!response.ok) throw new Error(data?.error ?? "Erro ao enviar cadastro")
       setDone(true)
     } catch (e) {
@@ -44,6 +66,22 @@ export function PartnerJoinForm({ refCode }: { refCode: string | null }) {
     }
   }
 
+  if (isCheckingLink) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#F7F5F2]" />
+  }
+
+  if (linkExpired) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F7F5F2] px-4">
+        <div className="max-w-sm w-full bg-white rounded-2xl shadow-md border border-gray-100 p-6 text-center">
+          <Link2Off className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+          <h1 className="text-lg font-bold text-[#3E2415]">Link expirado</h1>
+          <p className="text-sm text-gray-600 mt-2">Este link de indicação não está mais ativo ou venceu.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#F7F5F2] px-4 py-10">
       <div className="max-w-sm w-full bg-white rounded-2xl shadow-md border border-gray-100 p-6">
@@ -51,7 +89,9 @@ export function PartnerJoinForm({ refCode }: { refCode: string | null }) {
           <img src="/brand/tribuss-icone-app.png" alt="Tribuss" className="h-12 object-contain mb-3" />
           <h1 className="text-lg font-bold text-[#3E2415]">Seja um Parceiro Tribuss</h1>
           <p className="text-sm text-gray-500 mt-1">Indique clientes e receba comissão via PIX.</p>
-          {refCode && <p className="text-xs text-green-700 bg-green-50 rounded-full px-3 py-1 mt-2">Indicado por afiliado</p>}
+          {(refCode || linkToken) && (
+            <p className="text-xs text-green-700 bg-green-50 rounded-full px-3 py-1 mt-2">Indicado por afiliado</p>
+          )}
         </div>
 
         {done ? (

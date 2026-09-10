@@ -11,6 +11,8 @@ export type AdminLicense = {
   maxPartners: number
   billingCycle: string
   isExempt: boolean
+  exemptionMonths: number | null
+  exemptionExpiresAt: string | null
   billingDay: number | null
   expiresAt: string | null
 }

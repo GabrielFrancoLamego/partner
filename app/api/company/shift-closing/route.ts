@@ -3,6 +3,7 @@ import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from
 import { canManageDailyOperations } from "@/lib/permissions"
 import { uploadImage } from "@/lib/storage"
 import { logAudit } from "@/lib/audit"
+import { awardXp, getInternalProgramRules } from "@/lib/gamification"
 
 function startOfDay(date: Date) {
   const d = new Date(date)
@@ -34,10 +35,25 @@ export async function GET(request: Request) {
         where: { companyId_date: { companyId, date } },
         include: { closedBy: { select: { id: true, name: true } } },
       }),
-      prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { shiftClosingDeadline: true } }),
+      prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { shiftClosingDeadline: true, createdAt: true } }),
     ])
 
     const overdue = !closing || closing.status !== "COMPLETED" ? isPastDeadline(date, company.shiftClosingDeadline, now) : false
+
+    // "Não bloqueia o sistema": mesmo com o dia de hoje já rolado, o caixa de
+    // dias anteriores sem fechamento continua sinalizado até ser regularizado.
+    const fourteenDaysAgo = new Date(date.getTime() - 14 * 24 * 60 * 60 * 1000)
+    const searchStart = new Date(Math.max(fourteenDaysAgo.getTime(), startOfDay(company.createdAt).getTime()))
+    const completedPastClosings = await prisma.shiftClosing.findMany({
+      where: { companyId, date: { gte: searchStart, lt: date }, status: "COMPLETED" },
+      select: { date: true },
+    })
+    const completedDates = new Set(completedPastClosings.map((c) => c.date.toISOString()))
+    const unclosedPastDays: string[] = []
+    for (let d = new Date(searchStart); d < date; d.setDate(d.getDate() + 1)) {
+      const day = startOfDay(d)
+      if (!completedDates.has(day.toISOString())) unclosedPastDays.push(day.toISOString())
+    }
 
     return Response.json({
       date,
@@ -45,6 +61,7 @@ export async function GET(request: Request) {
       closing,
       overdue,
       canOverride: overdue && user.role === "COMPANY_MASTER",
+      unclosedPastDays,
     })
   } catch (error) {
     return handleApiError(error)
@@ -125,6 +142,45 @@ export async function POST(request: Request) {
       entityId: closing.id,
       details: { date, revenueAmount },
     })
+
+    // Fechar o dia varre os checklists que ficaram sem NENHUMA entrega (nunca
+    // chegaram a SUBMITTED) e os marca como não executados, penalizando XP —
+    // tarefas já entregues e aguardando double-check da Gerente não são afetadas.
+    const strandedChecklists = await prisma.checklist.findMany({
+      where: { companyId, forDate: date, status: "PENDING" },
+    })
+    if (strandedChecklists.length > 0) {
+      const rules = await getInternalProgramRules(companyId)
+      await prisma.$transaction(async (tx) => {
+        for (const checklist of strandedChecklists) {
+          await tx.checklist.update({
+            where: { id: checklist.id },
+            data: {
+              status: "REJECTED",
+              rejectionReason: "Fechamento do dia sem entrega",
+              approvedById: user.id,
+              approvedAt: now,
+            },
+          })
+          if (rules.pointsChecklistLateOrRejected !== 0) {
+            const hasEmployeeProfile = await tx.employeeProfile.findUnique({ where: { userId: checklist.employeeId } })
+            if (hasEmployeeProfile) {
+              await awardXp(
+                {
+                  companyId,
+                  employeeId: checklist.employeeId,
+                  reason: "CHECKLIST_ON_TIME",
+                  points: rules.pointsChecklistLateOrRejected,
+                  sourceId: checklist.id,
+                  note: "Fechamento do dia sem entrega",
+                },
+                tx,
+              )
+            }
+          }
+        }
+      })
+    }
 
     return Response.json(closing, { status: 201 })
   } catch (error) {

@@ -27,6 +27,33 @@ export async function uploadImage(
   return data.publicUrl
 }
 
+const ALLOWED_PUBLIC_DOC_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "application/pdf"]
+
+/**
+ * Sobe um PDF público (regulamento de Program, apresentação, etc) para o
+ * mesmo bucket público "uploads" — diferente de uploadEmployeeDocument, aqui
+ * o conteúdo é intencionalmente público (parceiros/clientes precisam abrir
+ * sem login), então devolve a URL pública direta, não um path assinado.
+ */
+export async function uploadPublicDocument(folder: "programs" | "promotions", file: File) {
+  if (!ALLOWED_PUBLIC_DOC_MIME_TYPES.includes(file.type)) {
+    throw new Error("Formato não suportado — envie uma imagem (JPG/PNG/WEBP) ou PDF.")
+  }
+
+  const supabase = createAdminClient()
+  const extension = file.name.split(".").pop() || "bin"
+  const path = `${folder}/${crypto.randomUUID()}.${extension}`
+
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+    contentType: file.type,
+    upsert: false,
+  })
+  if (error) throw new Error(`Falha ao subir arquivo: ${error.message}`)
+
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
+  return data.publicUrl
+}
+
 const AVATARS_BUCKET = "avatars-and-logos"
 const ALLOWED_AVATAR_MIME_TYPES = ["image/png", "image/jpeg", "image/webp"]
 

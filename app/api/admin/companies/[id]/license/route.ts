@@ -1,13 +1,14 @@
 import { prisma } from "@/lib/prisma"
 import { requirePlatformAdmin, handleApiError } from "@/lib/api-auth"
 import { logAudit } from "@/lib/audit"
+import { computeExemptionExpiresAt } from "@/lib/license-exemption"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const admin = await requirePlatformAdmin()
     const { id } = await params
     const body = await request.json()
-    const { plan, status, maxEmployees, maxPartners, billingCycle, expiresAt, isExempt, billingDay } = body
+    const { plan, status, maxEmployees, maxPartners, billingCycle, expiresAt, isExempt, exemptionMonths, billingDay } = body
 
     const existing = await prisma.license.findUnique({ where: { companyId: id } })
     const isBecomingCanceled = status === "CANCELED" && existing?.status !== "CANCELED"
@@ -19,7 +20,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       ...(maxPartners !== undefined ? { maxPartners } : {}),
       ...(billingCycle !== undefined ? { billingCycle } : {}),
       ...(expiresAt !== undefined ? { expiresAt: expiresAt ? new Date(expiresAt) : null } : {}),
-      ...(isExempt !== undefined ? { isExempt } : {}),
+      ...(isExempt !== undefined
+        ? {
+            isExempt,
+            exemptionMonths: isExempt && exemptionMonths ? Number(exemptionMonths) : null,
+            exemptionExpiresAt: isExempt && exemptionMonths ? computeExemptionExpiresAt(Number(exemptionMonths)) : null,
+          }
+        : {}),
       ...(billingDay !== undefined ? { billingDay: billingDay ?? null } : {}),
       ...(isBecomingCanceled ? { canceledAt: new Date() } : {}),
     }
