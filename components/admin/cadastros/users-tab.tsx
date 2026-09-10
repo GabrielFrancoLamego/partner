@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { useCompanies } from "@/components/admin/use-companies"
 import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
+import { ReasonDialog } from "@/components/admin/reason-dialog"
+import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
 import { EmployeeProfileDialog } from "./employee-profile-dialog"
 
 type StaffUser = {
@@ -38,6 +40,7 @@ export function UsersTab() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [resetLink, setResetLink] = useState<string | null>(null)
   const [viewingProfile, setViewingProfile] = useState<StaffUser | null>(null)
+  const [blocking, setBlocking] = useState<StaffUser | null>(null)
 
   const reload = () => {
     setIsLoading(true)
@@ -48,11 +51,12 @@ export function UsersTab() {
 
   useEffect(reload, [])
 
-  const handleToggleStatus = async (user: StaffUser) => {
+  const handleConfirmToggleStatus = async (user: StaffUser, reason: string) => {
     await adminFetch(`/api/admin/users/${user.id}`, {
       method: "PATCH",
-      body: JSON.stringify({ status: user.status === "ACTIVE" ? "INACTIVE" : "ACTIVE" }),
+      body: JSON.stringify({ status: user.status === "ACTIVE" ? "INACTIVE" : "ACTIVE", blockReason: reason }),
     }).catch((e) => alert(e instanceof AdminApiError ? e.message : "Erro ao atualizar"))
+    setBlocking(null)
     reload()
   }
 
@@ -92,7 +96,37 @@ export function UsersTab() {
       ) : users.length === 0 ? (
         <EmptyState message="Nenhum usuário cadastrado ainda." />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100">
+        <>
+          <MobileCardList>
+            {users.map((user) => (
+              <MobileCard
+                key={user.id}
+                title={user.name}
+                subtitle={user.email}
+                badges={<StatusBadge status={user.status} />}
+                fields={[
+                  { label: "Papel", value: ROLE_LABELS[user.role] ?? user.role },
+                  { label: "Empresa", value: user.company?.name ?? "—" },
+                ]}
+                actions={
+                  <>
+                    {user.role === "EMPLOYEE" && (
+                      <MobileCardAction icon={IdCard} label="Perfil" onClick={() => setViewingProfile(user)} />
+                    )}
+                    <MobileCardAction icon={KeyRound} label="Redefinir senha" onClick={() => handleResetPassword(user)} />
+                    <MobileCardAction
+                      icon={user.status === "ACTIVE" ? Lock : Unlock}
+                      label={user.status === "ACTIVE" ? "Bloquear" : "Desbloquear"}
+                      onClick={() => setBlocking(user)}
+                    />
+                    <MobileCardAction icon={Trash2} label="Excluir" tone="danger" onClick={() => handleDelete(user)} />
+                  </>
+                }
+              />
+            ))}
+          </MobileCardList>
+
+          <TableDesktop>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs text-gray-500">
               <tr>
@@ -138,7 +172,7 @@ export function UsersTab() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleToggleStatus(user)}
+                        onClick={() => setBlocking(user)}
                         title={user.status === "ACTIVE" ? "Bloquear" : "Desbloquear"}
                       >
                         {user.status === "ACTIVE" ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
@@ -158,7 +192,8 @@ export function UsersTab() {
               ))}
             </tbody>
           </table>
-        </div>
+          </TableDesktop>
+        </>
       )}
 
       {isCreateOpen && (
@@ -194,6 +229,17 @@ export function UsersTab() {
           userId={viewingProfile.id}
           userName={viewingProfile.name}
           onClose={() => setViewingProfile(null)}
+        />
+      )}
+
+      {blocking && (
+        <ReasonDialog
+          title={blocking.status === "ACTIVE" ? `Bloquear ${blocking.name}` : `Desbloquear ${blocking.name}`}
+          description="Esta ação é registrada na trilha de auditoria."
+          confirmLabel={blocking.status === "ACTIVE" ? "Bloquear" : "Desbloquear"}
+          destructive={blocking.status === "ACTIVE"}
+          onConfirm={(reason) => handleConfirmToggleStatus(blocking, reason)}
+          onClose={() => setBlocking(null)}
         />
       )}
     </div>

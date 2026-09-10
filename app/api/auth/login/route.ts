@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { createClient } from "@/lib/supabase/server"
+import { recordAccess } from "@/lib/access-log"
 
 export async function POST(request: Request) {
   const { email, password } = await request.json()
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Conta inativa" }, { status: 403 })
   }
 
-  await prisma.user.update({ where: { id: user.id }, data: { lastActiveAt: new Date() } })
+  await recordAccess(user.id, user.companyId)
 
   return Response.json(
     {

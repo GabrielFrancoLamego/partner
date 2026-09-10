@@ -5,6 +5,7 @@ import { Check, X, Banknote, Paperclip, ExternalLink, Loader2 } from "lucide-rea
 import { Button } from "@/components/ui/button"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
+import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
 
 type Withdrawal = {
   id: string
@@ -62,7 +63,67 @@ export function WithdrawalsTab({ companyId }: { companyId: string }) {
   if (withdrawals.length === 0) return <EmptyState message="Nenhum saque solicitado ainda." />
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-100">
+    <>
+      <MobileCardList>
+        {withdrawals.map((withdrawal) => {
+          const isUploading = uploadingId === withdrawal.id
+          return (
+            <MobileCard
+              key={withdrawal.id}
+              title={withdrawal.partner.name}
+              subtitle={`${withdrawal.company.name} · ${currency(withdrawal.amount)}`}
+              badges={<StatusBadge status={withdrawal.status} />}
+              fields={[
+                { label: "Data", value: new Date(withdrawal.requestDate).toLocaleDateString("pt-BR") },
+                { label: "Chave PIX", value: withdrawal.pixKey ?? "—" },
+              ]}
+              actions={
+                <>
+                  {withdrawal.proofOfPaymentUrl && (
+                    <a
+                      href={withdrawal.proofOfPaymentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium border border-gray-200 text-[#F58220]"
+                    >
+                      Ver comprovante <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+                  {withdrawal.status !== "REJECTED" && (
+                    <>
+                      <input
+                        ref={(el) => {
+                          fileInputRefs.current[withdrawal.id] = el
+                        }}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,application/pdf"
+                        className="hidden"
+                        onChange={(e) => handleUploadProof(withdrawal.id, e.target.files?.[0])}
+                      />
+                      <MobileCardAction
+                        icon={isUploading ? Loader2 : Paperclip}
+                        label={withdrawal.proofOfPaymentUrl ? "Trocar comprovante" : "Anexar comprovante"}
+                        onClick={() => fileInputRefs.current[withdrawal.id]?.click()}
+                      />
+                    </>
+                  )}
+                  {withdrawal.status === "PENDING" && (
+                    <>
+                      <MobileCardAction icon={Check} label="Aprovar" onClick={() => handleUpdate(withdrawal.id, "APPROVED")} />
+                      <MobileCardAction icon={X} label="Negar" tone="danger" onClick={() => handleUpdate(withdrawal.id, "REJECTED")} />
+                    </>
+                  )}
+                  {withdrawal.status === "APPROVED" && (
+                    <MobileCardAction icon={Banknote} label="Marcar como pago" onClick={() => handleUpdate(withdrawal.id, "PAID")} />
+                  )}
+                </>
+              }
+            />
+          )
+        })}
+      </MobileCardList>
+
+      <TableDesktop>
       <table className="w-full text-sm">
         <thead className="bg-gray-50 text-left text-xs text-gray-500">
           <tr>
@@ -174,6 +235,7 @@ export function WithdrawalsTab({ companyId }: { companyId: string }) {
           })}
         </tbody>
       </table>
-    </div>
+      </TableDesktop>
+    </>
   )
 }

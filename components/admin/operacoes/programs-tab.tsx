@@ -8,9 +8,12 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { useCompanies } from "@/components/admin/use-companies"
 import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
+
+type CommissionFormat = "PERCENTAGE" | "FIXED_VALUE" | "PRODUCT_UNIT"
 
 type Program = {
   id: string
@@ -18,10 +21,33 @@ type Program = {
   description: string
   commissionType: "FIXED" | "VARIABLE"
   commissionValue: string
-  isPercentage: boolean
+  commissionFormat: CommissionFormat
+  productUnitLabel: string | null
+  imageUrl: string | null
+  pdfUrl: string | null
+  videoUrl: string | null
+  termsContent: string | null
   active: boolean
   company: { id: string; name: string }
   _count: { referrals: number }
+}
+
+const FORMAT_LABELS: Record<CommissionFormat, string> = {
+  PERCENTAGE: "Percentual (%)",
+  FIXED_VALUE: "Valor fixo (R$)",
+  PRODUCT_UNIT: "Unidade de produto",
+}
+
+/** Exibe o valor de comissão com o sufixo correto conforme o formato configurado. */
+function formatCommissionValue(program: Pick<Program, "commissionFormat" | "commissionValue" | "productUnitLabel">) {
+  switch (program.commissionFormat) {
+    case "PERCENTAGE":
+      return `${program.commissionValue}%`
+    case "FIXED_VALUE":
+      return `R$ ${program.commissionValue}`
+    case "PRODUCT_UNIT":
+      return `${program.commissionValue}x ${program.productUnitLabel ?? "unidade"}`
+  }
 }
 
 export function ProgramsTab() {
@@ -83,9 +109,8 @@ export function ProgramsTab() {
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">{program.company.name}</p>
                   <p className="text-xs text-gray-600 mt-1">
-                    Comissão: {program.isPercentage ? `${program.commissionValue}%` : `R$ ${program.commissionValue}`}{" "}
-                    ({program.commissionType === "FIXED" ? "fixa" : "variável"}) · {program._count.referrals}{" "}
-                    indicações
+                    Comissão: {formatCommissionValue(program)} ({program.commissionType === "FIXED" ? "fixa" : "variável"}) ·{" "}
+                    {program._count.referrals} indicações
                   </p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -146,17 +171,39 @@ function ProgramDialog({
   const [name, setName] = useState(program?.name ?? "")
   const [description, setDescription] = useState(program?.description ?? "")
   const [commissionType, setCommissionType] = useState<"FIXED" | "VARIABLE">(program?.commissionType ?? "VARIABLE")
+  const [commissionFormat, setCommissionFormat] = useState<CommissionFormat>(program?.commissionFormat ?? "PERCENTAGE")
   const [commissionValue, setCommissionValue] = useState(program?.commissionValue ?? "")
-  const [isPercentage, setIsPercentage] = useState(program?.isPercentage ?? true)
+  const [productUnitLabel, setProductUnitLabel] = useState(program?.productUnitLabel ?? "")
+  const [imageUrl, setImageUrl] = useState(program?.imageUrl ?? "")
+  const [pdfUrl, setPdfUrl] = useState(program?.pdfUrl ?? "")
+  const [videoUrl, setVideoUrl] = useState(program?.videoUrl ?? "")
+  const [termsContent, setTermsContent] = useState(program?.termsContent ?? "")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const valueSuffix = commissionFormat === "PERCENTAGE" ? "%" : commissionFormat === "FIXED_VALUE" ? "R$" : "un."
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    if (commissionFormat === "PRODUCT_UNIT" && !productUnitLabel.trim()) {
+      setError("Informe o rótulo da unidade de produto (ex: 'diária grátis')")
+      return
+    }
     setIsSubmitting(true)
     try {
-      const payload = { name, description, commissionType, commissionValue: Number(commissionValue), isPercentage }
+      const payload = {
+        name,
+        description,
+        commissionType,
+        commissionValue: Number(commissionValue),
+        commissionFormat,
+        productUnitLabel: commissionFormat === "PRODUCT_UNIT" ? productUnitLabel : null,
+        imageUrl: imageUrl || null,
+        pdfUrl: pdfUrl || null,
+        videoUrl: videoUrl || null,
+        termsContent: termsContent || null,
+      }
       if (program) {
         await adminFetch(`/api/admin/programs/${program.id}`, { method: "PATCH", body: JSON.stringify(payload) })
       } else {
@@ -203,42 +250,95 @@ function ProgramDialog({
             <Label>Descrição</Label>
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Tipo de comissão</Label>
-              <Select value={commissionType} onValueChange={(v) => setCommissionType(v as "FIXED" | "VARIABLE")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="FIXED">Fixa</SelectItem>
-                  <SelectItem value="VARIABLE">Variável</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Formato</Label>
-              <Select value={isPercentage ? "pct" : "value"} onValueChange={(v) => setIsPercentage(v === "pct")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pct">Percentual (%)</SelectItem>
-                  <SelectItem value="value">Valor fixo (R$)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Valor da comissão</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={commissionValue}
-              onChange={(e) => setCommissionValue(e.target.value)}
-              required
-            />
-          </div>
+
+          <Tabs defaultValue="comissao">
+            <TabsList className="flex-wrap h-auto">
+              <TabsTrigger value="comissao">Comissão</TabsTrigger>
+              <TabsTrigger value="midia">Mídias & Regulamento</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="comissao" className="space-y-4 pt-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Tipo de comissão</Label>
+                  <Select value={commissionType} onValueChange={(v) => setCommissionType(v as "FIXED" | "VARIABLE")}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="FIXED">Fixa</SelectItem>
+                      <SelectItem value="VARIABLE">Variável</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Formato do valor</Label>
+                  <Select value={commissionFormat} onValueChange={(v) => setCommissionFormat(v as CommissionFormat)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(FORMAT_LABELS) as CommissionFormat[]).map((key) => (
+                        <SelectItem key={key} value={key}>
+                          {FORMAT_LABELS[key]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Valor da comissão ({valueSuffix})</Label>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={commissionValue}
+                    onChange={(e) => setCommissionValue(e.target.value)}
+                    className="pr-12"
+                    required
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">{valueSuffix}</span>
+                </div>
+              </div>
+              {commissionFormat === "PRODUCT_UNIT" && (
+                <div className="space-y-2">
+                  <Label>Rótulo da unidade de produto</Label>
+                  <Input
+                    value={productUnitLabel}
+                    onChange={(e) => setProductUnitLabel(e.target.value)}
+                    placeholder="ex: diária grátis, brinde, cortesia"
+                    required
+                  />
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="midia" className="space-y-4 pt-4">
+              <div className="space-y-2">
+                <Label>Foto de capa (URL)</Label>
+                <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." />
+              </div>
+              <div className="space-y-2">
+                <Label>Anexo PDF — apresentação (URL)</Label>
+                <Input value={pdfUrl} onChange={(e) => setPdfUrl(e.target.value)} placeholder="https://..." />
+              </div>
+              <div className="space-y-2">
+                <Label>Vídeo institucional (URL)</Label>
+                <Input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/..." />
+              </div>
+              <div className="space-y-2">
+                <Label>Regulamento / Termo de aceite</Label>
+                <Textarea
+                  value={termsContent}
+                  onChange={(e) => setTermsContent(e.target.value)}
+                  placeholder="Texto exibido ao parceiro no primeiro acesso, que ele precisa aceitar..."
+                  rows={5}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar

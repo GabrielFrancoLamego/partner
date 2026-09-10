@@ -7,7 +7,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const admin = await requirePlatformAdmin()
     const { id } = await params
     const body = await request.json()
-    const { name, description, commissionType, commissionValue, isPercentage, active } = body
+    const {
+      name,
+      description,
+      commissionType,
+      commissionValue,
+      commissionFormat,
+      productUnitLabel,
+      imageUrl,
+      pdfUrl,
+      videoUrl,
+      termsContent,
+      active,
+    } = body
+
+    if (commissionFormat === "PRODUCT_UNIT" && productUnitLabel !== undefined && !productUnitLabel) {
+      throw new ApiError(400, "Informe o rótulo da unidade de produto (ex: 'diária grátis')")
+    }
 
     const existing = await prisma.program.findUnique({ where: { id }, select: { companyId: true } })
     if (!existing) throw new ApiError(404, "Programa não encontrado")
@@ -20,7 +36,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...(description !== undefined ? { description } : {}),
         ...(commissionType !== undefined ? { commissionType } : {}),
         ...(commissionValue !== undefined ? { commissionValue } : {}),
-        ...(isPercentage !== undefined ? { isPercentage } : {}),
+        ...(commissionFormat !== undefined ? { commissionFormat } : {}),
+        ...(productUnitLabel !== undefined ? { productUnitLabel: commissionFormat === "PRODUCT_UNIT" ? productUnitLabel : null } : {}),
+        ...(imageUrl !== undefined ? { imageUrl } : {}),
+        ...(pdfUrl !== undefined ? { pdfUrl } : {}),
+        ...(videoUrl !== undefined ? { videoUrl } : {}),
+        ...(termsContent !== undefined ? { termsContent } : {}),
         ...(active !== undefined ? { active } : {}),
       },
     })

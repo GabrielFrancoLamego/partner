@@ -50,6 +50,7 @@ export async function createPlatformUser(input: CreatePlatformUserInput) {
         id: data.user.id,
         email: input.email,
         name: input.name,
+        phone: input.phone ?? null,
         role: input.role,
         companyId: input.companyId ?? null,
       },

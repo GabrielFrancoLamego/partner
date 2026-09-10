@@ -191,6 +191,44 @@ enum GoalPeriod {
   ANNUAL
 }
 
+// Formato do valor de comissão de um Program — substitui o antigo campo
+// booleano `isPercentage`, que não conseguia representar bonificação em
+// unidade de produto (ex: "1 diária grátis").
+enum CommissionFormat {
+  PERCENTAGE // commissionValue é uma % sobre a comanda
+  FIXED_VALUE // commissionValue é um valor fixo em R$
+  PRODUCT_UNIT // bonificação em unidade de produto/serviço (ver productUnitLabel)
+}
+
+enum PromotionOfferType {
+  DISCOUNT // Desconto sobre o valor real
+  FREE_GIFT // Brinde gratuito
+  DOUBLE_BENEFIT // "Pediu 1, levou 2"
+}
+
+enum AffiliatePayoutType {
+  SIGNUP_BONUS // pago quando um parceiro indicado é aprovado
+  MILESTONE_BONUS // pago quando o parceiro indicado atinge milestoneClientCount clientes convertidos
+}
+
+enum AffiliatePayoutStatus {
+  PENDING
+  PAID
+}
+
+// Catálogo de planos SaaS — id é fixo (STANDARD/PREMIUM/ENTERPRISE, o mesmo
+// valor livre gravado em License.plan), mas limites e preços são editáveis
+// pelo Admin em /admin/planos. lib/plans.ts lê esta tabela em runtime.
+model Plan {
+  id           String   @id // "STANDARD" | "PREMIUM" | "ENTERPRISE"
+  label        String
+  maxEmployees Int
+  maxPartners  Int
+  oneTimePrice Decimal  @db.Decimal(10, 2)
+  monthlyPrice Decimal  @db.Decimal(10, 2)
+  updatedAt    DateTime @updatedAt
+}
+
 model Company {
   id          String   @id @default(cuid())
   name        String
@@ -209,6 +247,7 @@ model Company {
   corporateName        String? // Razão Social
   cnpj                 String? @unique
   address              String?
+  neighborhood         String? // Bairro — preenchido junto do CEP
   city                 String?
   state                String?
   zipCode              String?
@@ -216,14 +255,22 @@ model Company {
   longitude            Float?
   geofenceRadiusMeters Int     @default(150) // raio (m) a partir de lat/lng aceito na batida de ponto
   shiftClosingDeadline String  @default("22:00") // horário-limite (HH:mm) do fechamento diário da Gerente
-  phone                String?
-  email                String?
-  website              String?
-  socialLinks          Json? // { instagram, facebook, linkedin, ... }
-  shortDescription     String? @db.Text
-  profilePictureUrl    String?
-  coverPictureUrl      String?
-  logoWithLabelUrl     String? // logo com rótulo/marca — cabeçalho do colaborador
+
+  // Horário de funcionamento — até 2 turnos por dia (ex: 11:00-15:00 / 19:00-22:00).
+  // Null = turno não configurado/usado por essa empresa.
+  operatingShift1Start String?
+  operatingShift1End   String?
+  operatingShift2Start String?
+  operatingShift2End   String?
+
+  phone             String?
+  email             String?
+  website           String?
+  socialLinks       Json? // { instagram, facebook, linkedin, ... }
+  shortDescription  String? @db.Text
+  profilePictureUrl String?
+  coverPictureUrl   String?
+  logoWithLabelUrl  String? // logo com rótulo/marca — cabeçalho do colaborador
 
   users       User[]
   units       Unit[]
@@ -264,11 +311,14 @@ model License {
   companyId    String    @unique
   company      Company   @relation(fields: [companyId], references: [id])
   plan         String    @default("ENTERPRISE") // STANDARD, PREMIUM, ENTERPRISE
-  status       String    @default("ACTIVE") // ACTIVE, SUSPENDED, EXPIRED, TRIAL
+  status       String    @default("ACTIVE") // ACTIVE, SUSPENDED, EXPIRED, TRIAL, CANCELED
   maxEmployees Int       @default(50)
   maxPartners  Int       @default(500)
   billingCycle String    @default("MONTHLY") // MONTHLY, YEARLY
+  isExempt     Boolean   @default(false) // isenta de cobrança (uso interno do grupo)
+  billingDay   Int? // dia do mês (1-28) em que a cobrança recorrente é gerada
   expiresAt    DateTime?
+  canceledAt   DateTime? // preenchido quando status vira CANCELED — base do cálculo de churn
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -277,6 +327,7 @@ model User {
   id           String    @id // == Supabase auth.users.id (uuid), sem @default
   email        String    @unique
   name         String
+  phone        String? // WhatsApp/telefone de contato — capturado no cadastro de staff (ex: Master da empresa)
   role         Role
   status       Status    @default(ACTIVE)
   companyId    String? // null quando role = ADMIN ou PARTNER (parceiro não pertence a uma única empresa)
@@ -296,6 +347,7 @@ model User {
   walletAdjustmentsMade WalletTransaction[] @relation("WalletAdjustmentBy")
   activityLogs          ActivityLog[]
   auditLogs             AuditLog[]
+  accessLogs            AccessLog[]
   timeEntries           TimeEntry[]
   checklistsSubmitted   Checklist[]         @relation("ChecklistEmployee")
   checklistsApproved    Checklist[]         @relation("ChecklistApprover")
@@ -363,7 +415,14 @@ model PartnerProfile {
   parent        PartnerProfile?  @relation("AgencyCollaborators", fields: [parentId], references: [id])
   collaborators PartnerProfile[] @relation("AgencyCollaborators")
 
+  // Indicado por um Afiliado/Influencer via /join/partner?ref=CODIGO
+  affiliateId          String?
+  affiliate            Affiliate?        @relation(fields: [affiliateId], references: [id])
+  affiliateMilestoneAt DateTime? // preenchido quando o bônus de milestone (10 clientes) já foi pago — evita pagar 2x
+  affiliatePayouts     AffiliatePayout[]
+
   @@index([parentId])
+  @@index([affiliateId])
 }
 
 model EmployeeProfile {
@@ -478,23 +537,25 @@ model Unit {
 // Promoções ("1 Caipirinha grátis" etc, ver model Promotion) são ilimitadas e
 // táticas; este model é o programa de comissão/níveis/termos em si.
 model Program {
-  id              String         @id @default(cuid())
-  companyId       String         @unique
-  company         Company        @relation(fields: [companyId], references: [id])
-  name            String
-  description     String         @db.Text
-  commissionType  CommissionType
-  commissionValue Decimal        @db.Decimal(10, 2)
-  isPercentage    Boolean        @default(false)
-  hasLevels       Boolean        @default(false)
-  autoUpgrade     Boolean        @default(false)
-  active          Boolean        @default(true)
-  contractUrl     String?
-  imageUrl        String? // imagem representativa do programa
-  pdfUrl          String? // anexo PDF com regras completas
-  termsContent    String?        @db.Text // termo de aceite (texto/markdown simples)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id               String           @id @default(cuid())
+  companyId        String           @unique
+  company          Company          @relation(fields: [companyId], references: [id])
+  name             String
+  description      String           @db.Text
+  commissionType   CommissionType
+  commissionValue  Decimal          @db.Decimal(10, 2)
+  commissionFormat CommissionFormat @default(PERCENTAGE)
+  productUnitLabel String? // rótulo da unidade quando commissionFormat = PRODUCT_UNIT (ex: "diária grátis")
+  hasLevels        Boolean          @default(false)
+  autoUpgrade      Boolean          @default(false)
+  active           Boolean          @default(true)
+  contractUrl      String?
+  imageUrl         String? // imagem/foto de capa representativa do programa
+  pdfUrl           String? // anexo PDF com regras completas
+  videoUrl         String? // vídeo institucional (URL externa — YouTube/Vimeo)
+  termsContent     String?          @db.Text // regulamento/termo de aceite (texto/markdown simples)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   levels          ProgramLevel[]
   materials       ProgramMaterial[]
@@ -530,21 +591,25 @@ model ProgramMaterial {
 }
 
 model Promotion {
-  id                    String   @id @default(cuid())
+  id                    String             @id @default(cuid())
   companyId             String
-  company               Company  @relation(fields: [companyId], references: [id])
+  company               Company            @relation(fields: [companyId], references: [id])
   title                 String
-  description           String   @db.Text
+  description           String             @db.Text
   bannerUrl             String?
+  offerType             PromotionOfferType @default(DISCOUNT)
+  originalPrice         Decimal?           @db.Decimal(10, 2) // "Valor Real" (de-para do desconto)
+  discountedPrice       Decimal?           @db.Decimal(10, 2) // "Valor Promocional" — alternativa a discountPercentage
+  discountPercentage    Decimal?           @db.Decimal(5, 2) // "% de Desconto" — alternativa a discountedPrice
   validFrom             DateTime
   validUntil            DateTime
-  qrCodeValidityMinutes Int      @default(15)
+  qrCodeValidityMinutes Int                @default(15)
   stock                 Int? // null = ilimitado
-  cost                  Decimal  @db.Decimal(10, 2)
-  usedCount             Int      @default(0)
-  active                Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  cost                  Decimal            @db.Decimal(10, 2)
+  usedCount             Int                @default(0)
+  active                Boolean            @default(true)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 
   units       PromotionUnit[] // sem linhas = todas as unidades
   commissions Commission[]
@@ -677,6 +742,21 @@ model AuditLog {
   @@index([createdAt])
 }
 
+// Um evento de acesso (login por senha ou OAuth) — distinto de User.lastActiveAt
+// (que só guarda o último timestamp). Usado para calcular "número de acessos"
+// separado de "usuários únicos" no Dashboard do Admin (DAU/MAU/engajamento).
+model AccessLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([createdAt])
+}
+
 // Ponto digital do colaborador — check-in/check-out com geolocalização.
 model TimeEntry {
   id        String        @id @default(cuid())
@@ -790,28 +870,78 @@ model PublicRegistrationLink {
   @@index([companyId])
 }
 
-// Cadastro submetido por um colaborador através de um PublicRegistrationLink,
-// pendente de aprovação do Admin/Gerente antes de virar um User real.
+// Cadastro submetido por alguém de fora da plataforma, pendente de aprovação
+// do Admin/Master antes de virar um User real. Dois canais de entrada:
+//   1) Link tokenizado gerado no admin (PublicRegistrationLink) — linkId setado,
+//      role vem de link.role.
+//   2) Página pública direta (/join/company/[slug] ou /join/partner) — sem
+//      link/token pré-gerado, então linkId e companyId ficam null e `role`
+//      (default EMPLOYEE, ou PARTNER quando vindo de /join/partner) é usado direto.
 model PublicRegistrationRequest {
-  id              String                 @id @default(cuid())
-  linkId          String
-  link            PublicRegistrationLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
-  companyId       String
-  company         Company                @relation(fields: [companyId], references: [id])
+  id              String                  @id @default(cuid())
+  linkId          String?
+  link            PublicRegistrationLink? @relation(fields: [linkId], references: [id], onDelete: SetNull)
+  companyId       String?
+  company         Company?                @relation(fields: [companyId], references: [id])
+  role            Role                    @default(EMPLOYEE)
   name            String
   email           String
   phone           String
   document        String?
-  status          RegistrationStatus     @default(PENDING_APPROVAL)
+  affiliateId     String?
+  affiliate       Affiliate?              @relation(fields: [affiliateId], references: [id])
+  status          RegistrationStatus      @default(PENDING_APPROVAL)
   reviewedById    String?
-  reviewedBy      User?                  @relation("RegistrationRequestReviewedBy", fields: [reviewedById], references: [id])
+  reviewedBy      User?                   @relation("RegistrationRequestReviewedBy", fields: [reviewedById], references: [id])
   reviewedAt      DateTime?
   rejectionReason String?
   createdUserId   String? // preenchido quando aprovado e o User real é provisionado
-  createdAt       DateTime               @default(now())
+  createdAt       DateTime                @default(now())
 
   @@index([companyId])
   @@index([status])
+  @@index([affiliateId])
+}
+
+// Afiliado/Influencer com link de indicação exclusivo (/join/partner?ref=CODE).
+// Recebe bônus quando um parceiro que ele indicou é aprovado, e um bônus extra
+// de milestone quando esse parceiro atinge seus primeiros N clientes convertidos.
+model Affiliate {
+  id                   String   @id @default(cuid())
+  name                 String
+  email                String?  @unique
+  phone                String?
+  code                 String   @unique @default(cuid()) // usado em /join/partner?ref=CODE
+  active               Boolean  @default(true)
+  bonusPerPartner      Decimal  @default(0) @db.Decimal(10, 2) // pago quando o parceiro indicado é aprovado
+  milestoneClientCount Int      @default(10) // "10 primeiros clientes convertidos"
+  milestoneBonus       Decimal  @default(0) @db.Decimal(10, 2) // pago ao atingir o milestone acima
+  pixKey               String?
+  walletBalance        Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  partners     PartnerProfile[]
+  joinRequests PublicRegistrationRequest[]
+  payouts      AffiliatePayout[]
+
+  @@index([active])
+}
+
+model AffiliatePayout {
+  id          String                @id @default(cuid())
+  affiliateId String
+  affiliate   Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  partnerId   String?
+  partner     PartnerProfile?       @relation(fields: [partnerId], references: [id])
+  type        AffiliatePayoutType
+  amount      Decimal               @db.Decimal(10, 2)
+  status      AffiliatePayoutStatus @default(PENDING)
+  paidAt      DateTime?
+  createdAt   DateTime              @default(now())
+
+  @@index([affiliateId])
+  @@index([partnerId])
 }
 
 // Chamado aberto por Colaborador, Gerente ou Parceiro na Central de Comunicação.

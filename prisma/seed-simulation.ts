@@ -201,7 +201,7 @@ async function ensurePartnerProgram(companyId: string, cfg: (typeof COMPANY_SIM_
         description: cfg.description,
         commissionType: "VARIABLE",
         commissionValue: 10,
-        isPercentage: true,
+        commissionFormat: "PERCENTAGE",
         hasLevels: true,
         active: true,
         imageUrl: PLACEHOLDER_IMAGE,

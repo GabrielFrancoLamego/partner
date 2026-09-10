@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { useCompanies } from "@/components/admin/use-companies"
 import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
+import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
 
 const RECURRENCE_LABELS: Record<string, string> = {
   DAILY: "Diária",
@@ -147,7 +148,27 @@ export function ChecklistsTab() {
         {instances.length === 0 ? (
           <EmptyState message="Nenhuma execução de checklist registrada ainda." />
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <>
+            <MobileCardList>
+              {instances.map((instance) => (
+                <MobileCard
+                  key={instance.id}
+                  title={instance.title}
+                  subtitle={`${instance.company.name} · ${instance.employee.name}`}
+                  badges={
+                    <>
+                      <StatusBadge status={instance.priority} />
+                      <StatusBadge status={instance.status} />
+                    </>
+                  }
+                  actions={
+                    <MobileCardAction icon={ArrowRightLeft} label="Reatribuir" onClick={() => setReassigning(instance)} />
+                  }
+                />
+              ))}
+            </MobileCardList>
+
+            <TableDesktop>
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left text-xs text-gray-500">
                 <tr>
@@ -180,7 +201,8 @@ export function ChecklistsTab() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </TableDesktop>
+          </>
         )}
       </section>
 

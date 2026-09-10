@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
 import { AvatarUpload } from "@/components/admin/avatar-upload"
+import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
 
 type Partner = {
   id: string
@@ -107,7 +108,43 @@ export function PartnersTab() {
       ) : partners.length === 0 ? (
         <EmptyState message="Nenhum parceiro encontrado." />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100">
+        <>
+          <MobileCardList>
+            {partners.map((partner) => (
+              <MobileCard
+                key={partner.id}
+                title={partner.partnerProfile?.fullName ?? partner.name}
+                subtitle={partner.email}
+                badges={<StatusBadge status={partner.status} />}
+                fields={[
+                  {
+                    label: "Tipo",
+                    value: partner.partnerProfile?.partnerType === "AGENCY" ? "Agência (PJ)" : "Pessoa física",
+                  },
+                  { label: "WhatsApp", value: partner.partnerProfile?.whatsapp ?? "—" },
+                  { label: "Agência", value: partner.partnerProfile?.parent?.user.name ?? "—" },
+                ]}
+                actions={
+                  <>
+                    <MobileCardAction icon={Pencil} label="Editar" onClick={() => setEditing(partner)} />
+                    <MobileCardAction
+                      icon={KeyRound}
+                      label="Redefinir senha"
+                      onClick={() => handleResetPassword(partner)}
+                    />
+                    <MobileCardAction
+                      icon={partner.status === "ACTIVE" ? Lock : Unlock}
+                      label={partner.status === "ACTIVE" ? "Bloquear" : "Desbloquear"}
+                      onClick={() => handleToggleStatus(partner)}
+                    />
+                    <MobileCardAction icon={Trash2} label="Excluir" tone="danger" onClick={() => handleDelete(partner)} />
+                  </>
+                }
+              />
+            ))}
+          </MobileCardList>
+
+          <TableDesktop>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs text-gray-500">
               <tr>
@@ -178,7 +215,8 @@ export function PartnersTab() {
               ))}
             </tbody>
           </table>
-        </div>
+          </TableDesktop>
+        </>
       )}
 
       {isCreateOpen && (

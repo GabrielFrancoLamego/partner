@@ -28,10 +28,13 @@ export async function POST(request: Request) {
   try {
     const admin = await requirePlatformAdmin()
     const body = await request.json()
-    const { companyId, name, description, commissionType, commissionValue, isPercentage } = body
+    const { companyId, name, description, commissionType, commissionValue, commissionFormat, productUnitLabel, imageUrl, pdfUrl, videoUrl, termsContent } = body
 
     if (!companyId || !name || !commissionType || commissionValue === undefined) {
       throw new ApiError(400, "Empresa, nome, tipo e valor de comissão são obrigatórios")
+    }
+    if (commissionFormat === "PRODUCT_UNIT" && !productUnitLabel) {
+      throw new ApiError(400, "Informe o rótulo da unidade de produto (ex: 'diária grátis')")
     }
 
     const db = auditedClient({ userId: admin.id, role: admin.role, companyId })
@@ -42,7 +45,12 @@ export async function POST(request: Request) {
         description: description ?? "",
         commissionType,
         commissionValue,
-        isPercentage: isPercentage ?? false,
+        commissionFormat: commissionFormat ?? "PERCENTAGE",
+        productUnitLabel: commissionFormat === "PRODUCT_UNIT" ? productUnitLabel : null,
+        imageUrl,
+        pdfUrl,
+        videoUrl,
+        termsContent,
       },
     })
 

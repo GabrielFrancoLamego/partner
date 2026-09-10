@@ -16,6 +16,7 @@ const AUDITED_MODELS = new Set([
   "Referral",
   "WalletTransaction",
   "ChecklistTemplate",
+  "Affiliate",
 ])
 
 const WRITE_OPERATIONS = new Set(["create", "update", "updateMany", "delete", "deleteMany", "upsert"])

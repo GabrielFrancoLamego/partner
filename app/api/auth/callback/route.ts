@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { createClient } from "@/lib/supabase/server"
+import { recordAccess } from "@/lib/access-log"
 
 /**
  * Callback do OAuth (Google). O Supabase redireciona pra cá com `?code=...`
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
     return Response.redirect(`${origin}/?authError=inactive`)
   }
 
-  await prisma.user.update({ where: { id: user.id }, data: { lastActiveAt: new Date() } })
+  await recordAccess(user.id, user.companyId)
 
   return Response.redirect(`${origin}/`)
 }

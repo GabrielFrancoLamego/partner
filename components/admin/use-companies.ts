@@ -10,6 +10,8 @@ export type AdminLicense = {
   maxEmployees: number
   maxPartners: number
   billingCycle: string
+  isExempt: boolean
+  billingDay: number | null
   expiresAt: string | null
 }
 
@@ -26,6 +28,7 @@ export type AdminCompany = {
   corporateName: string | null
   cnpj: string | null
   address: string | null
+  neighborhood: string | null
   city: string | null
   state: string | null
   zipCode: string | null
@@ -33,6 +36,10 @@ export type AdminCompany = {
   longitude: number | null
   geofenceRadiusMeters: number
   shiftClosingDeadline: string
+  operatingShift1Start: string | null
+  operatingShift1End: string | null
+  operatingShift2Start: string | null
+  operatingShift2End: string | null
   phone: string | null
   email: string | null
   website: string | null

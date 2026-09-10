@@ -7,7 +7,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const admin = await requirePlatformAdmin()
     const { id } = await params
     const body = await request.json()
-    const { title, description, validFrom, validUntil, cost, stock, active } = body
+    const {
+      title,
+      description,
+      validFrom,
+      validUntil,
+      cost,
+      stock,
+      active,
+      bannerUrl,
+      offerType,
+      originalPrice,
+      discountedPrice,
+      discountPercentage,
+    } = body
 
     const existing = await prisma.promotion.findUnique({ where: { id }, select: { companyId: true } })
     if (!existing) throw new ApiError(404, "Promoção não encontrada")
@@ -23,6 +36,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...(cost !== undefined ? { cost } : {}),
         ...(stock !== undefined ? { stock } : {}),
         ...(active !== undefined ? { active } : {}),
+        ...(bannerUrl !== undefined ? { bannerUrl: bannerUrl || null } : {}),
+        ...(offerType !== undefined ? { offerType } : {}),
+        ...(originalPrice !== undefined ? { originalPrice: originalPrice ?? null } : {}),
+        ...(discountedPrice !== undefined ? { discountedPrice: discountedPrice ?? null } : {}),
+        ...(discountPercentage !== undefined ? { discountPercentage: discountPercentage ?? null } : {}),
       },
     })
 

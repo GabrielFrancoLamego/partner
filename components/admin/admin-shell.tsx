@@ -11,6 +11,7 @@ import {
   MessageSquare,
   ShieldCheck,
   LogOut,
+  Tag,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/admin/cadastros", label: "Cadastros", icon: ClipboardList },
   { href: "/admin/operacoes", label: "Operações", icon: Boxes },
   { href: "/admin/financeiro", label: "Financeiro", icon: Wallet },
+  { href: "/admin/planos", label: "Planos", icon: Tag },
   { href: "/admin/comunicacao", label: "Comunicação", icon: MessageSquare },
   { href: "/admin/auditoria", label: "Auditoria", icon: ShieldCheck },
 ]

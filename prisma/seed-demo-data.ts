@@ -439,7 +439,7 @@ async function main() {
         description: "Régua de comissão por volume de indicações",
         commissionType: "VARIABLE",
         commissionValue: 10,
-        isPercentage: true,
+        commissionFormat: "PERCENTAGE",
         hasLevels: true,
         active: true,
       },

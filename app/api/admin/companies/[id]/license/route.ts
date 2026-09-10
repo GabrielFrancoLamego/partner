@@ -7,7 +7,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const admin = await requirePlatformAdmin()
     const { id } = await params
     const body = await request.json()
-    const { plan, status, maxEmployees, maxPartners, billingCycle, expiresAt } = body
+    const { plan, status, maxEmployees, maxPartners, billingCycle, expiresAt, isExempt, billingDay } = body
+
+    const existing = await prisma.license.findUnique({ where: { companyId: id } })
+    const isBecomingCanceled = status === "CANCELED" && existing?.status !== "CANCELED"
 
     const data = {
       ...(plan !== undefined ? { plan } : {}),
@@ -16,6 +19,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       ...(maxPartners !== undefined ? { maxPartners } : {}),
       ...(billingCycle !== undefined ? { billingCycle } : {}),
       ...(expiresAt !== undefined ? { expiresAt: expiresAt ? new Date(expiresAt) : null } : {}),
+      ...(isExempt !== undefined ? { isExempt } : {}),
+      ...(billingDay !== undefined ? { billingDay: billingDay ?? null } : {}),
+      ...(isBecomingCanceled ? { canceledAt: new Date() } : {}),
     }
 
     const license = await prisma.license.upsert({

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { useCompanies } from "@/components/admin/use-companies"
 import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
+import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
 
 type RegistrationLink = {
   id: string
@@ -69,7 +70,30 @@ export function LinksTab() {
       ) : links.length === 0 ? (
         <EmptyState message="Nenhum link de auto-cadastro criado ainda." />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100">
+        <>
+          <MobileCardList>
+            {links.map((link) => (
+              <MobileCard
+                key={link.id}
+                title={link.company.name}
+                subtitle={link.role}
+                badges={<StatusBadge status={link.active ? "ACTIVE" : "INACTIVE"} />}
+                fields={[{ label: "Cadastros recebidos", value: link._count.requests }]}
+                actions={
+                  <>
+                    <MobileCardAction icon={Copy} label="Copiar link" onClick={() => handleCopy(link.token)} />
+                    <MobileCardAction
+                      icon={Power}
+                      label={link.active ? "Desativar" : "Ativar"}
+                      onClick={() => handleToggle(link)}
+                    />
+                  </>
+                }
+              />
+            ))}
+          </MobileCardList>
+
+          <TableDesktop>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs text-gray-500">
               <tr>
@@ -108,7 +132,8 @@ export function LinksTab() {
               ))}
             </tbody>
           </table>
-        </div>
+          </TableDesktop>
+        </>
       )}
 
       {isCreateOpen && (

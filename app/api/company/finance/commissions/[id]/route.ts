@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
 import { canManageFinance } from "@/lib/permissions"
 import { logAudit } from "@/lib/audit"
+import { checkAffiliateMilestone } from "@/lib/affiliate"
 
 /**
  * Aprovar/reprovar/pagar uma comissão. Aprovar credita PartnerProfile.walletBalance
@@ -57,6 +58,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     })
 
     await logAudit({ userId: user.id, companyId, action: status, entity: "Commission", entityId: id, details: { finalValue } })
+
+    if (status === "APPROVED") {
+      await checkAffiliateMilestone(commission.partnerId)
+    }
 
     return Response.json(updated)
   } catch (error) {

@@ -5,9 +5,9 @@ import { updateSession } from "@/lib/supabase/middleware"
 // /api/* exige sessão válida. A verificação fina de capacidade (quem pode
 // aprovar saque, checklist, etc.) acontece dentro de cada route handler via
 // lib/api-auth.ts + lib/permissions.ts.
-const PUBLIC_API_PATHS = ["/api/auth/login", "/api/auth/logout", "/api/auth/callback"]
+const PUBLIC_API_PATHS = ["/api/auth/login", "/api/auth/logout", "/api/auth/callback", "/api/public/"]
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { response, userId } = await updateSession(request)
 
   const { pathname } = request.nextUrl

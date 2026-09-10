@@ -1,9 +1,14 @@
 "use client"
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useState } from "react"
+import { Check, ChevronsUpDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { cn } from "@/lib/utils"
 import type { AdminCompany } from "./use-companies"
 
+/** Empresas já vêm ordenadas alfabeticamente por /api/admin/companies (orderBy: name asc). */
 export function CompanyFilter({
   companies,
   value,
@@ -13,20 +18,56 @@ export function CompanyFilter({
   value: string
   onChange: (value: string) => void
 }) {
+  const [open, setOpen] = useState(false)
+  const selected = companies.find((c) => c.id === value)
+
   return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-full sm:w-56 bg-white">
-        <SelectValue placeholder="Todas as empresas" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="all">Todas as empresas</SelectItem>
-        {companies.map((company) => (
-          <SelectItem key={company.id} value={company.id}>
-            {company.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full sm:w-64 justify-between bg-white font-normal"
+        >
+          <span className="truncate">{selected ? selected.name : "Todas as empresas"}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Buscar empresa..." />
+          <CommandList>
+            <CommandEmpty>Nenhuma empresa encontrada.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="Todas as empresas"
+                onSelect={() => {
+                  onChange("all")
+                  setOpen(false)
+                }}
+              >
+                <Check className={cn("mr-2 h-4 w-4", value === "all" ? "opacity-100" : "opacity-0")} />
+                Todas as empresas
+              </CommandItem>
+              {companies.map((company) => (
+                <CommandItem
+                  key={company.id}
+                  value={company.name}
+                  onSelect={() => {
+                    onChange(company.id)
+                    setOpen(false)
+                  }}
+                >
+                  <Check className={cn("mr-2 h-4 w-4", value === company.id ? "opacity-100" : "opacity-0")} />
+                  {company.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }
 

@@ -12,10 +12,17 @@ import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { useCompanies } from "@/components/admin/use-companies"
 import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
 
+type OfferType = "DISCOUNT" | "FREE_GIFT" | "DOUBLE_BENEFIT"
+
 type Promotion = {
   id: string
   title: string
   description: string
+  bannerUrl: string | null
+  offerType: OfferType
+  originalPrice: string | null
+  discountedPrice: string | null
+  discountPercentage: string | null
   validFrom: string
   validUntil: string
   cost: string
@@ -24,6 +31,22 @@ type Promotion = {
   active: boolean
   company: { id: string; name: string }
   units: { unit: { id: string; name: string } }[]
+}
+
+const OFFER_LABELS: Record<OfferType, string> = {
+  DISCOUNT: "Desconto",
+  FREE_GIFT: "Brinde Gratuito",
+  DOUBLE_BENEFIT: "Benefício em Dobro (Pediu 1, levou 2)",
+}
+
+function offerSummary(promotion: Promotion) {
+  if (promotion.offerType === "FREE_GIFT") return "Brinde gratuito"
+  if (promotion.offerType === "DOUBLE_BENEFIT") return "Pediu 1, levou 2"
+  if (promotion.discountPercentage) return `${promotion.discountPercentage}% off`
+  if (promotion.originalPrice && promotion.discountedPrice) {
+    return `De R$ ${promotion.originalPrice} por R$ ${promotion.discountedPrice}`
+  }
+  return "Desconto"
 }
 
 export function PromotionsTab() {
@@ -78,13 +101,23 @@ export function PromotionsTab() {
           {promotions.map((promotion) => (
             <div
               key={promotion.id}
-              className="p-4 rounded-xl border border-gray-100 bg-gradient-to-br from-white to-gray-50"
+              className="p-4 rounded-xl border border-gray-100 bg-gradient-to-br from-white to-gray-50 flex gap-3"
             >
-              <div className="flex items-start justify-between gap-3">
+              {promotion.bannerUrl && (
+                <img
+                  src={promotion.bannerUrl}
+                  alt={promotion.title}
+                  className="w-16 h-16 rounded-lg object-cover flex-shrink-0 hidden sm:block"
+                />
+              )}
+              <div className="flex items-start justify-between gap-3 flex-1 min-w-0">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold text-[#3E2415]">{promotion.title}</p>
                     <StatusBadge status={promotion.active ? "ACTIVE" : "INACTIVE"} />
+                    <span className="text-[10px] font-medium text-orange-700 bg-orange-50 rounded-full px-2 py-0.5">
+                      {offerSummary(promotion)}
+                    </span>
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {promotion.company.name} ·{" "}
@@ -153,6 +186,11 @@ function PromotionDialog({
   const [companyId, setCompanyId] = useState(promotion?.company.id ?? companies[0]?.id ?? "")
   const [title, setTitle] = useState(promotion?.title ?? "")
   const [description, setDescription] = useState(promotion?.description ?? "")
+  const [bannerUrl, setBannerUrl] = useState(promotion?.bannerUrl ?? "")
+  const [offerType, setOfferType] = useState<OfferType>(promotion?.offerType ?? "DISCOUNT")
+  const [originalPrice, setOriginalPrice] = useState(promotion?.originalPrice ?? "")
+  const [discountedPrice, setDiscountedPrice] = useState(promotion?.discountedPrice ?? "")
+  const [discountPercentage, setDiscountPercentage] = useState(promotion?.discountPercentage ?? "")
   const [validFrom, setValidFrom] = useState(promotion?.validFrom.slice(0, 10) ?? "")
   const [validUntil, setValidUntil] = useState(promotion?.validUntil.slice(0, 10) ?? "")
   const [cost, setCost] = useState(promotion?.cost ?? "")
@@ -168,6 +206,11 @@ function PromotionDialog({
       const payload = {
         title,
         description,
+        bannerUrl: bannerUrl || null,
+        offerType,
+        originalPrice: offerType === "DISCOUNT" && originalPrice ? Number(originalPrice) : null,
+        discountedPrice: offerType === "DISCOUNT" && discountedPrice ? Number(discountedPrice) : null,
+        discountPercentage: offerType === "DISCOUNT" && discountPercentage ? Number(discountPercentage) : null,
         validFrom,
         validUntil,
         cost: Number(cost),
@@ -219,9 +262,50 @@ function PromotionDialog({
             <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
           </div>
           <div className="space-y-2">
+            <Label>Foto (URL)</Label>
+            <Input value={bannerUrl} onChange={(e) => setBannerUrl(e.target.value)} placeholder="https://..." />
+          </div>
+          <div className="space-y-2">
             <Label>Descrição</Label>
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
+
+          <div className="space-y-2">
+            <Label>Tipo de oferta</Label>
+            <Select value={offerType} onValueChange={(v) => setOfferType(v as OfferType)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(OFFER_LABELS) as OfferType[]).map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {OFFER_LABELS[key]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {offerType === "DISCOUNT" && (
+            <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-orange-50/50 border border-orange-100">
+              <div className="space-y-2">
+                <Label className="text-xs">Valor real (R$)</Label>
+                <Input type="number" step="0.01" value={originalPrice} onChange={(e) => setOriginalPrice(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Valor promocional (R$)</Label>
+                <Input type="number" step="0.01" value={discountedPrice} onChange={(e) => setDiscountedPrice(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">ou % de desconto</Label>
+                <Input type="number" step="0.1" value={discountPercentage} onChange={(e) => setDiscountPercentage(e.target.value)} />
+              </div>
+              <p className="col-span-3 text-[11px] text-gray-500">
+                Preencha "Valor promocional" OU "% de desconto" — o que for informado é o que aparece para o cliente.
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Válida de</Label>

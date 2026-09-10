@@ -27,7 +27,21 @@ export async function POST(request: Request) {
   try {
     const admin = await requirePlatformAdmin()
     const body = await request.json()
-    const { companyId, title, description, validFrom, validUntil, cost, stock, unitIds } = body
+    const {
+      companyId,
+      title,
+      description,
+      validFrom,
+      validUntil,
+      cost,
+      stock,
+      unitIds,
+      bannerUrl,
+      offerType,
+      originalPrice,
+      discountedPrice,
+      discountPercentage,
+    } = body
 
     if (!companyId || !title || !validFrom || !validUntil || cost === undefined) {
       throw new ApiError(400, "Empresa, título, período e custo são obrigatórios")
@@ -43,6 +57,11 @@ export async function POST(request: Request) {
         validUntil: new Date(validUntil),
         cost,
         stock: stock ?? null,
+        bannerUrl: bannerUrl || null,
+        offerType: offerType ?? "DISCOUNT",
+        originalPrice: originalPrice ?? null,
+        discountedPrice: discountedPrice ?? null,
+        discountPercentage: discountPercentage ?? null,
         units: unitIds?.length ? { create: unitIds.map((unitId: string) => ({ unitId })) } : undefined,
       },
     })

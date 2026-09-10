@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { adminFetch } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState } from "@/components/admin/admin-ui"
+import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 
 type Transaction = {
   id: string
@@ -40,7 +41,30 @@ export function TransactionsTab({ companyId }: { companyId: string }) {
   if (transactions.length === 0) return <EmptyState message="Nenhuma transação registrada ainda." />
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-100">
+    <>
+      <MobileCardList>
+        {transactions.map((tx) => {
+          const isDebit = tx.type === "MANUAL_DEBIT" || tx.type === "WITHDRAWAL"
+          return (
+            <MobileCard
+              key={tx.id}
+              title={tx.description}
+              subtitle={`${tx.company.name} · ${tx.partner.name}`}
+              badges={
+                <span className={`text-sm font-bold ${isDebit ? "text-red-600" : "text-green-600"}`}>
+                  {currency(tx.amount)}
+                </span>
+              }
+              fields={[
+                { label: "Tipo", value: TYPE_LABELS[tx.type] },
+                { label: "Data", value: new Date(tx.createdAt).toLocaleDateString("pt-BR") },
+              ]}
+            />
+          )
+        })}
+      </MobileCardList>
+
+      <TableDesktop>
       <table className="w-full text-sm">
         <thead className="bg-gray-50 text-left text-xs text-gray-500">
           <tr>
@@ -71,6 +95,7 @@ export function TransactionsTab({ companyId }: { companyId: string }) {
           ))}
         </tbody>
       </table>
-    </div>
+      </TableDesktop>
+    </>
   )
 }

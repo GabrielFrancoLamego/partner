@@ -8,7 +8,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const admin = await requirePlatformAdmin()
     const { id } = await params
     const body = await request.json()
-    const { name, role, companyId, status } = body
+    const { name, role, companyId, status, blockReason } = body
+
+    const before = await prisma.user.findUnique({ where: { id } })
+    if (!before) throw new ApiError(404, "Usuário não encontrado")
+
+    if (status !== undefined && status !== before.status && !blockReason?.trim()) {
+      throw new ApiError(400, "Motivo é obrigatório para bloquear/desbloquear um usuário")
+    }
 
     const user = await prisma.user.update({
       where: { id },
@@ -26,7 +33,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       action: status !== undefined ? (status === "INACTIVE" ? "BLOCK" : "UNBLOCK") : "UPDATE",
       entity: "User",
       entityId: id,
-      details: body,
+      details:
+        status !== undefined
+          ? { before: { status: before.status }, after: { status: user.status }, reason: blockReason ?? null }
+          : { before, after: user },
     })
 
     return Response.json(user)
