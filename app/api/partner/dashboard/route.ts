@@ -47,6 +47,14 @@ export async function GET() {
 
     return Response.json({
       walletBalance: Number(profile.walletBalance),
+      bankData: {
+        pixKey: profile.pixKey,
+        bankName: profile.bankName,
+        accountType: profile.accountType,
+        agency: profile.agency,
+        accountNumber: profile.accountNumber,
+        isComplete: Boolean(profile.pixKey && profile.bankName && profile.agency && profile.accountNumber),
+      },
       currentLevel: profile.currentLevel
         ? {
             id: profile.currentLevel.id,

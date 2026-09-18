@@ -7,9 +7,76 @@ import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { User, Lock, ShieldCheck, Building2, Users, Eye, EyeOff, Check } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { User, Lock, ShieldCheck, Building2, Users, Eye, EyeOff, Check, Zap } from "lucide-react"
 import type { AuthUser } from "@/lib/role-bucket"
 import { createClient } from "@/lib/supabase/client"
+
+const DEMO_PASSWORD = "123456"
+
+/**
+ * Contas semeadas no ambiente local de testes (prisma/seed-*.ts), todas com
+ * senha "123456". Lista mantida à mão — só as contas @teste.com.vc / a
+ * parceira de teste, nunca os ~170 parceiros reais importados da planilha.
+ */
+type DemoAccount = { email: string; name: string; portal: Portal }
+const DEMO_ACCOUNTS: { group: string; accounts: DemoAccount[] }[] = [
+  {
+    group: "Plataforma",
+    accounts: [{ email: "admin@teste.com.vc", name: "Admin Plataforma", portal: "platform" }],
+  },
+  {
+    group: "Master",
+    accounts: [
+      { email: "master@teste.com.vc", name: "Master — Nomad's Jeri", portal: "company" },
+      { email: "master.lagoa@teste.com.vc", name: "Master — Nomad's Lagoa", portal: "company" },
+      { email: "master.inon@teste.com.vc", name: "Master — IN-ON", portal: "company" },
+    ],
+  },
+  {
+    group: "Gerente",
+    accounts: [
+      { email: "gerente@teste.com.vc", name: "Gerente — Nomad's Jeri", portal: "company" },
+      { email: "gerente.lagoa@teste.com.vc", name: "Gerente — Nomad's Lagoa", portal: "company" },
+      { email: "gerente.inon@teste.com.vc", name: "Gerente — IN-ON", portal: "company" },
+    ],
+  },
+  {
+    group: "Financeiro",
+    accounts: [
+      { email: "financeiro@teste.com.vc", name: "Financeiro — Nomad's Jeri", portal: "company" },
+      { email: "financeiro.lagoa@teste.com.vc", name: "Financeiro — Nomad's Lagoa", portal: "company" },
+      { email: "financeiro.inon@teste.com.vc", name: "Financeiro — IN-ON", portal: "company" },
+    ],
+  },
+  {
+    group: "Colaborador / Operador",
+    accounts: [
+      { email: "colaborador@teste.com.vc", name: "Colaborador Teste — Nomad's Jeri", portal: "company" },
+      { email: "ana.jeri@teste.com.vc", name: "Ana Beatriz Souza — Nomad's Jeri", portal: "company" },
+      { email: "rafael.jeri@teste.com.vc", name: "Rafael Torres — Nomad's Jeri", portal: "company" },
+      { email: "colaborador.lagoa@teste.com.vc", name: "Colaborador Teste — Nomad's Lagoa", portal: "company" },
+      { email: "lucas.lagoa@teste.com.vc", name: "Lucas Prado — Nomad's Lagoa", portal: "company" },
+      { email: "marina.lagoa@teste.com.vc", name: "Marina Duarte — Nomad's Lagoa", portal: "company" },
+      { email: "colaborador.inon@teste.com.vc", name: "Colaborador Teste — IN-ON", portal: "company" },
+      { email: "camila.inon@teste.com.vc", name: "Camila Rocha — IN-ON", portal: "company" },
+      { email: "thiago.inon@teste.com.vc", name: "Thiago Nunes — IN-ON", portal: "company" },
+    ],
+  },
+  {
+    group: "Parceiro",
+    accounts: [{ email: "parceiro@teste.com.vc", name: "Parceiro Teste", portal: "partner" }],
+  },
+]
 
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
   no_profile: "Sua conta Google não está vinculada a nenhum perfil na plataforma. Peça a um administrador para cadastrar seu email primeiro.",
@@ -55,11 +122,15 @@ export function LoginContent({ onLogin }: LoginContentProps) {
   const searchParams = useSearchParams()
   const [portal, setPortal] = useState<Portal>("platform")
   const [email, setEmail] = useState(PORTALS.platform.demoEmail)
-  const [password, setPassword] = useState("123456")
+  const [password, setPassword] = useState(DEMO_PASSWORD)
   const [error, setError] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false)
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState("")
+  const [isSendingReset, setIsSendingReset] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
 
   useEffect(() => {
     const authError = searchParams.get("authError")
@@ -71,7 +142,16 @@ export function LoginContent({ onLogin }: LoginContentProps) {
   const handlePortalChange = (next: Portal) => {
     setPortal(next)
     setEmail(PORTALS[next].demoEmail)
-    setPassword("123456")
+    setPassword(DEMO_PASSWORD)
+    setError("")
+  }
+
+  const handleDemoAccountChange = (nextEmail: string) => {
+    const account = DEMO_ACCOUNTS.flatMap((g) => g.accounts).find((a) => a.email === nextEmail)
+    if (!account) return
+    setPortal(account.portal)
+    setEmail(account.email)
+    setPassword(DEMO_PASSWORD)
     setError("")
   }
 
@@ -87,6 +167,27 @@ export function LoginContent({ onLogin }: LoginContentProps) {
       setIsGoogleLoading(false)
     }
     // Sucesso redireciona a página inteira para o Google — nada mais a fazer aqui.
+  }
+
+  const handleOpenForgotPassword = () => {
+    setForgotPasswordEmail(email)
+    setResetSent(false)
+    setIsForgotPasswordOpen(true)
+  }
+
+  const handleSendResetLink = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSendingReset(true)
+    try {
+      await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotPasswordEmail }),
+      })
+    } finally {
+      setResetSent(true)
+      setIsSendingReset(false)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -161,9 +262,35 @@ export function LoginContent({ onLogin }: LoginContentProps) {
             })}
           </div>
 
-          <p className="text-xs text-gray-400 mb-6 text-center">
-            Ambiente local de testes — senha para todas as contas: <strong className="text-gray-600">123456</strong>
+          <p className="text-xs text-gray-400 mb-3 text-center">
+            Ambiente local de testes — senha para todas as contas: <strong className="text-gray-600">{DEMO_PASSWORD}</strong>
           </p>
+
+          {process.env.NODE_ENV !== "production" && (
+            <div className="space-y-1.5 mb-6">
+              <Label htmlFor="demo-account" className="text-[#3E2415] flex items-center gap-1.5 text-xs">
+                <Zap className="h-3.5 w-3.5" style={{ color: "#F58220" }} />
+                Acesso rápido (teste)
+              </Label>
+              <Select value={email} onValueChange={handleDemoAccountChange}>
+                <SelectTrigger id="demo-account" className="w-full h-11 rounded-xl">
+                  <SelectValue placeholder="Selecione uma conta de teste..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {DEMO_ACCOUNTS.map(({ group, accounts }) => (
+                    <SelectGroup key={group}>
+                      <SelectLabel>{group}</SelectLabel>
+                      {accounts.map((account) => (
+                        <SelectItem key={account.email} value={account.email}>
+                          {account.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
@@ -259,10 +386,46 @@ export function LoginContent({ onLogin }: LoginContentProps) {
           </Button>
 
           <p className="text-center text-sm text-gray-500 mt-6">
-            Esqueceu a senha? <button className="text-[#3E2415] hover:underline font-medium">Recuperar acesso</button>
+            Esqueceu a senha?{" "}
+            <button type="button" onClick={handleOpenForgotPassword} className="text-[#3E2415] hover:underline font-medium">
+              Recuperar acesso
+            </button>
           </p>
         </div>
       </div>
+
+      <Dialog open={isForgotPasswordOpen} onOpenChange={setIsForgotPasswordOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Recuperar acesso</DialogTitle>
+          </DialogHeader>
+          {resetSent ? (
+            <p className="text-sm text-gray-600">
+              Se houver uma conta com este email, enviamos um link de redefinição de senha. Confira sua caixa de
+              entrada (e o spam).
+            </p>
+          ) : (
+            <form onSubmit={handleSendResetLink} className="space-y-4">
+              <p className="text-sm text-gray-600">Informe seu email de acesso para receber o link de redefinição de senha.</p>
+              <div className="space-y-2">
+                <Label htmlFor="forgot-email">Email</Label>
+                <Input
+                  id="forgot-email"
+                  type="email"
+                  value={forgotPasswordEmail}
+                  onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <DialogFooter>
+                <Button type="submit" variant="brand" disabled={isSendingReset}>
+                  {isSendingReset ? "Enviando..." : "Enviar link"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -46,6 +46,17 @@ export async function POST(request: Request) {
     const finalPixKey = pixKey?.trim() || profile.pixKey
     if (!finalPixKey) throw new ApiError(400, "Cadastre uma chave PIX para solicitar o saque")
 
+    // Regra do parceiro (front 1): cadastro básico é aceito para navegar a
+    // plataforma, mas a 1ª Solicitação de Saque exige Chave PIX + Dados
+    // Bancários completos — evita retrabalho do Financeiro com saque
+    // aprovado sem como pagar.
+    if (!profile.bankName?.trim() || !profile.agency?.trim() || !profile.accountNumber?.trim()) {
+      throw new ApiError(
+        400,
+        "Complete seus Dados Bancários (banco, agência e conta) no seu perfil antes de solicitar um saque",
+      )
+    }
+
     const withdrawal = await prisma.$transaction(async (tx) => {
       const created = await tx.withdrawal.create({
         data: { companyId, partnerId: user.id, amount: amountNumber, pixKey: finalPixKey, status: "PENDING" },

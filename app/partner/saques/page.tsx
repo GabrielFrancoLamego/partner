@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { ExternalLink } from "lucide-react"
+import Link from "next/link"
+import { ExternalLink, UserCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,12 +22,21 @@ type Withdrawal = {
   rejectionReason: string | null
   company: { id: string; name: string }
 }
-type DashboardSummary = { walletBalance: number }
+type BankData = {
+  pixKey: string | null
+  bankName: string | null
+  accountType: string | null
+  agency: string | null
+  accountNumber: string | null
+  isComplete: boolean
+}
+type DashboardSummary = { walletBalance: number; bankData: BankData }
 
 const currency = (value: string | number) => Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
 export default function PartnerWithdrawalsPage() {
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
+  const [bankData, setBankData] = useState<BankData | null>(null)
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([])
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -47,6 +57,7 @@ export default function PartnerWithdrawalsPage() {
     ])
       .then(([dashboard, commissions, withdrawalsList]) => {
         setWalletBalance(dashboard.walletBalance)
+        setBankData(dashboard.bankData)
         const uniqueCompanies = Array.from(new Map(commissions.map((c) => [c.company.id, c.company])).values())
         setCompanies(uniqueCompanies)
         setCompanyId((prev) => prev || uniqueCompanies[0]?.id || "")
@@ -105,8 +116,24 @@ export default function PartnerWithdrawalsPage() {
         <p className="text-3xl font-bold">{currency(maxAmount)}</p>
       </div>
 
+      {bankData && !bankData.isComplete && (
+        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <UserCircle2 className="h-5 w-5 text-amber-600 flex-shrink-0" />
+            <p className="text-sm text-amber-800">Complete seus Dados Bancários no perfil para liberar a solicitação de saque.</p>
+          </div>
+          <Link href="/partner/perfil">
+            <Button size="sm" variant="brand">
+              Completar Perfil
+            </Button>
+          </Link>
+        </div>
+      )}
+
       {companies.length === 0 ? (
         <EmptyState message="Você ainda não possui histórico de comissões em nenhuma empresa." />
+      ) : !bankData?.isComplete ? (
+        <EmptyState message="Complete seus Dados Bancários acima para liberar a solicitação de saque." />
       ) : (
         <AdminCard title="Nova Solicitação">
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -137,7 +164,7 @@ export default function PartnerWithdrawalsPage() {
               <Label>Chave PIX (opcional — usa a cadastrada no perfil se vazio)</Label>
               <Input value={pixKey} onChange={(e) => setPixKey(e.target.value)} placeholder="CPF, e-mail, telefone ou chave aleatória" />
             </div>
-            <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+            <Button type="submit" variant="brand" disabled={isSubmitting}>
               Solicitar Saque
             </Button>
           </form>
