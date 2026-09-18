@@ -20,12 +20,15 @@ import {
   Target,
   Gift,
   MessagesSquare,
+  UserCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Role } from "@prisma/client"
 import { canManageDailyOperations, canManageFinance, canOperateFrontDesk, canConfigureCompany } from "@/lib/permissions"
 import { CompanyUserProvider, type CompanyUser } from "@/lib/company-user-context"
 import { TermAcceptanceGate } from "./term-acceptance-gate"
+import { ProfileCompletionGate } from "./profile-completion-gate"
+import { NotificationBell } from "@/components/notifications/notification-bell"
 
 const ROLE_LABELS: Record<Role, string> = {
   ADMIN: "Administrador da Plataforma",
@@ -62,16 +65,26 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/company/metas", label: "Metas", icon: Target, show: () => true },
   { href: "/company/programa-interno", label: "Programa Interno", shortLabel: "Interno", icon: Award, show: (u) => canManageDailyOperations(u.role) },
   { href: "/company/setores", label: "Setores", icon: Users2, show: (u) => canManageDailyOperations(u.role) },
+  { href: "/company/aprovacoes", label: "Aprovações Pendentes", shortLabel: "Aprovações", icon: UserCheck, show: (u) => u.role === "COMPANY_MASTER" },
   { href: "/company/programas", label: "Programa de Parceria", shortLabel: "Parceria", icon: Award, show: (u) => canConfigureCompany(u.role) },
   { href: "/company/promocoes", label: "Promoções", icon: Gift, show: (u) => canConfigureCompany(u.role) },
   { href: "/company/comunicacao", label: "Comunicação", icon: MessagesSquare, show: () => true },
   { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: (u) => canManageFinance(u.role) },
 ]
 
-export function CompanyShell({ user, children }: { user: CompanyUser; children: React.ReactNode }) {
+export function CompanyShell({
+  user,
+  children,
+  billingWarning,
+}: {
+  user: CompanyUser
+  children: React.ReactNode
+  billingWarning?: { daysOverdue: number; daysRemaining: number } | null
+}) {
   const pathname = usePathname()
   const router = useRouter()
   const items = NAV_ITEMS.filter((item) => item.show(user))
+  const canSeeBillingWarning = user.role === "COMPANY_MASTER" || user.role === "COMPANY_FINANCE"
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
@@ -84,7 +97,19 @@ export function CompanyShell({ user, children }: { user: CompanyUser; children: 
   return (
     <CompanyUserProvider user={user}>
       <div className="min-h-screen bg-[#F7F5F2]">
+        {user.role === "EMPLOYEE" && <ProfileCompletionGate />}
         {user.role === "EMPLOYEE" && <TermAcceptanceGate />}
+        {billingWarning && canSeeBillingWarning && (
+          <div className="sticky top-0 z-50 bg-red-600 text-white px-4 py-2 flex items-center justify-center gap-2 text-xs sm:text-sm font-medium text-center">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            <span>
+              Pendência financeira em aberto há {billingWarning.daysOverdue}{" "}
+              {billingWarning.daysOverdue === 1 ? "dia" : "dias"}. Regularize em até{" "}
+              {billingWarning.daysRemaining} {billingWarning.daysRemaining === 1 ? "dia" : "dias"} para evitar o
+              bloqueio do acesso.
+            </span>
+          </div>
+        )}
         {/* Desktop Sidebar */}
         <aside className="hidden lg:flex fixed left-0 top-0 h-screen w-[260px] flex-col border-r border-[#E8E3DC] bg-white">
           <div className="p-4 border-b border-[#E8E3DC] flex items-center gap-3">
@@ -137,13 +162,16 @@ export function CompanyShell({ user, children }: { user: CompanyUser; children: 
               <img src="/brand/tribuss-icone-app.png" alt="Tribuss" className="w-8 h-8 rounded-lg object-contain flex-shrink-0" />
               <span className="font-heading text-sm font-semibold text-[#3E2415] truncate">{user.companyName}</span>
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex flex-shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#3E2415] hover:bg-red-50 hover:text-red-600 transition-colors"
-            >
-              <LogOut className="h-4 w-4" />
-              Sair
-            </button>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <NotificationBell />
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#3E2415] hover:bg-red-50 hover:text-red-600 transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+                Sair
+              </button>
+            </div>
           </div>
           <div className="flex gap-1.5 overflow-x-auto whitespace-nowrap px-3 pb-2 scrollbar-hide">
             {items.map((item) => {
@@ -169,7 +197,8 @@ export function CompanyShell({ user, children }: { user: CompanyUser; children: 
         </div>
 
         <div className="lg:ml-[260px]">
-          <div className="hidden lg:flex items-center justify-end px-8 py-3 border-b border-[#E8E3DC] bg-white/60">
+          <div className="hidden lg:flex items-center justify-end gap-3 px-8 py-3 border-b border-[#E8E3DC] bg-white/60">
+            <NotificationBell />
             <p className="text-xs text-gray-500">
               Logado como <span className="font-semibold text-[#3E2415]">{user.name}</span> ·{" "}
               {ROLE_LABELS[user.role]}

@@ -3,17 +3,21 @@
 import type React from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
-import { LayoutDashboard, Wallet, Banknote, LogOut, Gift, Map, MessagesSquare } from "lucide-react"
+import { LayoutDashboard, Wallet, Banknote, LogOut, Gift, Map, MessagesSquare, Star, Rocket, UserCircle2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PartnerUserProvider, type PartnerUser } from "@/lib/partner-user-context"
 import { PartnerTermAcceptanceGate } from "./term-acceptance-gate"
+import { NotificationBell } from "@/components/notifications/notification-bell"
 
 const NAV_ITEMS = [
   { href: "/partner", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/partner/nivel", label: "Meu Nível", icon: Rocket },
   { href: "/partner/comissoes", label: "Comissões", icon: Wallet },
   { href: "/partner/saques", label: "Saques PIX", shortLabel: "Saques", icon: Banknote },
+  { href: "/partner/afiliado", label: "Afiliado", icon: Star },
   { href: "/partner/promocoes", label: "Promoções", icon: Gift },
   { href: "/partner/mapa", label: "Mapa", icon: Map },
+  { href: "/partner/perfil", label: "Meu Perfil", icon: UserCircle2 },
   { href: "/partner/ajuda", label: "Ajuda", icon: MessagesSquare },
 ]
 
@@ -81,13 +85,16 @@ export function PartnerShell({ user, children }: { user: PartnerUser; children: 
               <img src="/brand/tribuss-icone-app.png" alt="Tribuss" className="w-8 h-8 rounded-lg object-contain" />
               <span className="font-heading text-sm font-semibold text-[#3E2415]">Portal do Parceiro</span>
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#3E2415] hover:bg-red-50 hover:text-red-600 transition-colors"
-            >
-              <LogOut className="h-4 w-4" />
-              Sair
-            </button>
+            <div className="flex items-center gap-1">
+              <NotificationBell />
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#3E2415] hover:bg-red-50 hover:text-red-600 transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+                Sair
+              </button>
+            </div>
           </div>
           <div className="flex gap-1.5 overflow-x-auto whitespace-nowrap px-3 pb-2 scrollbar-hide">
             {NAV_ITEMS.map((item) => {
@@ -113,7 +120,8 @@ export function PartnerShell({ user, children }: { user: PartnerUser; children: 
         </div>
 
         <div className="lg:ml-[260px]">
-          <div className="hidden lg:flex items-center justify-end px-8 py-3 border-b border-[#E8E3DC] bg-white/60">
+          <div className="hidden lg:flex items-center justify-end gap-3 px-8 py-3 border-b border-[#E8E3DC] bg-white/60">
+            <NotificationBell />
             <p className="text-xs text-gray-500">
               Logado como <span className="font-semibold text-[#3E2415]">{user.name}</span>
             </p>

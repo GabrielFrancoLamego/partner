@@ -12,12 +12,15 @@ import {
   ShieldCheck,
   LogOut,
   Tag,
+  Award,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { NotificationBell } from "@/components/notifications/notification-bell"
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/cadastros", label: "Cadastros", icon: ClipboardList },
+  { href: "/admin/programas", label: "Programas", icon: Award },
   { href: "/admin/operacoes", label: "Operações", icon: Boxes },
   { href: "/admin/financeiro", label: "Financeiro", icon: Wallet },
   { href: "/admin/planos", label: "Planos", icon: Tag },
@@ -89,13 +92,16 @@ export function AdminShell({ userName, children }: { userName: string; children:
             <img src="/brand/tribuss-icone-app.png" alt="Tribuss" className="w-8 h-8 rounded-lg object-contain" />
             <span className="font-heading text-sm font-semibold text-[#3E2415]">Admin</span>
           </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#3E2415] hover:bg-red-50 hover:text-red-600 transition-colors"
-          >
-            <LogOut className="h-4 w-4" />
-            Sair
-          </button>
+          <div className="flex items-center gap-1">
+            <NotificationBell />
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#3E2415] hover:bg-red-50 hover:text-red-600 transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              Sair
+            </button>
+          </div>
         </div>
         <div className="flex gap-1.5 overflow-x-auto whitespace-nowrap px-3 pb-2 scrollbar-hide">
           {NAV_ITEMS.map((item) => {
@@ -119,7 +125,8 @@ export function AdminShell({ userName, children }: { userName: string; children:
       </div>
 
       <div className="lg:ml-[260px]">
-        <div className="hidden lg:flex items-center justify-end px-8 py-3 border-b border-[#E8E3DC] bg-white/60">
+        <div className="hidden lg:flex items-center justify-end gap-3 px-8 py-3 border-b border-[#E8E3DC] bg-white/60">
+          <NotificationBell />
           <p className="text-xs text-gray-500">
             Logado como <span className="font-semibold text-[#3E2415]">{userName}</span>
           </p>
