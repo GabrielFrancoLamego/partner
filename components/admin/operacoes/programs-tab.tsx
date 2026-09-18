@@ -1,17 +1,21 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Pencil, Power, Trash2 } from "lucide-react"
+import { Plus, Trophy, Pencil, Power, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { useCompanies } from "@/components/admin/use-companies"
 import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
+import { IconActionButton } from "@/components/ui/icon-action-button"
+import { RichTextEditor } from "@/components/admin/rich-text-editor"
+import { FileUploadField } from "@/components/shared/file-upload-field"
+import { ProgramLevelsManager, type ProgramLevel, type ProgramLevelInput } from "@/components/shared/program-levels-manager"
+import { ProgramTypeBadge } from "@/components/shared/program-type-badge"
 
 type CommissionFormat = "PERCENTAGE" | "FIXED_VALUE" | "PRODUCT_UNIT"
 
@@ -19,9 +23,10 @@ type Program = {
   id: string
   name: string
   description: string
-  commissionType: "FIXED" | "VARIABLE"
+  commissionType: "FIXED" | "VARIABLE" | "BOTH"
   commissionValue: string
   commissionFormat: CommissionFormat
+  fixedValue: string | null
   productUnitLabel: string | null
   imageUrl: string | null
   pdfUrl: string | null
@@ -39,15 +44,18 @@ const FORMAT_LABELS: Record<CommissionFormat, string> = {
 }
 
 /** Exibe o valor de comissão com o sufixo correto conforme o formato configurado. */
-function formatCommissionValue(program: Pick<Program, "commissionFormat" | "commissionValue" | "productUnitLabel">) {
-  switch (program.commissionFormat) {
-    case "PERCENTAGE":
-      return `${program.commissionValue}%`
-    case "FIXED_VALUE":
-      return `R$ ${program.commissionValue}`
-    case "PRODUCT_UNIT":
-      return `${program.commissionValue}x ${program.productUnitLabel ?? "unidade"}`
-  }
+function formatCommissionValue(program: Pick<Program, "commissionFormat" | "commissionValue" | "productUnitLabel" | "commissionType" | "fixedValue">) {
+  const base = (() => {
+    switch (program.commissionFormat) {
+      case "PERCENTAGE":
+        return `${program.commissionValue}%`
+      case "FIXED_VALUE":
+        return `R$ ${program.commissionValue}`
+      case "PRODUCT_UNIT":
+        return `${program.commissionValue}x ${program.productUnitLabel ?? "unidade"}`
+    }
+  })()
+  return program.commissionType === "BOTH" && program.fixedValue ? `${base} + R$ ${program.fixedValue}` : base
 }
 
 export function ProgramsTab() {
@@ -55,6 +63,7 @@ export function ProgramsTab() {
   const [programs, setPrograms] = useState<Program[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [editing, setEditing] = useState<Program | "new" | null>(null)
+  const [managingLevels, setManagingLevels] = useState<Program | null>(null)
 
   const reload = () => {
     setIsLoading(true)
@@ -84,10 +93,7 @@ export function ProgramsTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button
-          onClick={() => setEditing("new")}
-          className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90 shadow-md"
-        >
+        <Button onClick={() => setEditing("new")} variant="brand">
           <Plus className="h-4 w-4 mr-2" />
           Novo Programa
         </Button>
@@ -103,37 +109,32 @@ export function ProgramsTab() {
             <div key={program.id} className="p-4 rounded-xl border border-gray-100 bg-gradient-to-br from-white to-gray-50">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-semibold text-[#3E2415]">{program.name}</p>
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <ProgramTypeBadge type="PARTNER" />
                     <StatusBadge status={program.active ? "ACTIVE" : "INACTIVE"} />
                   </div>
+                  <p className="font-semibold text-[#3E2415]">{program.name}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{program.company.name}</p>
                   <p className="text-xs text-gray-600 mt-1">
-                    Comissão: {formatCommissionValue(program)} ({program.commissionType === "FIXED" ? "fixa" : "variável"}) ·{" "}
+                    Comissão: {formatCommissionValue(program)} (
+                    {program.commissionType === "FIXED" ? "fixa" : program.commissionType === "VARIABLE" ? "variável" : "ambas"}) ·{" "}
                     {program._count.referrals} indicações
                   </p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <Button variant="ghost" size="icon" onClick={() => setEditing(program)} title="Editar">
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                  <IconActionButton icon={Trophy} label="Níveis de Crescimento" onClick={() => setManagingLevels(program)} />
+                  <IconActionButton icon={Pencil} label="Editar" onClick={() => setEditing(program)} />
+                  <IconActionButton
+                    icon={Power}
+                    label={program.active ? "Inativar" : "Ativar"}
                     onClick={() => handleToggleActive(program)}
-                    title={program.active ? "Inativar" : "Ativar"}
-                  >
-                    <Power className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                  />
+                  <IconActionButton
+                    icon={Trash2}
+                    label="Excluir"
                     onClick={() => handleDelete(program)}
-                    title="Excluir"
                     className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  />
                 </div>
               </div>
             </div>
@@ -152,7 +153,49 @@ export function ProgramsTab() {
           }}
         />
       )}
+
+      {managingLevels && <LevelsManagerDialog program={managingLevels} onClose={() => setManagingLevels(null)} />}
     </div>
+  )
+}
+
+function LevelsManagerDialog({ program, onClose }: { program: Program; onClose: () => void }) {
+  const [levels, setLevels] = useState<ProgramLevel[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  const reload = () => {
+    setIsLoading(true)
+    adminFetch<ProgramLevel[]>(`/api/admin/programs/${program.id}/levels`).then(setLevels).finally(() => setIsLoading(false))
+  }
+  useEffect(reload, [program.id])
+
+  const handleCreate = async (input: ProgramLevelInput) => {
+    await adminFetch(`/api/admin/programs/${program.id}/levels`, { method: "POST", body: JSON.stringify(input) })
+    reload()
+  }
+
+  const handleDelete = async (level: ProgramLevel) => {
+    if (!confirm(`Excluir o nível "${level.name}"?`)) return
+    await adminFetch(`/api/admin/programs/${program.id}/levels/${level.id}`, { method: "DELETE" }).catch((e) =>
+      alert(e instanceof AdminApiError ? e.message : "Erro ao excluir"),
+    )
+    reload()
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Níveis de Crescimento — {program.name}</DialogTitle>
+        </DialogHeader>
+        <ProgramLevelsManager levels={levels} isLoading={isLoading} onCreate={handleCreate} onDelete={handleDelete} />
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Fechar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -170,9 +213,10 @@ function ProgramDialog({
   const [companyId, setCompanyId] = useState(program?.company.id ?? companies[0]?.id ?? "")
   const [name, setName] = useState(program?.name ?? "")
   const [description, setDescription] = useState(program?.description ?? "")
-  const [commissionType, setCommissionType] = useState<"FIXED" | "VARIABLE">(program?.commissionType ?? "VARIABLE")
+  const [commissionType, setCommissionType] = useState<"FIXED" | "VARIABLE" | "BOTH">(program?.commissionType ?? "VARIABLE")
   const [commissionFormat, setCommissionFormat] = useState<CommissionFormat>(program?.commissionFormat ?? "PERCENTAGE")
   const [commissionValue, setCommissionValue] = useState(program?.commissionValue ?? "")
+  const [fixedValue, setFixedValue] = useState(program?.fixedValue ?? "")
   const [productUnitLabel, setProductUnitLabel] = useState(program?.productUnitLabel ?? "")
   const [imageUrl, setImageUrl] = useState(program?.imageUrl ?? "")
   const [pdfUrl, setPdfUrl] = useState(program?.pdfUrl ?? "")
@@ -190,6 +234,10 @@ function ProgramDialog({
       setError("Informe o rótulo da unidade de produto (ex: 'diária grátis')")
       return
     }
+    if (commissionType === "BOTH" && !fixedValue) {
+      setError("Informe o valor fixo adicional por indicação")
+      return
+    }
     setIsSubmitting(true)
     try {
       const payload = {
@@ -198,6 +246,7 @@ function ProgramDialog({
         commissionType,
         commissionValue: Number(commissionValue),
         commissionFormat,
+        fixedValue: commissionType === "BOTH" ? Number(fixedValue) : null,
         productUnitLabel: commissionFormat === "PRODUCT_UNIT" ? productUnitLabel : null,
         imageUrl: imageUrl || null,
         pdfUrl: pdfUrl || null,
@@ -248,7 +297,7 @@ function ProgramDialog({
           </div>
           <div className="space-y-2">
             <Label>Descrição</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
+            <RichTextEditor value={description} onChange={setDescription} placeholder="Conte sobre o programa — use negrito, títulos e listas." />
           </div>
 
           <Tabs defaultValue="comissao">
@@ -261,13 +310,14 @@ function ProgramDialog({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Tipo de comissão</Label>
-                  <Select value={commissionType} onValueChange={(v) => setCommissionType(v as "FIXED" | "VARIABLE")}>
+                  <Select value={commissionType} onValueChange={(v) => setCommissionType(v as "FIXED" | "VARIABLE" | "BOTH")}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="FIXED">Fixa</SelectItem>
-                      <SelectItem value="VARIABLE">Variável</SelectItem>
+                      <SelectItem value="FIXED">Fixa (R$)</SelectItem>
+                      <SelectItem value="VARIABLE">Variável (%)</SelectItem>
+                      <SelectItem value="BOTH">Ambas (% + R$ fixo)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -312,28 +362,50 @@ function ProgramDialog({
                   />
                 </div>
               )}
+              {commissionType === "BOTH" && (
+                <div className="space-y-2">
+                  <Label>+ Valor fixo por indicação (R$)</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">R$</span>
+                    <Input type="number" step="0.01" value={fixedValue} onChange={(e) => setFixedValue(e.target.value)} className="pl-9" required />
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Ex: {commissionValue || "10"}% da venda + R${fixedValue || "5,00"} fixo por indicação.
+                  </p>
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="midia" className="space-y-4 pt-4">
+              <FileUploadField
+                label="Capa do programa"
+                hint="Tamanho recomendado: 1200x630px · Máx: 5MB"
+                accept="image/png,image/jpeg,image/webp"
+                currentUrl={imageUrl || null}
+                uploadEndpoint="/api/admin/uploads"
+                kind="program-cover"
+                onUploaded={setImageUrl}
+                variant="image"
+              />
+              <FileUploadField
+                label="Regulamento em PDF"
+                accept="application/pdf"
+                currentUrl={pdfUrl || null}
+                uploadEndpoint="/api/admin/uploads"
+                kind="program-pdf"
+                onUploaded={setPdfUrl}
+                variant="pdf"
+              />
               <div className="space-y-2">
-                <Label>Foto de capa (URL)</Label>
-                <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." />
-              </div>
-              <div className="space-y-2">
-                <Label>Anexo PDF — apresentação (URL)</Label>
-                <Input value={pdfUrl} onChange={(e) => setPdfUrl(e.target.value)} placeholder="https://..." />
-              </div>
-              <div className="space-y-2">
-                <Label>Vídeo institucional (URL)</Label>
+                <Label>Vídeo institucional (YouTube/Vimeo)</Label>
                 <Input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/..." />
               </div>
               <div className="space-y-2">
                 <Label>Regulamento / Termo de aceite</Label>
-                <Textarea
+                <RichTextEditor
                   value={termsContent}
-                  onChange={(e) => setTermsContent(e.target.value)}
+                  onChange={setTermsContent}
                   placeholder="Texto exibido ao parceiro no primeiro acesso, que ele precisa aceitar..."
-                  rows={5}
                 />
               </div>
             </TabsContent>
@@ -343,11 +415,7 @@ function ProgramDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white"
-            >
+            <Button type="submit" variant="brand" disabled={isSubmitting}>
               Salvar
             </Button>
           </DialogFooter>

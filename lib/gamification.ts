@@ -41,17 +41,56 @@ export async function awardXp(
   return entry
 }
 
-/** Todo colaborador "inicia o mês" com esta base — somada ao extrato de XpEntry do mês corrente (sem job de reset: é sempre recalculada). */
+/** Fallback quando a empresa ainda não configurou um Programa Interno (InternalProgram.basePoints). */
 export const MONTHLY_BASE_XP = 30
 
-/** Extrato de Pontos do Mês: base mensal + soma de XpEntry desde o dia 1 do mês corrente. */
+/** Extrato de Pontos do Mês: Pontuação Base do Programa Interno (configurável, ver InternalProgram.basePoints) + soma de XpEntry desde o dia 1 do mês corrente. */
 export async function getMonthlyScore(companyId: string, employeeId: string, now = new Date()) {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-  const agg = await prisma.xpEntry.aggregate({
-    where: { companyId, employeeId, createdAt: { gte: startOfMonth } },
-    _sum: { points: true },
+  const [agg, program] = await Promise.all([
+    prisma.xpEntry.aggregate({
+      where: { companyId, employeeId, createdAt: { gte: startOfMonth } },
+      _sum: { points: true },
+    }),
+    prisma.internalProgram.findUnique({ where: { companyId }, select: { basePoints: true } }),
+  ])
+  const basePoints = program?.basePoints ?? MONTHLY_BASE_XP
+  return basePoints + (agg._sum.points ?? 0)
+}
+
+export type ServiceFeeAdjustment = { type: "PENALTY" | "BONUS"; percentage: number | null; fixedAmount: number | null } | null
+
+/**
+ * Faixa de ganho/perda de Taxa de Serviço aplicável ao colaborador no mês
+ * corrente (ver InternalServiceFeeTier) — escolhe a faixa mais severa/generosa
+ * entre as que o colaborador se qualifica (menor thresholdPoints para
+ * PENALTY, maior thresholdPoints para BONUS). Retorna null se não há faixa
+ * configurada ou a empresa não tem Programa Interno.
+ */
+export async function getServiceFeeAdjustment(companyId: string, employeeId: string, now = new Date()): Promise<ServiceFeeAdjustment> {
+  const program = await prisma.internalProgram.findUnique({
+    where: { companyId },
+    select: { id: true, serviceFeeTiers: true },
   })
-  return MONTHLY_BASE_XP + (agg._sum.points ?? 0)
+  if (!program) return null
+
+  const score = await getMonthlyScore(companyId, employeeId, now)
+
+  const penaltyTiers = program.serviceFeeTiers.filter((t) => t.type === "PENALTY" && score <= t.thresholdPoints)
+  const bonusTiers = program.serviceFeeTiers.filter((t) => t.type === "BONUS" && score >= t.thresholdPoints)
+
+  // Entre as faixas de PENALTY aplicáveis, a de menor threshold é a mais severa; entre BONUS, a de maior threshold é a mais generosa.
+  const penalty = penaltyTiers.sort((a, b) => a.thresholdPoints - b.thresholdPoints)[0]
+  const bonus = bonusTiers.sort((a, b) => b.thresholdPoints - a.thresholdPoints)[0]
+
+  const tier = penalty ?? bonus
+  if (!tier) return null
+
+  return {
+    type: tier.type,
+    percentage: tier.percentage ? Number(tier.percentage) : null,
+    fixedAmount: tier.fixedAmount ? Number(tier.fixedAmount) : null,
+  }
 }
 
 export type EfficiencyMedal = { stars: 1 | 2 | 3 | 4 | 5; label: string; colorHex: string; efficiencyPercent: number }

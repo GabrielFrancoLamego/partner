@@ -33,12 +33,14 @@ export async function PATCH(request: Request) {
     const description = formData.get("description")
     const termsContent = formData.get("termsContent")
     const measurementPeriod = formData.get("measurementPeriod")
+    const basePoints = formData.get("basePoints")
     const pointsOnTimeCheckIn = formData.get("pointsOnTimeCheckIn")
     const pointsChecklistOnTime = formData.get("pointsChecklistOnTime")
     const pointsChecklistLateOrRejected = formData.get("pointsChecklistLateOrRejected")
     const pointsOccurrencePenalty = formData.get("pointsOccurrencePenalty")
     const minEfficiencyPercent = formData.get("minEfficiencyPercent")
     const efficiencyBonusAmount = formData.get("efficiencyBonusAmount")
+    const videoUrl = formData.get("videoUrl")
     const imageFile = formData.get("image")
     const pdfFile = formData.get("pdf")
 
@@ -47,20 +49,22 @@ export async function PATCH(request: Request) {
       throw new ApiError(400, "Período de medição inválido")
     }
 
-    const imageUrl = imageFile instanceof File && imageFile.size > 0 ? await uploadImage("programs", imageFile) : undefined
-    const pdfUrl = pdfFile instanceof File && pdfFile.size > 0 ? await uploadImage("programs", pdfFile) : undefined
+    const imageUrl = imageFile instanceof File && imageFile.size > 0 ? await uploadImage("internal-programs", imageFile) : undefined
+    const pdfUrl = pdfFile instanceof File && pdfFile.size > 0 ? await uploadImage("internal-programs", pdfFile) : undefined
 
     const data = {
       title,
       description: typeof description === "string" ? description : undefined,
       termsContent: typeof termsContent === "string" ? termsContent : undefined,
       measurementPeriod: (measurementPeriod as MeasurementPeriod) || undefined,
+      ...(basePoints ? { basePoints: Number(basePoints) } : {}),
       ...(pointsOnTimeCheckIn ? { pointsOnTimeCheckIn: Number(pointsOnTimeCheckIn) } : {}),
       ...(pointsChecklistOnTime ? { pointsChecklistOnTime: Number(pointsChecklistOnTime) } : {}),
       ...(pointsChecklistLateOrRejected ? { pointsChecklistLateOrRejected: Number(pointsChecklistLateOrRejected) } : {}),
       ...(pointsOccurrencePenalty ? { pointsOccurrencePenalty: Number(pointsOccurrencePenalty) } : {}),
       ...(minEfficiencyPercent ? { minEfficiencyPercent: Number(minEfficiencyPercent) } : {}),
       ...(efficiencyBonusAmount ? { efficiencyBonusAmount: Number(efficiencyBonusAmount) } : {}),
+      ...(typeof videoUrl === "string" ? { videoUrl: videoUrl || null } : {}),
       ...(imageUrl ? { imageUrl } : {}),
       ...(pdfUrl ? { pdfUrl } : {}),
     }

@@ -17,12 +17,26 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (!existing) throw new ApiError(404, "Nível não encontrado")
 
     const body = await request.json()
-    const { name, pointsRequired, bonusDescription, bonusAmount, badgeColorHex, salaryIncreasePercent, imageUrl, order } = body
+    const {
+      name,
+      description,
+      pointsRequired,
+      bonusDescription,
+      bonusAmount,
+      badgeColorHex,
+      salaryIncreasePercent,
+      imageUrl,
+      order,
+      benefitType,
+      measurementUnit,
+      measurementValue,
+    } = body
 
     const level = await prisma.internalLevelRule.update({
       where: { id },
       data: {
         ...(name !== undefined ? { name } : {}),
+        ...(description !== undefined ? { description: description || null } : {}),
         ...(pointsRequired !== undefined ? { pointsRequired: Number(pointsRequired) } : {}),
         ...(bonusDescription !== undefined ? { bonusDescription: bonusDescription || null } : {}),
         ...(bonusAmount !== undefined ? { bonusAmount: bonusAmount ? Number(bonusAmount) : null } : {}),
@@ -30,6 +44,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...(imageUrl !== undefined ? { imageUrl: imageUrl || null } : {}),
         ...(badgeColorHex !== undefined ? { badgeColorHex } : {}),
         ...(order !== undefined ? { order: Number(order) } : {}),
+        ...(benefitType !== undefined ? { benefitType } : {}),
+        ...(measurementUnit !== undefined ? { measurementUnit } : {}),
+        ...(measurementValue !== undefined ? { measurementValue: measurementValue ? Number(measurementValue) : null } : {}),
       },
     })
 

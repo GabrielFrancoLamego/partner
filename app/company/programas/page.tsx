@@ -11,6 +11,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, StatusBadge } from "@/components/admin/admin-ui"
 import { RichTextEditor } from "@/components/admin/rich-text-editor"
+import { ProgramLevelsManager, type ProgramLevel, type ProgramLevelInput } from "@/components/shared/program-levels-manager"
+import { ProgramTypeBadge } from "@/components/shared/program-type-badge"
 
 type CommissionFormat = "PERCENTAGE" | "FIXED_VALUE" | "PRODUCT_UNIT"
 
@@ -18,9 +20,10 @@ type Program = {
   id: string
   name: string
   description: string
-  commissionType: "FIXED" | "VARIABLE"
+  commissionType: "FIXED" | "VARIABLE" | "BOTH"
   commissionValue: string
   commissionFormat: CommissionFormat
+  fixedValue: string | null
   productUnitLabel: string | null
   imageUrl: string | null
   pdfUrl: string | null
@@ -43,9 +46,10 @@ export default function CompanyProgramsPage() {
 
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [commissionType, setCommissionType] = useState<"FIXED" | "VARIABLE">("VARIABLE")
+  const [commissionType, setCommissionType] = useState<"FIXED" | "VARIABLE" | "BOTH">("VARIABLE")
   const [commissionFormat, setCommissionFormat] = useState<CommissionFormat>("PERCENTAGE")
   const [commissionValue, setCommissionValue] = useState("")
+  const [fixedValue, setFixedValue] = useState("")
   const [productUnitLabel, setProductUnitLabel] = useState("")
   const [imageUrl, setImageUrl] = useState("")
   const [pdfUrl, setPdfUrl] = useState("")
@@ -74,6 +78,7 @@ export default function CompanyProgramsPage() {
           setCommissionType(p.commissionType)
           setCommissionFormat(p.commissionFormat)
           setCommissionValue(p.commissionValue)
+          setFixedValue(p.fixedValue ?? "")
           setProductUnitLabel(p.productUnitLabel ?? "")
           setImageUrl(p.imageUrl ?? "")
           setPdfUrl(p.pdfUrl ?? "")
@@ -121,6 +126,10 @@ export default function CompanyProgramsPage() {
       setError("Informe o rótulo da unidade de produto")
       return
     }
+    if (commissionType === "BOTH" && !fixedValue) {
+      setError("Informe o valor fixo adicional por indicação")
+      return
+    }
     setIsSaving(true)
     try {
       await adminFetch("/api/company/program", {
@@ -131,6 +140,7 @@ export default function CompanyProgramsPage() {
           commissionType,
           commissionValue: Number(commissionValue),
           commissionFormat,
+          fixedValue: commissionType === "BOTH" ? Number(fixedValue) : null,
           productUnitLabel: commissionFormat === "PRODUCT_UNIT" ? productUnitLabel : null,
           imageUrl: imageUrl || null,
           pdfUrl: pdfUrl || null,
@@ -157,6 +167,9 @@ export default function CompanyProgramsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
+          <div className="mb-2">
+            <ProgramTypeBadge type="PARTNER" />
+          </div>
           <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Programa de Parceria</h1>
           <p className="text-gray-600 mt-1 text-sm">Como sua empresa recompensa parceiros que indicam clientes.</p>
         </div>
@@ -196,13 +209,14 @@ export default function CompanyProgramsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Tipo de comissão</Label>
-                <Select value={commissionType} onValueChange={(v) => setCommissionType(v as "FIXED" | "VARIABLE")}>
+                <Select value={commissionType} onValueChange={(v) => setCommissionType(v as "FIXED" | "VARIABLE" | "BOTH")}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="FIXED">Fixa</SelectItem>
-                    <SelectItem value="VARIABLE">Variável</SelectItem>
+                    <SelectItem value="FIXED">Fixa (R$)</SelectItem>
+                    <SelectItem value="VARIABLE">Variável (%)</SelectItem>
+                    <SelectItem value="BOTH">Ambas (% + R$ fixo)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -245,6 +259,18 @@ export default function CompanyProgramsPage() {
               <div className="space-y-2 max-w-xs">
                 <Label>Rótulo da unidade</Label>
                 <Input value={productUnitLabel} onChange={(e) => setProductUnitLabel(e.target.value)} placeholder="ex: diária grátis" required />
+              </div>
+            )}
+            {commissionType === "BOTH" && (
+              <div className="space-y-2 max-w-xs">
+                <Label>+ Valor fixo por indicação (R$)</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">R$</span>
+                  <Input type="number" step="0.01" value={fixedValue} onChange={(e) => setFixedValue(e.target.value)} className="pl-9" required />
+                </div>
+                <p className="text-xs text-gray-400">
+                  Ex: {commissionValue || "10"}% da venda + R${fixedValue || "5,00"} fixo por indicação.
+                </p>
               </div>
             )}
           </TabsContent>
@@ -326,11 +352,47 @@ export default function CompanyProgramsPage() {
         </Tabs>
 
         <div className="flex justify-end pt-2">
-          <Button type="submit" disabled={isSaving} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+          <Button type="submit" variant="brand" disabled={isSaving}>
             {isSaving ? "Salvando..." : "Salvar Programa"}
           </Button>
         </div>
       </form>
+
+      {program && (
+        <div className="bg-white rounded-2xl p-4 md:p-6 shadow-md border border-gray-100">
+          <h3 className="text-base font-bold text-[#3E2415] mb-1">Níveis de Crescimento</h3>
+          <p className="text-xs text-gray-500 mb-4">
+            Comissão progressiva por desempenho do parceiro (ex: Prata → Ouro → Diamante).
+          </p>
+          <ProgramLevelsTab />
+        </div>
+      )}
     </div>
   )
+}
+
+function ProgramLevelsTab() {
+  const [levels, setLevels] = useState<ProgramLevel[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  const reload = () => {
+    setIsLoading(true)
+    adminFetch<ProgramLevel[]>("/api/company/program/levels").then(setLevels).finally(() => setIsLoading(false))
+  }
+  useEffect(reload, [])
+
+  const handleCreate = async (input: ProgramLevelInput) => {
+    await adminFetch("/api/company/program/levels", { method: "POST", body: JSON.stringify(input) })
+    reload()
+  }
+
+  const handleDelete = async (level: ProgramLevel) => {
+    if (!confirm(`Excluir o nível "${level.name}"?`)) return
+    await adminFetch(`/api/company/program/levels/${level.id}`, { method: "DELETE" }).catch((e) =>
+      alert(e instanceof AdminApiError ? e.message : "Erro ao excluir"),
+    )
+    reload()
+  }
+
+  return <ProgramLevelsManager levels={levels} isLoading={isLoading} onCreate={handleCreate} onDelete={handleDelete} />
 }

@@ -23,7 +23,19 @@ export async function POST(request: Request) {
     const companyId = user.companyId
 
     const body = await request.json()
-    const { name, pointsRequired, bonusDescription, bonusAmount, badgeColorHex, salaryIncreasePercent, imageUrl } = body
+    const {
+      name,
+      description,
+      pointsRequired,
+      bonusDescription,
+      bonusAmount,
+      badgeColorHex,
+      salaryIncreasePercent,
+      imageUrl,
+      benefitType,
+      measurementUnit,
+      measurementValue,
+    } = body
     if (!name || pointsRequired === undefined) throw new ApiError(400, "Nome e pontuação exigida são obrigatórios")
 
     const program = await getOrCreateInternalProgram(companyId)
@@ -33,6 +45,7 @@ export async function POST(request: Request) {
       data: {
         internalProgramId: program.id,
         name,
+        description: description || null,
         order: (last?.order ?? -1) + 1,
         pointsRequired: Number(pointsRequired),
         bonusDescription: bonusDescription || null,
@@ -40,6 +53,9 @@ export async function POST(request: Request) {
         salaryIncreasePercent: salaryIncreasePercent ? Number(salaryIncreasePercent) : null,
         imageUrl: imageUrl || null,
         badgeColorHex: badgeColorHex || "#F58220",
+        benefitType: benefitType || "PERCENTAGE",
+        measurementUnit: measurementUnit || "ALL_TIME",
+        measurementValue: measurementValue ? Number(measurementValue) : null,
       },
     })
 

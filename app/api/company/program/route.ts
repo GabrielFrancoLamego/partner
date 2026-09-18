@@ -49,6 +49,7 @@ export async function PUT(request: Request) {
       commissionType,
       commissionValue,
       commissionFormat,
+      fixedValue,
       productUnitLabel,
       imageUrl,
       pdfUrl,
@@ -65,6 +66,9 @@ export async function PUT(request: Request) {
     if (commissionFormat === "PRODUCT_UNIT" && !productUnitLabel) {
       throw new ApiError(400, "Informe o rótulo da unidade de produto (ex: 'diária grátis')")
     }
+    if (commissionType === "BOTH" && !fixedValue) {
+      throw new ApiError(400, "Informe o valor fixo adicional (comissão 'Ambas')")
+    }
 
     const data = {
       name,
@@ -72,6 +76,7 @@ export async function PUT(request: Request) {
       commissionType,
       commissionValue,
       commissionFormat: commissionFormat ?? "PERCENTAGE",
+      fixedValue: commissionType === "BOTH" ? fixedValue : null,
       productUnitLabel: commissionFormat === "PRODUCT_UNIT" ? productUnitLabel : null,
       imageUrl: imageUrl || null,
       pdfUrl: pdfUrl || null,
