@@ -251,7 +251,34 @@ enum NotificationType {
   REGISTRATION_APPROVED
   REGISTRATION_REJECTED
   BILLING_OVERDUE
+  PROGRAM_PAUSED // programa entrou em PAUSED_FOR_NEW_MEMBERS — parceiros vinculados avisados da janela de 30 dias
+  PROGRAM_RULES_CHANGED // regras/comissão do programa mudaram — ver ProgramChangeLog
+  PROGRAM_MEMBERSHIP_ENDED // saída voluntária, desligamento por inatividade ou encerramento do programa
+  PARTNER_PERFORMANCE_MONTHLY // resumo mensal consolidado + alerta de risco de inatividade (ver lib/partner-lifecycle.ts)
   GENERIC
+}
+
+// Status de ciclo de vida de um Program (Programa de Parceiros) — substitui o
+// uso isolado do boolean `active` para representar também a pausa com aviso
+// prévio de 30 dias (ver lib/program-lifecycle.ts). `active` é mantido em
+// sincronia (true somente quando status = ACTIVE) para não quebrar leituras
+// existentes que ainda filtram por ele.
+enum ProgramStatus {
+  ACTIVE
+  PAUSED_FOR_NEW_MEMBERS // fecha para novas adesões; vinculados mantêm acesso total até pauseEffectiveAt (30 dias)
+  ARCHIVED // encerrado — nunca apagamos o registro (ver DELETE /api/admin/programs/[id])
+}
+
+// Vínculo explícito de um Parceiro a um Program (1 Program por Company, então
+// companyId aqui é só uma desnormalização de leitura). Criado automaticamente
+// na 1ª Commission do parceiro naquela empresa, ou explicitamente pelo botão
+// "Participar" em /partner/explorar. Base da regra de inatividade de 90 dias
+// e da confirmação de saída com perda de saldo (ver lib/program-lifecycle.ts).
+enum ProgramMembershipStatus {
+  ACTIVE
+  LEFT_BY_PARTNER // saída voluntária via "Sair do Programa"
+  TERMINATED_INACTIVITY // desligamento automático por 90 dias sem atividade
+  PROGRAM_ENDED // programa foi arquivado (pausa completou os 30 dias, ou arquivamento direto do Admin)
 }
 
 enum AffiliateLinkTarget {
@@ -341,6 +368,10 @@ model Company {
   neighborhood         String? // Bairro — preenchido junto do CEP
   city                 String?
   state                String?
+  // Categoria/segmento de negócio (ex: "Pousada", "Restaurante", "Passeio de
+  // Buggy") — texto livre preenchido pelo Admin/Master, usado como filtro de
+  // busca em /partner/explorar junto com nome e palavra-chave.
+  segment              String?
   zipCode              String?
   latitude             Float? // renderização em mapa + centro do geofence do ponto digital
   longitude            Float?
@@ -362,6 +393,12 @@ model Company {
   profilePictureUrl String?
   coverPictureUrl   String?
   logoWithLabelUrl  String? // logo com rótulo/marca — cabeçalho do colaborador
+
+  // Nota média de 1 a 5 estrelas dada por parceiros com programa ativo na
+  // empresa (ver CompanyRating) — denormalizada e recalculada a cada
+  // avaliação em lib/company-rating.ts; null = ainda sem nenhuma avaliação.
+  avgRating   Decimal? @db.Decimal(3, 2)
+  ratingCount Int      @default(0)
 
   users       User[]
   units       Unit[]
@@ -392,6 +429,7 @@ model Company {
   internalProgram InternalProgram?
   sectors         Sector[]
   goals           Goal[]
+  ratings         CompanyRating[]
 
   @@index([affiliateId])
   @@index([status])
@@ -481,6 +519,10 @@ model User {
   goalRecordsReported     GoalRecord[]             @relation("GoalRecordReportedBy")
 
   notifications Notification[]
+
+  programMemberships     ProgramMembership[] @relation("ProgramMembershipPartner")
+  programChangesAuthored ProgramChangeLog[]  @relation("ProgramChangeAuthor")
+  companyRatingsGiven    CompanyRating[]     @relation("CompanyRatingPartner")
 
   @@index([companyId])
   @@index([role])
@@ -657,7 +699,11 @@ model Program {
   hasLevels        Boolean          @default(false)
   autoUpgrade      Boolean          @default(false)
   autoDowngrade    Boolean          @default(false) // rebaixa automaticamente o parceiro que não sustentar o desempenho no período de mensuração do nível (ver lib/partner-levels.ts)
-  active           Boolean          @default(true)
+  active           Boolean          @default(true) // mantido em sincronia com `status` (true somente quando status = ACTIVE) — ver lib/program-lifecycle.ts
+  status           ProgramStatus    @default(ACTIVE)
+  pausedAt         DateTime? // quando entrou em PAUSED_FOR_NEW_MEMBERS
+  pauseEffectiveAt DateTime? // pausedAt + 30 dias — quando a pausa vira ARCHIVED de fato (varredura preguiçosa, ver lib/program-lifecycle.ts)
+  archivedAt       DateTime?
   contractUrl      String?
   imageUrl         String? // imagem/foto de capa representativa do programa
   pdfUrl           String? // anexo PDF com regras completas
@@ -672,6 +718,8 @@ model Program {
   materials       ProgramMaterial[]
   referrals       Referral[]
   termAcceptances PartnerTermAcceptance[]
+  changeLog       ProgramChangeLog[]
+  memberships     ProgramMembership[]
 }
 
 model ProgramLevel {
@@ -712,6 +760,76 @@ model ProgramMaterial {
   url       String
   type      String
   createdAt DateTime @default(now())
+}
+
+// Histórico de alterações de regras/comissão de um Program — alimenta o link
+// "Ver Histórico" enviado na notificação PROGRAM_RULES_CHANGED (ver
+// lib/program-lifecycle.ts#recordProgramChange, chamado de PUT/PATCH
+// /api/company/program e /api/admin/programs/[id] quando campos sensíveis mudam).
+model ProgramChangeLog {
+  id          String   @id @default(cuid())
+  programId   String
+  program     Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  changedById String
+  changedBy   User     @relation("ProgramChangeAuthor", fields: [changedById], references: [id])
+  summary     String   @db.Text // resumo humano pronto para exibir ("Comissão alterada de 10% para 15%")
+  changes     Json // { campo: { before, after } }
+  createdAt   DateTime @default(now())
+
+  @@index([programId])
+  @@index([createdAt])
+}
+
+// Vínculo do Parceiro a um Program — ver ProgramMembershipStatus. companyId é
+// uma desnormalização de leitura (1 Program por Company). Criado no 1º
+// Commission do parceiro naquela empresa (auto-enroll) ou explicitamente pelo
+// botão "Participar" em /partner/explorar.
+model ProgramMembership {
+  id                String                  @id @default(cuid())
+  programId         String
+  program           Program                 @relation(fields: [programId], references: [id], onDelete: Cascade)
+  companyId         String
+  partnerId         String
+  partner           User                    @relation("ProgramMembershipPartner", fields: [partnerId], references: [id])
+  status            ProgramMembershipStatus @default(ACTIVE)
+  joinedAt          DateTime                @default(now())
+  // Última Commission/atividade do parceiro nesta empresa — base da regra de
+  // desligamento automático por 90 dias (ver lib/program-lifecycle.ts).
+  lastActivityAt    DateTime                @default(now())
+  // Último ProgramChangeLog que o parceiro já confirmou aceite ou dispensou —
+  // controla o CTA "Confirmar Aceite"/"Solicitar Saída" na notificação de mudança de regras.
+  lastChangeAckAt   DateTime?
+  terminatedAt      DateTime?
+  terminationReason String? // "LEFT_BY_PARTNER" | "INACTIVITY_90_DAYS" | "PROGRAM_ENDED"
+  // Saldo pendente (comissões aprovadas ainda não sacadas) perdido no momento
+  // da saída/desligamento — preenchido só quando > 0 (ver lib/program-lifecycle.ts#leaveProgramMembership).
+  forfeitedBalance  Decimal?                @db.Decimal(12, 2)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@unique([programId, partnerId])
+  @@index([partnerId])
+  @@index([companyId])
+  @@index([status])
+}
+
+// Avaliação de 1 a 5 estrelas de uma Empresa por um Parceiro com programa
+// ativo nela — 1 por par (companyId, partnerId), atualizável. Alimenta
+// Company.avgRating/ratingCount (ver lib/company-rating.ts) e o filtro de
+// nota mínima em /partner/explorar.
+model CompanyRating {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  partnerId String
+  partner   User     @relation("CompanyRatingPartner", fields: [partnerId], references: [id])
+  stars     Int
+  comment   String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, partnerId])
+  @@index([companyId])
 }
 
 model Promotion {
