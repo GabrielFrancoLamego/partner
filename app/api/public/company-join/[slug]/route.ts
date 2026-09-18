@@ -2,6 +2,7 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { isValidEmail, isValidPhone } from "@/lib/validators"
 import { resolveValidLink } from "@/lib/link-validation"
+import { notifyCompanyManagement } from "@/lib/notifications"
 
 /**
  * Auto-cadastro público de colaborador para uma empresa específica
@@ -69,6 +70,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
         phone: parsed.data.phone,
         document: parsed.data.document || null,
       },
+    })
+
+    await notifyCompanyManagement(company.id, {
+      type: "REGISTRATION_PENDING",
+      title: "Novo cadastro de colaborador pendente",
+      message: `${parsed.data.name} solicitou cadastro como colaborador e aguarda aprovação.`,
+      linkUrl: "/admin/cadastros?tab=approvals",
     })
 
     return Response.json({ ok: true }, { status: 201 })
