@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Plus, Pencil, Lock, Unlock, Trash2, Send, Search, Link2, X } from "lucide-react"
+import { Plus, Pencil, Archive, KeyRound, ShieldAlert, ShieldCheck, ShieldX, Search, Link2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,13 +10,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
+import { IconActionButton } from "@/components/ui/icon-action-button"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
-import { useCompanies, type AdminCompany } from "@/components/admin/use-companies"
+import { useCompanies, type AdminCompany, type AdminCompanyStatus } from "@/components/admin/use-companies"
 import { usePlans } from "@/components/admin/use-plans"
 import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
 import { AvatarUpload } from "@/components/admin/avatar-upload"
 import { ReasonDialog } from "@/components/admin/reason-dialog"
 import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
+
+const COMPANY_STATUS_OPTIONS: { value: AdminCompanyStatus; label: string }[] = [
+  { value: "ACTIVE", label: "Ativo" },
+  { value: "INACTIVE", label: "Inativo" },
+  { value: "OVERDUE", label: "Inadimplente" },
+  { value: "BLOCKED", label: "Bloqueado" },
+  { value: "ARCHIVED", label: "Arquivado" },
+]
 import {
   formatCep,
   formatCnpj,
@@ -55,35 +66,40 @@ export function CompaniesTab({
   const { plans } = usePlans()
   const planLabels: Record<string, string> = Object.fromEntries(plans.map((p) => [p.id, p.label]))
   const [editing, setEditing] = useState<AdminCompany | "new" | null>(null)
-  const [blocking, setBlocking] = useState<AdminCompany | null>(null)
+  const [changingStatus, setChangingStatus] = useState<{ company: AdminCompany; target: AdminCompanyStatus } | null>(
+    null,
+  )
   const [inviteLink, setInviteLink] = useState<{ link: string; email: string } | null>(null)
   const [planFilter, setPlanFilter] = useState(initialPlanFilter)
-  const [conditionFilter, setConditionFilter] = useState(initialConditionFilter)
+  const [statusFilter, setStatusFilter] = useState<AdminCompanyStatus | null>(
+    initialConditionFilter === "overdue" ? "OVERDUE" : initialConditionFilter === "active" ? "ACTIVE" : null,
+  )
 
   const filteredCompanies = useMemo(() => {
     return companies.filter((company) => {
       if (planFilter && company.license?.plan !== planFilter) return false
-      if (conditionFilter === "active" && company.license?.status !== "ACTIVE") return false
-      if (conditionFilter === "overdue" && !isOverdue(company.license)) return false
+      if (statusFilter && company.status !== statusFilter) return false
       return true
     })
-  }, [companies, planFilter, conditionFilter])
+  }, [companies, planFilter, statusFilter])
 
-  const hasFilter = Boolean(planFilter || conditionFilter)
+  const hasFilter = Boolean(planFilter || statusFilter)
 
-  const handleConfirmToggleStatus = async (company: AdminCompany, reason: string) => {
-    await adminFetch(`/api/admin/companies/${company.id}`, {
+  const handleConfirmChangeStatus = async (reason: string) => {
+    if (!changingStatus) return
+    await adminFetch(`/api/admin/companies/${changingStatus.company.id}`, {
       method: "PATCH",
-      body: JSON.stringify({ status: company.status === "ACTIVE" ? "INACTIVE" : "ACTIVE", blockReason: reason }),
+      body: JSON.stringify({ status: changingStatus.target, blockReason: reason }),
     }).catch((e) => alert(e instanceof AdminApiError ? e.message : "Erro ao atualizar"))
-    setBlocking(null)
+    setChangingStatus(null)
     reload()
   }
 
-  const handleDelete = async (company: AdminCompany) => {
-    if (!confirm(`Excluir a empresa "${company.name}"? Isso falhará se houver dados vinculados.`)) return
+  const handleArchive = async (company: AdminCompany) => {
+    if (!confirm(`Arquivar a empresa "${company.name}"? O acesso é bloqueado, mas nenhum dado é apagado — pode reativar depois em "Alterar status".`))
+      return
     await adminFetch(`/api/admin/companies/${company.id}`, { method: "DELETE" }).catch((e) =>
-      alert(e instanceof AdminApiError ? e.message : "Erro ao excluir"),
+      alert(e instanceof AdminApiError ? e.message : "Erro ao arquivar"),
     )
     reload()
   }
@@ -103,30 +119,51 @@ export function CompaniesTab({
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        {hasFilter ? (
-          <div className="flex items-center gap-2 text-xs bg-orange-50 text-orange-800 rounded-lg px-3 py-2 w-fit">
-            <span>
-              Filtrando: {planFilter ? planLabels[planFilter] ?? planFilter : "Todos os planos"}
-              {conditionFilter === "active" ? " · Ativas" : conditionFilter === "overdue" ? " · Inadimplentes" : ""}
-            </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={statusFilter ?? "all"} onValueChange={(v) => setStatusFilter(v === "all" ? null : (v as AdminCompanyStatus))}>
+            <SelectTrigger className="w-full sm:w-44 h-9 text-xs">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os status</SelectItem>
+              {COMPANY_STATUS_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={planFilter ?? "all"} onValueChange={(v) => setPlanFilter(v === "all" ? null : v)}>
+            <SelectTrigger className="w-full sm:w-44 h-9 text-xs">
+              <SelectValue placeholder="Plano" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os planos</SelectItem>
+              {plans.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {hasFilter && (
             <button
               type="button"
               onClick={() => {
                 setPlanFilter(null)
-                setConditionFilter(null)
+                setStatusFilter(null)
               }}
-              className="flex items-center gap-0.5 font-medium underline underline-offset-2"
+              className="flex items-center gap-0.5 text-xs font-medium text-orange-800 underline underline-offset-2"
             >
               <X className="h-3 w-3" />
-              Limpar
+              Limpar filtros
             </button>
-          </div>
-        ) : (
-          <div />
-        )}
+          )}
+        </div>
         <Button
           onClick={() => setEditing("new")}
-          className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90 shadow-md self-end sm:self-auto"
+          variant="brand"
+          className="self-end sm:self-auto"
         >
           <Plus className="h-4 w-4 mr-2" />
           Nova Empresa
@@ -170,14 +207,20 @@ export function CompaniesTab({
                         navigator.clipboard.writeText(url).then(() => alert("Link copiado: " + url))
                       }}
                     />
-                    <MobileCardAction icon={Send} label="Reenviar convite" onClick={() => handleResendInvite(company)} />
+                    <MobileCardAction icon={KeyRound} label="Redefinir senha do Master" onClick={() => handleResendInvite(company)} />
                     <MobileCardAction icon={Pencil} label="Editar" onClick={() => setEditing(company)} />
-                    <MobileCardAction
-                      icon={company.status === "ACTIVE" ? Lock : Unlock}
-                      label={company.status === "ACTIVE" ? "Bloquear" : "Desbloquear"}
-                      onClick={() => setBlocking(company)}
-                    />
-                    <MobileCardAction icon={Trash2} label="Excluir" tone="danger" onClick={() => handleDelete(company)} />
+                    {company.status !== "ACTIVE" && (
+                      <MobileCardAction icon={ShieldCheck} label="Ativar" onClick={() => setChangingStatus({ company, target: "ACTIVE" })} />
+                    )}
+                    {company.status !== "OVERDUE" && (
+                      <MobileCardAction icon={ShieldAlert} label="Marcar inadimplente" onClick={() => setChangingStatus({ company, target: "OVERDUE" })} />
+                    )}
+                    {company.status !== "BLOCKED" && (
+                      <MobileCardAction icon={ShieldX} label="Bloquear" onClick={() => setChangingStatus({ company, target: "BLOCKED" })} />
+                    )}
+                    {!company.isArchived && (
+                      <MobileCardAction icon={Archive} label="Arquivar" tone="danger" onClick={() => handleArchive(company)} />
+                    )}
                   </>
                 }
               />
@@ -220,49 +263,59 @@ export function CompaniesTab({
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1 whitespace-nowrap">
-                      <Button
-                        variant="ghost"
-                        size="icon"
+                      <IconActionButton
+                        icon={Link2}
+                        label="Copiar link público de auto-cadastro"
                         onClick={() => {
                           const url = `${window.location.origin}/join/company/${company.slug}`
                           navigator.clipboard.writeText(url).then(() => alert("Link copiado: " + url))
                         }}
-                        title="Copiar link público de auto-cadastro"
-                      >
-                        <Link2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
+                      />
+                      <IconActionButton
+                        icon={KeyRound}
+                        label="Redefinir senha do Master"
                         onClick={() => handleResendInvite(company)}
-                        title="Reenviar convite/acesso ao Master"
-                      >
-                        <Send className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => setEditing(company)} title="Editar">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setBlocking(company)}
-                        title={company.status === "ACTIVE" ? "Bloquear" : "Desbloquear"}
-                      >
-                        {company.status === "ACTIVE" ? (
-                          <Lock className="h-4 w-4" />
-                        ) : (
-                          <Unlock className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(company)}
-                        title="Excluir"
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      />
+                      <IconActionButton icon={Pencil} label="Editar" onClick={() => setEditing(company)} />
+
+                      <DropdownMenu>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" aria-label="Alterar status">
+                                <ShieldAlert className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent>Alterar status</TooltipContent>
+                        </Tooltip>
+                        <DropdownMenuContent align="end">
+                          {company.status !== "ACTIVE" && (
+                            <DropdownMenuItem onClick={() => setChangingStatus({ company, target: "ACTIVE" })}>
+                              <ShieldCheck className="h-4 w-4 mr-2" /> Ativar
+                            </DropdownMenuItem>
+                          )}
+                          {company.status !== "OVERDUE" && (
+                            <DropdownMenuItem onClick={() => setChangingStatus({ company, target: "OVERDUE" })}>
+                              <ShieldAlert className="h-4 w-4 mr-2" /> Marcar Inadimplente
+                            </DropdownMenuItem>
+                          )}
+                          {company.status !== "BLOCKED" && (
+                            <DropdownMenuItem onClick={() => setChangingStatus({ company, target: "BLOCKED" })}>
+                              <ShieldX className="h-4 w-4 mr-2" /> Bloquear
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      {!company.isArchived && (
+                        <IconActionButton
+                          icon={Archive}
+                          label="Arquivar (não apaga dados)"
+                          onClick={() => handleArchive(company)}
+                          className="text-red-600 hover:text-red-700"
+                        />
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -285,14 +338,14 @@ export function CompaniesTab({
         />
       )}
 
-      {blocking && (
+      {changingStatus && (
         <ReasonDialog
-          title={blocking.status === "ACTIVE" ? `Bloquear ${blocking.name}` : `Desbloquear ${blocking.name}`}
+          title={`${COMPANY_STATUS_OPTIONS.find((o) => o.value === changingStatus.target)?.label} — ${changingStatus.company.name}`}
           description="Esta ação é registrada na trilha de auditoria."
-          confirmLabel={blocking.status === "ACTIVE" ? "Bloquear" : "Desbloquear"}
-          destructive={blocking.status === "ACTIVE"}
-          onConfirm={(reason) => handleConfirmToggleStatus(blocking, reason)}
-          onClose={() => setBlocking(null)}
+          confirmLabel="Confirmar"
+          destructive={changingStatus.target !== "ACTIVE"}
+          onConfirm={handleConfirmChangeStatus}
+          onClose={() => setChangingStatus(null)}
         />
       )}
 
@@ -877,11 +930,7 @@ function CompanyDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white"
-            >
+            <Button type="submit" variant="brand" disabled={isSubmitting}>
               Salvar
             </Button>
           </DialogFooter>

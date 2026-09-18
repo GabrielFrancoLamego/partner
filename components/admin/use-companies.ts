@@ -17,11 +17,16 @@ export type AdminLicense = {
   expiresAt: string | null
 }
 
+export type AdminCompanyStatus = "ACTIVE" | "INACTIVE" | "OVERDUE" | "BLOCKED" | "ARCHIVED"
+
 export type AdminCompany = {
   id: string
   name: string
   slug: string
-  status: "ACTIVE" | "INACTIVE"
+  status: AdminCompanyStatus
+  statusReason: string | null
+  overdueSince: string | null
+  isArchived: boolean
   createdAt: string
   license: AdminLicense | null
   _count?: { users: number; units: number; programs: number; promotions: number }

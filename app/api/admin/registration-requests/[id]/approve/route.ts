@@ -4,6 +4,7 @@ import { createPlatformUser } from "@/lib/admin-user"
 import { logAudit } from "@/lib/audit"
 import { payAffiliateSignupBonus } from "@/lib/affiliate"
 import { provisionCompanyWithMaster } from "@/lib/company-provisioning"
+import { notifyUser } from "@/lib/notifications"
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -20,8 +21,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       throw new ApiError(400, "Este cadastro já foi avaliado")
     }
 
-    // Link COMPANY_SIGNUP: não cria um User solto — provisiona Company + License + Master.
-    if (registrationRequest.link?.type === "COMPANY_SIGNUP") {
+    // Empresa nova: nunca cria um User solto — provisiona Company + License +
+    // Master. Vem de um link COMPANY_SIGNUP tokenizado do Admin OU do link
+    // especial (sem token) de um Afiliado — ver app/api/public/company-signup.
+    const isCompanySignup = registrationRequest.link?.type === "COMPANY_SIGNUP" || registrationRequest.role === "COMPANY_MASTER"
+    if (isCompanySignup) {
       if (!registrationRequest.desiredCompanySlug || !registrationRequest.masterName) {
         throw new ApiError(400, "Cadastro de empresa incompleto")
       }
@@ -32,9 +36,10 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
         masterName: registrationRequest.masterName,
         masterEmail: registrationRequest.email,
         masterWhatsapp: registrationRequest.phone,
-        plan: registrationRequest.link.plan,
-        isExempt: registrationRequest.link.isExempt,
-        exemptionMonths: registrationRequest.link.exemptionMonths,
+        plan: registrationRequest.link?.plan,
+        isExempt: registrationRequest.link?.isExempt,
+        exemptionMonths: registrationRequest.link?.exemptionMonths,
+        affiliateId: registrationRequest.affiliateId,
       })
 
       const updated = await prisma.publicRegistrationRequest.update({
@@ -51,6 +56,15 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
         details: { createdCompanyId: company.id, createdUserId: master.id },
       })
 
+      await notifyUser({
+        userId: master.id,
+        type: "REGISTRATION_APPROVED",
+        title: "Cadastro aprovado!",
+        message: `Sua empresa "${company.name}" foi aprovada. Você já pode acessar a plataforma.`,
+        email: master.email,
+        phone: registrationRequest.phone,
+      })
+
       return Response.json(updated)
     }
 
@@ -63,7 +77,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       email: registrationRequest.email,
       name: registrationRequest.name,
       role,
-      companyId: registrationRequest.companyId,
+      // User.companyId é null para PARTNER por convenção (parceiro não
+      // pertence a uma única empresa — ver model User). Um cadastro
+      // PARTNER_FOR_COMPANY carrega companyId só como metadado de origem;
+      // a vinculação real acontece via Referral/Commission por indicação.
+      companyId: role === "PARTNER" ? null : registrationRequest.companyId,
       phone: registrationRequest.phone,
       document: registrationRequest.document ?? undefined,
       fullName: registrationRequest.name,
@@ -101,6 +119,15 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       entity: "PublicRegistrationRequest",
       entityId: id,
       details: { createdUserId: user.id, role },
+    })
+
+    await notifyUser({
+      userId: user.id,
+      type: "REGISTRATION_APPROVED",
+      title: "Cadastro aprovado!",
+      message: "Seu cadastro foi aprovado. Você já pode acessar a plataforma.",
+      email: user.email,
+      phone: registrationRequest.phone,
     })
 
     return Response.json(updated)

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { requirePlatformAdmin, handleApiError, ApiError } from "@/lib/api-auth"
 import { logAudit } from "@/lib/audit"
+import { notifyEmailOnly } from "@/lib/notifications"
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -33,6 +34,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       entityId: id,
       details: { reason },
     })
+
+    await notifyEmailOnly(
+      registrationRequest.email,
+      "Cadastro não aprovado",
+      reason
+        ? `Seu cadastro na Tribuss não foi aprovado. Motivo: ${reason}`
+        : "Seu cadastro na Tribuss não foi aprovado. Entre em contato para mais informações.",
+    )
 
     return Response.json(updated)
   } catch (error) {

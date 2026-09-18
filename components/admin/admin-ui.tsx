@@ -41,6 +41,9 @@ export function MetricRow({ label, value }: { label: string; value: React.ReactN
 const STATUS_STYLES: Record<string, string> = {
   ACTIVE: "bg-green-100 text-green-700",
   INACTIVE: "bg-gray-100 text-gray-600",
+  OVERDUE: "bg-amber-100 text-amber-700",
+  BLOCKED: "bg-red-100 text-red-700",
+  ARCHIVED: "bg-gray-200 text-gray-500",
   PENDING: "bg-amber-100 text-amber-700",
   PENDING_APPROVAL: "bg-amber-100 text-amber-700",
   AWAITING_VALUE: "bg-amber-100 text-amber-700",
@@ -61,7 +64,10 @@ const STATUS_STYLES: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   ACTIVE: "Ativo",
-  INACTIVE: "Bloqueado",
+  INACTIVE: "Inativo",
+  OVERDUE: "Inadimplente",
+  BLOCKED: "Bloqueado",
+  ARCHIVED: "Arquivado",
   PENDING: "Pendente",
   PENDING_APPROVAL: "Pendente",
   AWAITING_VALUE: "Aguardando valor",
