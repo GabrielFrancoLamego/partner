@@ -44,9 +44,16 @@ function toJson(value: unknown): Prisma.InputJsonValue | undefined {
  *   const db = auditedClient({ userId, role, companyId })
  *   await db.withdrawal.update(...) // AuditLog gravado automaticamente
  */
-export function auditedClient(actor: Actor) {
+export function auditedClient(actor: Actor): typeof prisma {
   if (!shouldAudit(actor.role)) return prisma
 
+  // A extensão de query só intercepta a execução — não muda a superfície
+  // pública dos delegates de model — mas sem esta anotação de retorno o TS
+  // infere `PrismaClient | ExtendedClient` (união) para esta função. Com um
+  // schema deste tamanho, resolver `.update`/`.create`/`.delete` contra essa
+  // união excede a profundidade de comparação de tipos do TS ("Excessive
+  // stack depth"/"not callable") nos models com mais campos/relações. O cast
+  // de volta para `typeof prisma` elimina a união sem mudar o comportamento.
   return prisma.$extends({
     query: {
       $allModels: {
@@ -76,7 +83,7 @@ export function auditedClient(actor: Actor) {
         },
       },
     },
-  })
+  }) as unknown as typeof prisma
 }
 
 /**

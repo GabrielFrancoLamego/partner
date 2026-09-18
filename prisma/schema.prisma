@@ -28,6 +28,7 @@ enum Status {
 enum CommissionType {
   FIXED
   VARIABLE
+  BOTH // % (Program.commissionValue) + valor fixo (Program.fixedValue) simultâneos
 }
 
 enum ReferralStatus {
@@ -217,7 +218,8 @@ enum PromotionOfferType {
 
 enum AffiliatePayoutType {
   SIGNUP_BONUS // pago quando um parceiro indicado é aprovado
-  MILESTONE_BONUS // pago quando o parceiro indicado atinge milestoneClientCount clientes convertidos
+  MILESTONE_BONUS // pago quando o parceiro indicado atinge milestoneClientCount clientes convertidos (ou um AffiliateMilestone)
+  RECURRING_COMMISSION // rewardType = PERCENTAGE_RECURRING — % sobre comissões/mensalidades correntes (ver periodKey)
 }
 
 enum AffiliatePayoutStatus {
@@ -228,6 +230,62 @@ enum AffiliatePayoutStatus {
 enum AffiliateRewardType {
   FIXED // bonusPerPartner é um valor fixo em R$
   PERCENTAGE // bonusPercentage é aplicado sobre a primeira comissão aprovada do parceiro indicado
+  PERCENTAGE_RECURRING // recurringPercentage é aplicado sobre TODA comissão aprovada da rede indicada (não só a 1ª)
+}
+
+// Status de ciclo de vida da Empresa — substitui o antigo enum genérico
+// `Status` (que ainda serve para User). ACTIVE/INACTIVE preservam o
+// significado anterior; OVERDUE/BLOCKED/ARCHIVED são o refinamento de
+// inadimplência/arquivamento lógico (ver Company.isArchived e o guard em
+// lib/company-access.ts).
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+  OVERDUE // Inadimplente — ver Company.overdueSince para a janela de carência de 15 dias
+  BLOCKED // Bloqueio manual pelo Admin (imediato, sem carência)
+  ARCHIVED // "Excluída" logicamente — nunca apagamos os dados
+}
+
+enum NotificationType {
+  REGISTRATION_PENDING // novo cadastro aguardando aprovação (para Master/Gerente/Admin)
+  REGISTRATION_APPROVED
+  REGISTRATION_REJECTED
+  BILLING_OVERDUE
+  GENERIC
+}
+
+enum AffiliateLinkTarget {
+  COMPANY
+  PARTNER
+}
+
+// Critério de elevação de nível — usado tanto pelo Programa de Parceiros
+// (ProgramLevel) quanto, futuramente, por outras réguas de nível.
+enum LevelCriteria {
+  REFERRAL_COUNT
+  REVENUE
+  BOTH
+}
+
+// Formato do benefício concedido ao subir de nível/cargo.
+enum BenefitType {
+  PERCENTAGE
+  FIXED
+  BOTH
+}
+
+// Unidade do período de mensuração de um nível/cargo — ALL_TIME = nunca
+// rebaixa/reavalia; DAYS/MONTHS combinam com um valor numérico (ver
+// measurementValue/periodMonths nos models que usam este enum).
+enum MeasurementUnit {
+  ALL_TIME
+  DAYS
+  MONTHS
+}
+
+enum InternalServiceFeeTierType {
+  PENALTY // pontuação final do mês <= thresholdPoints
+  BONUS // pontuação final do mês >= thresholdPoints
 }
 
 // Tipo do link publico gerado em /admin/links — decide o formulario e a regra
@@ -253,17 +311,27 @@ model Plan {
 }
 
 model Company {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique // "nomads-jeri" | "nomads-lagoa" | "in-on"
-  status      Status   @default(ACTIVE) // INACTIVE = empresa bloqueada pelo Admin
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  sidebarBg   String?
-  sidebarText String?
-  logoUrl     String?
-  fontFamily  String?
-  fontSize    String?
+  id           String        @id @default(cuid())
+  name         String
+  slug         String        @unique // "nomads-jeri" | "nomads-lagoa" | "in-on"
+  status       CompanyStatus @default(ACTIVE)
+  statusReason String? // motivo do bloqueio/inadimplência, exibido no banner/tela de bloqueio
+  overdueSince DateTime? // setado quando o Admin marca a empresa como Inadimplente — início da carência de 15 dias (ver lib/company-access.ts)
+  isArchived   Boolean       @default(false) // "Excluir" no Admin só arquiva — nunca apaga dados (ver DELETE /api/admin/companies/[id])
+  archivedAt   DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  sidebarBg    String?
+  sidebarText  String?
+  logoUrl      String?
+  fontFamily   String?
+  fontSize     String?
+
+  // Empresa cadastrada através do link de um Afiliado (/join/company?ref=CODE)
+  // — permite ao Afiliado ver "empresas indicadas" e receber comissão
+  // fixa/percentual/recorrente sobre a mensalidade (ver lib/affiliate.ts).
+  affiliateId String?
+  affiliate   Affiliate? @relation(fields: [affiliateId], references: [id])
 
   // Dados cadastrais (pacote completo — CNPJ, endereço, contato, mídia)
   tradeName            String? // Nome Fantasia
@@ -324,6 +392,9 @@ model Company {
   internalProgram InternalProgram?
   sectors         Sector[]
   goals           Goal[]
+
+  @@index([affiliateId])
+  @@index([status])
 }
 
 // Licença SaaS da empresa dentro do grupo — hoje uso interno (Nomad's Jeri,
@@ -409,6 +480,8 @@ model User {
   goalsCreated            Goal[]                   @relation("GoalCreatedBy")
   goalRecordsReported     GoalRecord[]             @relation("GoalRecordReportedBy")
 
+  notifications Notification[]
+
   @@index([companyId])
   @@index([role])
 }
@@ -423,18 +496,23 @@ model PartnerProfile {
   phone          String?
   photoUrl       String?
   pixKey         String?
+  bankName       String? // Dados bancários — junto com pixKey, exigidos antes da 1ª Solicitação de Saque (ver app/api/partner/withdrawals)
+  accountType    String?
+  agency         String?
+  accountNumber  String?
   walletBalance  Decimal     @default(0) @db.Decimal(12, 2)
   currentLevelId String?
 
   // Pacote completo de cadastro do parceiro
-  fullName     String?
-  nickname     String?       @unique // login por apelido
-  whatsapp     String? // pode ser usado como login
-  email        String? // contato opcional — distinto do User.email (credencial de login)
-  cpf          String?       @unique // exigido ao solicitar saque
-  bio          String?       @db.Text // pesquisável pela plataforma
-  currentLevel ProgramLevel? @relation(fields: [currentLevelId], references: [id])
-  registeredAt DateTime      @default(now())
+  fullName          String?
+  nickname          String?       @unique // login por apelido
+  whatsapp          String? // pode ser usado como login
+  email             String? // contato opcional — distinto do User.email (credencial de login)
+  cpf               String?       @unique // exigido ao solicitar saque
+  bio               String?       @db.Text // pesquisável pela plataforma
+  currentLevel      ProgramLevel? @relation(fields: [currentLevelId], references: [id])
+  currentLevelSince DateTime? // desde quando está no nível atual — base do rebaixamento automático por período (ver lib/partner-levels.ts)
+  registeredAt      DateTime      @default(now())
 
   // Hierarquia Agência (pai) -> Colaboradores/guias (filhos).
   // Comissões geradas pelos filhos são consolidadas no saldo do pai (regra aplicada em código).
@@ -466,8 +544,9 @@ model EmployeeProfile {
   // Nível atual no Programa Interno da empresa — ponteiro explícito, não mais
   // derivado só por comparação de XP: uma promoção move este ponteiro E zera
   // xpPoints, iniciando um novo ciclo de pontuação (ver lib/gamification.ts).
-  currentInternalLevelId String?
-  currentInternalLevel   InternalLevelRule? @relation(fields: [currentInternalLevelId], references: [id])
+  currentInternalLevelId    String?
+  currentInternalLevel      InternalLevelRule? @relation(fields: [currentInternalLevelId], references: [id])
+  currentInternalLevelSince DateTime? // desde quando está no cargo atual — base do período de mensuração/rebaixamento
 
   // Permite que este colaborador registre Ocorrências em modo CREATE_ONLY
   // (sem ver histórico, editar ou excluir) — concedido pelo Master/Gerente.
@@ -573,9 +652,11 @@ model Program {
   commissionType   CommissionType
   commissionValue  Decimal          @db.Decimal(10, 2)
   commissionFormat CommissionFormat @default(PERCENTAGE)
+  fixedValue       Decimal?         @db.Decimal(10, 2) // parte fixa em R$ quando commissionType = BOTH (commissionValue guarda a % nesse caso)
   productUnitLabel String? // rótulo da unidade quando commissionFormat = PRODUCT_UNIT (ex: "diária grátis")
   hasLevels        Boolean          @default(false)
   autoUpgrade      Boolean          @default(false)
+  autoDowngrade    Boolean          @default(false) // rebaixa automaticamente o parceiro que não sustentar o desempenho no período de mensuração do nível (ver lib/partner-levels.ts)
   active           Boolean          @default(true)
   contractUrl      String?
   imageUrl         String? // imagem/foto de capa representativa do programa
@@ -594,16 +675,29 @@ model Program {
 }
 
 model ProgramLevel {
-  id                    String  @id @default(cuid())
-  programId             String
-  program               Program @relation(fields: [programId], references: [id], onDelete: Cascade)
-  name                  String // Prata / Ouro / Diamante
-  order                 Int     @default(0)
-  commissionPercentage  Decimal @db.Decimal(5, 2)
-  bonusDescription      String?
-  badgeColorHex         String  @default("#C0C0C0")
+  id                   String  @id @default(cuid())
+  programId            String
+  program              Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  name                 String // Prata / Ouro / Diamante
+  order                Int     @default(0)
+  commissionPercentage Decimal @db.Decimal(5, 2)
+  bonusDescription     String?
+  badgeColorHex        String  @default("#C0C0C0")
+
+  // Critério de elevação — REFERRAL_COUNT usa requiredReferralCount, REVENUE
+  // usa requiredRevenueAmount, BOTH exige os dois simultaneamente.
+  criteria              LevelCriteria @default(REFERRAL_COUNT)
   requiredReferralCount Int
-  periodMonths          Int
+  requiredRevenueAmount Decimal?      @db.Decimal(10, 2)
+
+  // Período de mensuração para MANTER o nível — ALL_TIME nunca rebaixa;
+  // MONTHS usa periodMonths como janela rolante (ver lib/partner-levels.ts).
+  measurementUnit MeasurementUnit @default(ALL_TIME)
+  periodMonths    Int             @default(0)
+
+  // Benefício concedido ao atingir o nível, além da comissão base do Program.
+  benefitType      BenefitType @default(PERCENTAGE)
+  bonusFixedAmount Decimal?    @db.Decimal(10, 2)
 
   partners PartnerProfile[]
 
@@ -809,30 +903,30 @@ model TimeEntry {
 // ou pelo Gerente da empresa. Cada execução do colaborador vira um Checklist
 // (instância) vinculado a este template.
 model ChecklistTemplate {
-  id                   String              @id @default(cuid())
-  companyId            String
-  company              Company             @relation(fields: [companyId], references: [id])
-  unitId               String?
-  unit                 Unit?               @relation(fields: [unitId], references: [id])
-  title                String
-  description          String?             @db.Text
-  recurrence           ChecklistRecurrence
+  id                    String              @id @default(cuid())
+  companyId             String
+  company               Company             @relation(fields: [companyId], references: [id])
+  unitId                String?
+  unit                  Unit?               @relation(fields: [unitId], references: [id])
+  title                 String
+  description           String?             @db.Text
+  recurrence            ChecklistRecurrence
   // Só usados conforme a recorrência: WEEKLY usa recurrenceDayOfWeek (0=domingo..6=sábado);
   // MONTHLY/BIMONTHLY/TRIMONTHLY/SEMIANNUAL/ANNUAL usam recurrenceDayOfMonth (1-31, ou -1 = último dia do mês).
-  recurrenceDayOfWeek  Int?
-  recurrenceDayOfMonth Int?
+  recurrenceDayOfWeek   Int?
+  recurrenceDayOfMonth  Int?
   // Mês de início/âncora (0=janeiro..11=dezembro) a partir do qual se conta o
   // ciclo de BIMONTHLY/TRIMONTHLY/SEMIANNUAL/ANNUAL — null equivale a 0 (janeiro),
   // preservando o comportamento anterior (ex: trimestral = jan/abr/jul/out).
   recurrenceAnchorMonth Int?
-  priority             ChecklistPriority   @default(MEDIUM)
-  dueTime              String // horário limite diário de conclusão, formato "HH:mm"
-  requiresPhoto        Boolean             @default(true)
-  active               Boolean             @default(true)
-  createdById          String
-  createdBy            User                @relation("ChecklistTemplateCreatedBy", fields: [createdById], references: [id])
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
+  priority              ChecklistPriority   @default(MEDIUM)
+  dueTime               String // horário limite diário de conclusão, formato "HH:mm"
+  requiresPhoto         Boolean             @default(true)
+  active                Boolean             @default(true)
+  createdById           String
+  createdBy             User                @relation("ChecklistTemplateCreatedBy", fields: [createdById], references: [id])
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
 
   // Responsável principal e secundário — se nenhum for definido, a tarefa fica
   // aberta para qualquer colaborador (comportamento antigo). Se o principal
@@ -995,7 +1089,8 @@ model Affiliate {
   rewardType           AffiliateRewardType @default(FIXED)
   bonusPerPartner      Decimal             @default(0) @db.Decimal(10, 2) // valor fixo pago quando o parceiro indicado é aprovado (rewardType = FIXED)
   bonusPercentage      Decimal?            @db.Decimal(5, 2) // % sobre a 1ª comissão aprovada do parceiro indicado (rewardType = PERCENTAGE)
-  milestoneClientCount Int                 @default(10) // "10 primeiros clientes convertidos"
+  recurringPercentage  Decimal?            @db.Decimal(5, 2) // % sobre TODA comissão da rede indicada e mensalidade das empresas indicadas (rewardType = PERCENTAGE_RECURRING)
+  milestoneClientCount Int                 @default(10) // "10 primeiros clientes convertidos" — mantido por compat; novos milestones usam AffiliateMilestone
   milestoneBonus       Decimal             @default(0) @db.Decimal(10, 2) // pago ao atingir o milestone acima
   pixKey               String?
   walletBalance        Decimal             @default(0) @db.Decimal(12, 2)
@@ -1009,9 +1104,12 @@ model Affiliate {
   partnerProfileId String?         @unique
   partnerProfile   PartnerProfile? @relation("AffiliateSelf", fields: [partnerProfileId], references: [id])
 
-  partners     PartnerProfile[]
-  joinRequests PublicRegistrationRequest[]
-  payouts      AffiliatePayout[]
+  partners          PartnerProfile[]
+  referredCompanies Company[]
+  joinRequests      PublicRegistrationRequest[]
+  payouts           AffiliatePayout[]
+  milestones        AffiliateMilestone[]
+  linkVisits        AffiliateLinkVisit[]
 
   @@index([active])
 }
@@ -1022,14 +1120,47 @@ model AffiliatePayout {
   affiliate   Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
   partnerId   String?
   partner     PartnerProfile?       @relation(fields: [partnerId], references: [id])
+  companyId   String? // preenchido quando o payout vem de uma empresa indicada (mensalidade), não de um parceiro
   type        AffiliatePayoutType
   amount      Decimal               @db.Decimal(10, 2)
   status      AffiliatePayoutStatus @default(PENDING)
+  periodKey   String? // "AAAA-MM" — chave de idempotência dos payouts recorrentes (1 por afiliado/origem/mês)
   paidAt      DateTime?
   createdAt   DateTime              @default(now())
 
   @@index([affiliateId])
   @@index([partnerId])
+  @@index([companyId])
+}
+
+// Marco de bonificação fixa multi-nível, configurado pelo Admin no painel do
+// Afiliado (botão "+"). Pago uma única vez, quando `achievedAt` é preenchido
+// (ver lib/affiliate.ts#checkAffiliateMilestones).
+model AffiliateMilestone {
+  id          String    @id @default(cuid())
+  affiliateId String
+  affiliate   Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  order       Int       @default(0)
+  targetCount Int // nº de parceiros/empresas convertidos para atingir este marco
+  bonusAmount Decimal   @db.Decimal(10, 2)
+  achievedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([affiliateId, order])
+  @@index([affiliateId])
+}
+
+// 1 registro por acesso ao link de indicação (/join/partner?ref=CODE ou
+// /join/company?ref=CODE) — métrica de topo de funil, distinta de conversão
+// (ver PublicRegistrationRequest/PartnerProfile/Company.affiliateId).
+model AffiliateLinkVisit {
+  id          String              @id @default(cuid())
+  affiliateId String
+  affiliate   Affiliate           @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  target      AffiliateLinkTarget
+  createdAt   DateTime            @default(now())
+
+  @@index([affiliateId])
 }
 
 // Chamado aberto por Colaborador, Gerente ou Parceiro na Central de Comunicação.
@@ -1182,9 +1313,16 @@ model InternalProgram {
   description  String? @db.Text
   imageUrl     String? // imagem representativa do programa
   pdfUrl       String? // anexo PDF com regras completas
+  videoUrl     String? // vídeo institucional (URL externa — YouTube/Vimeo)
   termsContent String? @db.Text // termo de aceite (texto/markdown simples)
 
   measurementPeriod MeasurementPeriod @default(MONTHLY)
+
+  // Pontuação Base mensal — todo colaborador (inclusive recém-contratado)
+  // começa o dia 1º de cada mês com esta pontuação cheia (ver
+  // lib/gamification.ts#getMonthlyServiceScore, que soma XpEntry do mês a
+  // partir desta base).
+  basePoints Int @default(100)
 
   // Regras de pontuação (aplicadas em lib/gamification.ts em vez de constantes fixas)
   pointsOnTimeCheckIn           Int @default(5)
@@ -1203,6 +1341,23 @@ model InternalProgram {
 
   levels          InternalLevelRule[]
   termAcceptances EmployeeTermAcceptance[]
+  serviceFeeTiers InternalServiceFeeTier[]
+}
+
+// Faixa de ganho/perda de Taxa de Serviço com base na pontuação final do mês
+// (apuração de 30 dias) — múltiplas faixas por empresa, tanto de PENALTY
+// quanto de BONUS (ver lib/gamification.ts#getServiceFeeAdjustment).
+model InternalServiceFeeTier {
+  id                String                     @id @default(cuid())
+  internalProgramId String
+  internalProgram   InternalProgram            @relation(fields: [internalProgramId], references: [id], onDelete: Cascade)
+  type              InternalServiceFeeTierType
+  thresholdPoints   Int
+  percentage        Decimal?                   @db.Decimal(5, 2)
+  fixedAmount       Decimal?                   @db.Decimal(10, 2)
+  createdAt         DateTime                   @default(now())
+
+  @@index([internalProgramId])
 }
 
 // Régua de cargos do Programa Interno (Trainee -> Junior -> ... -> Supervisor,
@@ -1214,6 +1369,7 @@ model InternalLevelRule {
   internalProgramId     String
   internalProgram       InternalProgram @relation(fields: [internalProgramId], references: [id], onDelete: Cascade)
   name                  String
+  description           String?         @db.Text
   order                 Int             @default(0)
   pointsRequired        Int
   salaryIncreasePercent Decimal?        @db.Decimal(5, 2)
@@ -1221,8 +1377,19 @@ model InternalLevelRule {
   bonusDescription      String?
   bonusAmount           Decimal?        @db.Decimal(10, 2)
   badgeColorHex         String          @default("#F58220")
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+
+  // Benefício da promoção — % de aumento salarial (salaryIncreasePercent),
+  // Bônus Fixo (bonusAmount) ou Ambos, conforme benefitType.
+  benefitType BenefitType @default(PERCENTAGE)
+
+  // Período de mensuração do cargo — se o colaborador não sustentar o
+  // desempenho (pointsRequired) nesse prazo, o cargo é reavaliado/rebaixado
+  // (ver lib/gamification.ts#checkCareerDowngrades). ALL_TIME = vitalício.
+  measurementUnit  MeasurementUnit @default(ALL_TIME)
+  measurementValue Int? // combinado com measurementUnit (DAYS ou MONTHS)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   employees EmployeeProfile[]
 
@@ -1391,6 +1558,28 @@ model RewardRedemption {
 
   @@index([companyId])
   @@index([employeeId])
+}
+
+// Notificação em-app (sino do dashboard). O melhor esforço de email (Resend)
+// e o link de WhatsApp (wa.me, sem API paga — mesmo padrão de
+// lib/promotion-share.ts) são disparados no momento da criação por
+// lib/notifications.ts; esta linha é o registro persistente/fonte da verdade
+// para o sino, independente desses canais terem funcionado ou não.
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        NotificationType @default(GENERIC)
+  title       String
+  message     String           @db.Text
+  linkUrl     String? // rota interna para onde o clique deve levar (ex: /admin/cadastros?tab=approvals)
+  emailSent   Boolean          @default(false)
+  whatsappUrl String? // link wa.me pronto, oferecido na UI como fallback manual
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+
+  @@index([userId])
+  @@index([userId, readAt])
 }
 
 // Fechamento diário obrigatório de expediente — 1 registro por empresa/dia.
