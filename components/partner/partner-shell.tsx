@@ -3,14 +3,16 @@
 import type React from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
-import { LayoutDashboard, Wallet, Banknote, LogOut, Gift, Map, MessagesSquare, Star, Rocket, UserCircle2 } from "lucide-react"
+import { LayoutDashboard, Wallet, Banknote, LogOut, Gift, Map, MessagesSquare, Star, Rocket, UserCircle2, Compass } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PartnerUserProvider, type PartnerUser } from "@/lib/partner-user-context"
 import { PartnerTermAcceptanceGate } from "./term-acceptance-gate"
 import { NotificationBell } from "@/components/notifications/notification-bell"
+import { RatingPromptModal } from "./rating-prompt-modal"
 
 const NAV_ITEMS = [
   { href: "/partner", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/partner/explorar", label: "Explorar Programas", shortLabel: "Explorar", icon: Compass },
   { href: "/partner/nivel", label: "Meu Nível", icon: Rocket },
   { href: "/partner/comissoes", label: "Comissões", icon: Wallet },
   { href: "/partner/saques", label: "Saques PIX", shortLabel: "Saques", icon: Banknote },
@@ -37,6 +39,7 @@ export function PartnerShell({ user, children }: { user: PartnerUser; children: 
     <PartnerUserProvider user={user}>
       <div className="min-h-screen bg-[#F7F5F2]">
         <PartnerTermAcceptanceGate />
+        <RatingPromptModal />
         <aside className="hidden lg:flex fixed left-0 top-0 h-screen w-[260px] flex-col border-r border-[#E8E3DC] bg-white">
           <div className="p-4 border-b border-[#E8E3DC] flex items-center gap-3">
             <img src="/brand/tribuss-icone-app.png" alt="Tribuss" className="w-10 h-10 rounded-xl object-contain" />

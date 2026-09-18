@@ -3,6 +3,7 @@ import { requireUser, requireCapability, handleApiError, ApiError } from "@/lib/
 import { canOperateFrontDesk } from "@/lib/permissions"
 import { uploadImage } from "@/lib/storage"
 import { logAudit } from "@/lib/audit"
+import { touchPartnerActivity } from "@/lib/program-lifecycle"
 
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000
 
@@ -97,6 +98,10 @@ export async function POST(request: Request) {
       entityId: commission.id,
       details: { promotionId, partnerId, clientName, fileName: file.name, fileSize: file.size },
     })
+
+    // Geração de QR/comissão é o sinal de atividade do parceiro nesta empresa
+    // — reseta a contagem dos 90 dias de inatividade (ver lib/program-lifecycle.ts).
+    await touchPartnerActivity(partnerId, user.companyId)
 
     return Response.json(commission, { status: 201 })
   } catch (error) {

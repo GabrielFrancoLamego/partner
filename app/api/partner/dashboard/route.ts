@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { requirePartner, handleApiError, ApiError } from "@/lib/api-auth"
+import { sweepInactiveMemberships } from "@/lib/program-lifecycle"
+import { ensureMonthlyPerformanceNotification } from "@/lib/partner-lifecycle"
 
 /**
  * Painel do parceiro: saldo em carteira, régua de nível (todos os níveis do
@@ -9,6 +11,11 @@ import { requirePartner, handleApiError, ApiError } from "@/lib/api-auth"
 export async function GET() {
   try {
     const user = await requirePartner()
+
+    // Sem infra de cron (ver lib/license-exemption.ts) — varreduras preguiçosas
+    // disparadas no acesso ao dashboard, o ponto de entrada mais frequente do parceiro.
+    await sweepInactiveMemberships()
+    await ensureMonthlyPerformanceNotification(user.id)
 
     const profile = await prisma.partnerProfile.findUnique({
       where: { userId: user.id },
