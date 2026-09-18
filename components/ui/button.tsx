@@ -19,6 +19,13 @@ const buttonVariants = cva(
         ghost:
           'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
         link: 'text-primary underline-offset-4 hover:underline',
+        // Ações primárias de formulário — cor forte de marca + escurecimento real
+        // no hover (brightness, não opacidade) para contraste visível. Preferir
+        // a estes 3 em vez de reinventar classes de gradiente/cor ad-hoc.
+        brand:
+          'bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white shadow-md hover:brightness-90',
+        info: 'bg-blue-600 text-white shadow-md hover:brightness-90',
+        success: 'bg-green-600 text-white shadow-md hover:brightness-90',
       },
       size: {
         default: 'h-9 px-4 py-2 has-[>svg]:px-3',
