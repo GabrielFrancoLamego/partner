@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { useCompanies } from "@/components/admin/use-companies"
 import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
+import { FileUploadField } from "@/components/shared/file-upload-field"
+import { IconActionButton } from "@/components/ui/icon-action-button"
 
 type OfferType = "DISCOUNT" | "FREE_GIFT" | "DOUBLE_BENEFIT"
 
@@ -83,10 +85,7 @@ export function PromotionsTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button
-          onClick={() => setEditing("new")}
-          className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90 shadow-md"
-        >
+        <Button onClick={() => setEditing("new")} variant="brand">
           <Plus className="h-4 w-4 mr-2" />
           Nova Promoção
         </Button>
@@ -130,26 +129,18 @@ export function PromotionsTab() {
                   </p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <Button variant="ghost" size="icon" onClick={() => setEditing(promotion)} title="Editar">
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                  <IconActionButton icon={Pencil} label="Editar" onClick={() => setEditing(promotion)} />
+                  <IconActionButton
+                    icon={Power}
+                    label={promotion.active ? "Inativar" : "Ativar"}
                     onClick={() => handleToggleActive(promotion)}
-                    title={promotion.active ? "Inativar" : "Ativar"}
-                  >
-                    <Power className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                  />
+                  <IconActionButton
+                    icon={Trash2}
+                    label="Excluir"
                     onClick={() => handleDelete(promotion)}
-                    title="Excluir"
                     className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  />
                 </div>
               </div>
             </div>
@@ -261,10 +252,15 @@ function PromotionDialog({
             <Label>Título</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
           </div>
-          <div className="space-y-2">
-            <Label>Foto (URL)</Label>
-            <Input value={bannerUrl} onChange={(e) => setBannerUrl(e.target.value)} placeholder="https://..." />
-          </div>
+          <FileUploadField
+            label="Foto da promoção"
+            accept="image/png,image/jpeg,image/webp"
+            currentUrl={bannerUrl || null}
+            uploadEndpoint="/api/admin/uploads"
+            kind="promotion-photo"
+            onUploaded={setBannerUrl}
+            variant="image"
+          />
           <div className="space-y-2">
             <Label>Descrição</Label>
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
@@ -330,11 +326,7 @@ function PromotionDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white"
-            >
+            <Button type="submit" variant="brand" disabled={isSubmitting}>
               Salvar
             </Button>
           </DialogFooter>

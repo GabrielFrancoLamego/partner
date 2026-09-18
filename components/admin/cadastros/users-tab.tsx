@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Plus, Lock, Unlock, Trash2, KeyRound, IdCard } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { Plus, Lock, Unlock, Trash2, KeyRound, IdCard, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,6 +12,7 @@ import { useCompanies } from "@/components/admin/use-companies"
 import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
 import { ReasonDialog } from "@/components/admin/reason-dialog"
 import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
+import { IconActionButton } from "@/components/ui/icon-action-button"
 import { EmployeeProfileDialog } from "./employee-profile-dialog"
 
 type StaffUser = {
@@ -41,6 +42,9 @@ export function UsersTab() {
   const [resetLink, setResetLink] = useState<string | null>(null)
   const [viewingProfile, setViewingProfile] = useState<StaffUser | null>(null)
   const [blocking, setBlocking] = useState<StaffUser | null>(null)
+  const [statusFilter, setStatusFilter] = useState<"ACTIVE" | "INACTIVE" | null>(null)
+  const [roleFilter, setRoleFilter] = useState<string | null>(null)
+  const [companyFilter, setCompanyFilter] = useState<string | null>(null)
 
   const reload = () => {
     setIsLoading(true)
@@ -50,6 +54,17 @@ export function UsersTab() {
   }
 
   useEffect(reload, [])
+
+  const filteredUsers = useMemo(() => {
+    return users.filter((u) => {
+      if (statusFilter && u.status !== statusFilter) return false
+      if (roleFilter && u.role !== roleFilter) return false
+      if (companyFilter && u.companyId !== companyFilter) return false
+      return true
+    })
+  }, [users, statusFilter, roleFilter, companyFilter])
+
+  const hasFilter = Boolean(statusFilter || roleFilter || companyFilter)
 
   const handleConfirmToggleStatus = async (user: StaffUser, reason: string) => {
     await adminFetch(`/api/admin/users/${user.id}`, {
@@ -81,11 +96,60 @@ export function UsersTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button
-          onClick={() => setIsCreateOpen(true)}
-          className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90 shadow-md"
-        >
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={statusFilter ?? "all"} onValueChange={(v) => setStatusFilter(v === "all" ? null : (v as "ACTIVE" | "INACTIVE"))}>
+            <SelectTrigger className="w-full sm:w-40 h-9 text-xs">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os status</SelectItem>
+              <SelectItem value="ACTIVE">Ativo</SelectItem>
+              <SelectItem value="INACTIVE">Inativo</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={roleFilter ?? "all"} onValueChange={(v) => setRoleFilter(v === "all" ? null : v)}>
+            <SelectTrigger className="w-full sm:w-44 h-9 text-xs">
+              <SelectValue placeholder="Papel" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os papéis</SelectItem>
+              {Object.entries(ROLE_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={companyFilter ?? "all"} onValueChange={(v) => setCompanyFilter(v === "all" ? null : v)}>
+            <SelectTrigger className="w-full sm:w-44 h-9 text-xs">
+              <SelectValue placeholder="Empresa" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as empresas</SelectItem>
+              {companies.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {hasFilter && (
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter(null)
+                setRoleFilter(null)
+                setCompanyFilter(null)
+              }}
+              className="flex items-center gap-0.5 text-xs font-medium text-orange-800 underline underline-offset-2 cursor-pointer"
+            >
+              <X className="h-3 w-3" />
+              Limpar filtros
+            </button>
+          )}
+        </div>
+        <Button onClick={() => setIsCreateOpen(true)} variant="brand" className="self-end sm:self-auto">
           <Plus className="h-4 w-4 mr-2" />
           Novo Usuário
         </Button>
@@ -93,12 +157,12 @@ export function UsersTab() {
 
       {isLoading ? (
         <LoadingState />
-      ) : users.length === 0 ? (
-        <EmptyState message="Nenhum usuário cadastrado ainda." />
+      ) : filteredUsers.length === 0 ? (
+        <EmptyState message={hasFilter ? "Nenhum usuário nesses filtros." : "Nenhum usuário cadastrado ainda."} />
       ) : (
         <>
           <MobileCardList>
-            {users.map((user) => (
+            {filteredUsers.map((user) => (
               <MobileCard
                 key={user.id}
                 title={user.name}
@@ -138,7 +202,7 @@ export function UsersTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {users.map((user) => (
+              {filteredUsers.map((user) => (
                 <tr key={user.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <p className="font-semibold text-[#3E2415]">{user.name}</p>
@@ -152,40 +216,20 @@ export function UsersTab() {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       {user.role === "EMPLOYEE" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setViewingProfile(user)}
-                          title="Ver perfil / documentos"
-                        >
-                          <IdCard className="h-4 w-4" />
-                        </Button>
+                        <IconActionButton icon={IdCard} label="Ver perfil / documentos" onClick={() => setViewingProfile(user)} />
                       )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleResetPassword(user)}
-                        title="Disparar redefinição de senha"
-                      >
-                        <KeyRound className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
+                      <IconActionButton icon={KeyRound} label="Disparar redefinição de senha" onClick={() => handleResetPassword(user)} />
+                      <IconActionButton
+                        icon={user.status === "ACTIVE" ? Lock : Unlock}
+                        label={user.status === "ACTIVE" ? "Bloquear" : "Desbloquear"}
                         onClick={() => setBlocking(user)}
-                        title={user.status === "ACTIVE" ? "Bloquear" : "Desbloquear"}
-                      >
-                        {user.status === "ACTIVE" ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
+                      />
+                      <IconActionButton
+                        icon={Trash2}
+                        label="Excluir"
                         onClick={() => handleDelete(user)}
-                        title="Excluir"
                         className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      />
                     </div>
                   </td>
                 </tr>
@@ -332,11 +376,7 @@ function CreateUserDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white"
-            >
+            <Button type="submit" variant="brand" disabled={isSubmitting}>
               Criar
             </Button>
           </DialogFooter>
