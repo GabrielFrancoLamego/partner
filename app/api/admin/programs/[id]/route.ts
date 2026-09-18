@@ -13,6 +13,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       commissionType,
       commissionValue,
       commissionFormat,
+      fixedValue,
       productUnitLabel,
       imageUrl,
       pdfUrl,
@@ -23,6 +24,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     if (commissionFormat === "PRODUCT_UNIT" && productUnitLabel !== undefined && !productUnitLabel) {
       throw new ApiError(400, "Informe o rótulo da unidade de produto (ex: 'diária grátis')")
+    }
+    if (commissionType === "BOTH" && fixedValue !== undefined && !fixedValue) {
+      throw new ApiError(400, "Informe o valor fixo adicional (comissão 'Ambas')")
     }
 
     const existing = await prisma.program.findUnique({ where: { id }, select: { companyId: true } })
@@ -37,6 +41,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...(commissionType !== undefined ? { commissionType } : {}),
         ...(commissionValue !== undefined ? { commissionValue } : {}),
         ...(commissionFormat !== undefined ? { commissionFormat } : {}),
+        ...(commissionType !== undefined ? { fixedValue: commissionType === "BOTH" ? fixedValue : null } : {}),
         ...(productUnitLabel !== undefined ? { productUnitLabel: commissionFormat === "PRODUCT_UNIT" ? productUnitLabel : null } : {}),
         ...(imageUrl !== undefined ? { imageUrl } : {}),
         ...(pdfUrl !== undefined ? { pdfUrl } : {}),

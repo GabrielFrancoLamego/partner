@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     const programs = await prisma.program.findMany({
       where: companyId && companyId !== "all" ? { companyId } : {},
       include: {
-        company: { select: { id: true, name: true } },
+        company: { select: { id: true, name: true, city: true } },
         levels: { orderBy: { order: "asc" } },
         _count: { select: { referrals: true } },
       },
@@ -28,13 +28,16 @@ export async function POST(request: Request) {
   try {
     const admin = await requirePlatformAdmin()
     const body = await request.json()
-    const { companyId, name, description, commissionType, commissionValue, commissionFormat, productUnitLabel, imageUrl, pdfUrl, videoUrl, termsContent } = body
+    const { companyId, name, description, commissionType, commissionValue, commissionFormat, fixedValue, productUnitLabel, imageUrl, pdfUrl, videoUrl, termsContent } = body
 
     if (!companyId || !name || !commissionType || commissionValue === undefined) {
       throw new ApiError(400, "Empresa, nome, tipo e valor de comissão são obrigatórios")
     }
     if (commissionFormat === "PRODUCT_UNIT" && !productUnitLabel) {
       throw new ApiError(400, "Informe o rótulo da unidade de produto (ex: 'diária grátis')")
+    }
+    if (commissionType === "BOTH" && !fixedValue) {
+      throw new ApiError(400, "Informe o valor fixo adicional (comissão 'Ambas')")
     }
 
     const db = auditedClient({ userId: admin.id, role: admin.role, companyId })
@@ -46,6 +49,7 @@ export async function POST(request: Request) {
         commissionType,
         commissionValue,
         commissionFormat: commissionFormat ?? "PERCENTAGE",
+        fixedValue: commissionType === "BOTH" ? fixedValue : null,
         productUnitLabel: commissionFormat === "PRODUCT_UNIT" ? productUnitLabel : null,
         imageUrl,
         pdfUrl,
