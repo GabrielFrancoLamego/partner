@@ -1,23 +1,15 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Settings, X } from "lucide-react"
+import { Pencil, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { adminFetch } from "@/lib/admin-api-client"
 import { useCompanies } from "@/components/admin/use-companies"
 import { LoadingState, EmptyState, StatusBadge } from "@/components/admin/admin-ui"
 import { ProgramTypeBadge } from "@/components/shared/program-type-badge"
+import { ProgramActions, ProgramDialog, LevelsManagerDialog, type Program as PartnerProgram } from "@/components/admin/operacoes/programs-tab"
 
-type PartnerProgram = {
-  id: string
-  name: string
-  active: boolean
-  commissionType: "FIXED" | "VARIABLE" | "BOTH"
-  commissionValue: string
-  fixedValue: string | null
-  company: { id: string; name: string; city: string | null }
-}
 type InternalProgram = {
   id: string
   title: string
@@ -33,9 +25,10 @@ type UnifiedRow = {
   companyId: string
   companyName: string
   city: string | null
-  active: boolean
+  status: string
   commissionKind: "PERCENTAGE" | "FIXED" | "BOTH" | "XP"
   commissionSummary: string
+  program: PartnerProgram | null // só para type = PARTNER — alimenta as ações inline
 }
 
 const COMMISSION_FILTER_LABELS: Record<string, string> = {
@@ -71,8 +64,10 @@ export function OverviewTab({
   const [cityFilter, setCityFilter] = useState<string | null>(null)
   const [companyFilter, setCompanyFilter] = useState<string | null>(null)
   const [commissionFilter, setCommissionFilter] = useState<string>("all")
+  const [editingPartnerProgram, setEditingPartnerProgram] = useState<PartnerProgram | null>(null)
+  const [managingLevelsFor, setManagingLevelsFor] = useState<PartnerProgram | null>(null)
 
-  useEffect(() => {
+  const reload = () => {
     setIsLoading(true)
     Promise.all([
       adminFetch<PartnerProgram[]>("/api/admin/programs"),
@@ -83,7 +78,8 @@ export function OverviewTab({
         setInternalPrograms(internal)
       })
       .finally(() => setIsLoading(false))
-  }, [])
+  }
+  useEffect(reload, [])
 
   const cities = useMemo(
     () => Array.from(new Set(companies.map((c) => c.city).filter((c): c is string => Boolean(c)))).sort(),
@@ -97,10 +93,11 @@ export function OverviewTab({
       title: p.name,
       companyId: p.company.id,
       companyName: p.company.name,
-      city: p.company.city,
-      active: p.active,
+      city: p.company.city ?? null,
+      status: p.status,
       commissionKind: commissionKindOf(p),
       commissionSummary: commissionSummaryOf(p),
+      program: p,
     }))
     const fromInternal = internalPrograms.map((p): UnifiedRow => ({
       key: `internal-${p.id}`,
@@ -109,9 +106,10 @@ export function OverviewTab({
       companyId: p.company.id,
       companyName: p.company.name,
       city: p.company.city,
-      active: p.active,
+      status: p.active ? "ACTIVE" : "INACTIVE",
       commissionKind: "XP",
       commissionSummary: `${p.basePoints} pts base/mês`,
+      program: null,
     }))
     return [...fromPartner, ...fromInternal]
   }, [partnerPrograms, internalPrograms])
@@ -215,7 +213,7 @@ export function OverviewTab({
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
                   <ProgramTypeBadge type={row.type} />
-                  <StatusBadge status={row.active ? "ACTIVE" : "INACTIVE"} />
+                  <StatusBadge status={row.status} />
                 </div>
                 <p className="font-semibold text-[#3E2415]">{row.title}</p>
                 <p className="text-xs text-gray-500 mt-0.5">
@@ -223,19 +221,41 @@ export function OverviewTab({
                   {row.city && ` · ${row.city}`} · {row.commissionSummary}
                 </p>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-shrink-0 self-start sm:self-auto"
-                onClick={() => onManage({ type: row.type, companyId: row.companyId })}
-              >
-                <Settings className="h-4 w-4 mr-1" />
-                Gerenciar
-              </Button>
+              {row.type === "PARTNER" && row.program ? (
+                <ProgramActions
+                  program={row.program}
+                  onEdit={() => setEditingPartnerProgram(row.program)}
+                  onManageLevels={() => setManagingLevelsFor(row.program)}
+                  onChanged={reload}
+                />
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-shrink-0 self-start sm:self-auto"
+                  onClick={() => onManage({ type: row.type, companyId: row.companyId })}
+                >
+                  <Pencil className="h-4 w-4 mr-1" />
+                  Editar
+                </Button>
+              )}
             </div>
           ))}
         </div>
       )}
+
+      {editingPartnerProgram && (
+        <ProgramDialog
+          program={editingPartnerProgram}
+          companies={companies}
+          onClose={() => setEditingPartnerProgram(null)}
+          onSaved={() => {
+            setEditingPartnerProgram(null)
+            reload()
+          }}
+        />
+      )}
+      {managingLevelsFor && <LevelsManagerDialog program={managingLevelsFor} onClose={() => setManagingLevelsFor(null)} />}
     </div>
   )
 }

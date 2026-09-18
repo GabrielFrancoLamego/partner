@@ -38,6 +38,7 @@ export type AdminCompany = {
   neighborhood: string | null
   city: string | null
   state: string | null
+  segment: string | null
   zipCode: string | null
   latitude: number | null
   longitude: number | null

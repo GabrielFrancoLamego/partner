@@ -2,11 +2,13 @@ import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
 import { canConfigureCompany } from "@/lib/permissions"
 import { auditedClient } from "@/lib/audit"
+import { pauseProgramForNewMembers, reactivateProgram, recordProgramChangeIfNeeded, sweepPauseExpirations } from "@/lib/program-lifecycle"
 
 /** Programa de Parceria da própria empresa (1:1 com Company) — Master configura sem depender do Admin da plataforma. */
 export async function GET() {
   try {
     const user = await requireCompanyStaff()
+    await sweepPauseExpirations()
     const program = await prisma.program.findUnique({ where: { companyId: user.companyId } })
     return Response.json(program)
   } catch (error) {
@@ -14,21 +16,30 @@ export async function GET() {
   }
 }
 
-/** Toggle rápido de ativo/inativo — não exige reenviar o formulário inteiro. */
+/**
+ * Pausar/Retomar — a empresa NÃO PODE cancelar/arquivar o programa
+ * diretamente (só o Admin, ver /api/admin/programs/[id]): pausar fecha para
+ * novas adesões e avisa quem já está vinculado com 30 dias de acesso total
+ * garantido; o encerramento definitivo acontece sozinho depois disso (ver
+ * lib/program-lifecycle.ts#sweepPauseExpirations).
+ */
 export async function PATCH(request: Request) {
   try {
     const user = await requireCompanyStaff()
     requireCapability(user, canConfigureCompany)
     const companyId = user.companyId
 
-    const { active } = await request.json()
-    if (typeof active !== "boolean") throw new ApiError(400, "Campo 'active' obrigatório")
+    const { status } = await request.json()
+    if (status !== "PAUSED_FOR_NEW_MEMBERS" && status !== "ACTIVE") {
+      throw new ApiError(400, "Empresas só podem Pausar ou Retomar — arquivamento é feito pelo Admin da plataforma")
+    }
 
     const existing = await prisma.program.findUnique({ where: { companyId } })
     if (!existing) throw new ApiError(404, "Nenhum programa configurado ainda")
+    if (existing.status === "ARCHIVED") throw new ApiError(400, "Programa arquivado pelo Admin — não pode ser reaberto por aqui")
 
-    const db = auditedClient({ userId: user.id, role: user.role, companyId })
-    const program = await db.program.update({ where: { companyId }, data: { active } })
+    const program =
+      status === "PAUSED_FOR_NEW_MEMBERS" ? await pauseProgramForNewMembers(existing, user.id) : await reactivateProgram(existing.id)
 
     return Response.json(program)
   } catch (error) {
@@ -57,7 +68,6 @@ export async function PUT(request: Request) {
       termsContent,
       validFrom,
       validUntil,
-      active,
     } = body
 
     if (!name || !commissionType || commissionValue === undefined) {
@@ -70,6 +80,11 @@ export async function PUT(request: Request) {
       throw new ApiError(400, "Informe o valor fixo adicional (comissão 'Ambas')")
     }
 
+    const before = await prisma.program.findUnique({ where: { companyId } })
+    if (before?.status === "ARCHIVED") throw new ApiError(400, "Programa arquivado pelo Admin — não pode ser editado")
+
+    // `status`/`active` nunca vêm deste formulário — pausa/retomada é sempre
+    // via PATCH (ver lib/program-lifecycle.ts), preservando o status atual aqui.
     const data = {
       name,
       description: description ?? "",
@@ -84,7 +99,6 @@ export async function PUT(request: Request) {
       termsContent: termsContent || null,
       validFrom: validFrom ? new Date(validFrom) : null,
       validUntil: validUntil ? new Date(validUntil) : null,
-      ...(active !== undefined ? { active } : {}),
     }
 
     const db = auditedClient({ userId: user.id, role: user.role, companyId })
@@ -93,6 +107,8 @@ export async function PUT(request: Request) {
       update: data,
       create: { companyId, ...data },
     })
+
+    if (before) await recordProgramChangeIfNeeded(before, program, user.id)
 
     return Response.json(program)
   } catch (error) {

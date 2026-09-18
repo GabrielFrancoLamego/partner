@@ -11,6 +11,7 @@ const COMPANY_PROFILE_FIELDS = [
   "neighborhood",
   "city",
   "state",
+  "segment",
   "zipCode",
   "latitude",
   "longitude",

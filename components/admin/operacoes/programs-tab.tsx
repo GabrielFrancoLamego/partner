@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Trophy, Pencil, Power, Trash2 } from "lucide-react"
+import { Plus, Trophy, Pencil, PlayCircle, PauseCircle, Archive } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,7 +19,7 @@ import { ProgramTypeBadge } from "@/components/shared/program-type-badge"
 
 type CommissionFormat = "PERCENTAGE" | "FIXED_VALUE" | "PRODUCT_UNIT"
 
-type Program = {
+export type Program = {
   id: string
   name: string
   description: string
@@ -33,7 +33,9 @@ type Program = {
   videoUrl: string | null
   termsContent: string | null
   active: boolean
-  company: { id: string; name: string }
+  status: "ACTIVE" | "PAUSED_FOR_NEW_MEMBERS" | "ARCHIVED"
+  pauseEffectiveAt: string | null
+  company: { id: string; name: string; city?: string | null }
   _count: { referrals: number }
 }
 
@@ -74,22 +76,6 @@ export function ProgramsTab() {
 
   useEffect(reload, [])
 
-  const handleToggleActive = async (program: Program) => {
-    await adminFetch(`/api/admin/programs/${program.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ active: !program.active }),
-    }).catch((e) => alert(e instanceof AdminApiError ? e.message : "Erro"))
-    reload()
-  }
-
-  const handleDelete = async (program: Program) => {
-    if (!confirm(`Excluir o programa "${program.name}"?`)) return
-    await adminFetch(`/api/admin/programs/${program.id}`, { method: "DELETE" }).catch((e) =>
-      alert(e instanceof AdminApiError ? e.message : "Erro ao excluir"),
-    )
-    reload()
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
@@ -111,7 +97,7 @@ export function ProgramsTab() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <ProgramTypeBadge type="PARTNER" />
-                    <StatusBadge status={program.active ? "ACTIVE" : "INACTIVE"} />
+                    <StatusBadge status={program.status} />
                   </div>
                   <p className="font-semibold text-[#3E2415]">{program.name}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{program.company.name}</p>
@@ -120,22 +106,13 @@ export function ProgramsTab() {
                     {program.commissionType === "FIXED" ? "fixa" : program.commissionType === "VARIABLE" ? "variável" : "ambas"}) ·{" "}
                     {program._count.referrals} indicações
                   </p>
+                  {program.status === "PAUSED_FOR_NEW_MEMBERS" && program.pauseEffectiveAt && (
+                    <p className="text-xs text-amber-700 mt-1">
+                      Arquivamento automático em {new Date(program.pauseEffectiveAt).toLocaleDateString("pt-BR")}
+                    </p>
+                  )}
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <IconActionButton icon={Trophy} label="Níveis de Crescimento" onClick={() => setManagingLevels(program)} />
-                  <IconActionButton icon={Pencil} label="Editar" onClick={() => setEditing(program)} />
-                  <IconActionButton
-                    icon={Power}
-                    label={program.active ? "Inativar" : "Ativar"}
-                    onClick={() => handleToggleActive(program)}
-                  />
-                  <IconActionButton
-                    icon={Trash2}
-                    label="Excluir"
-                    onClick={() => handleDelete(program)}
-                    className="text-red-600 hover:text-red-700"
-                  />
-                </div>
+                <ProgramActions program={program} onManageLevels={() => setManagingLevels(program)} onEdit={() => setEditing(program)} onChanged={reload} />
               </div>
             </div>
           ))}
@@ -159,7 +136,54 @@ export function ProgramsTab() {
   )
 }
 
-function LevelsManagerDialog({ program, onClose }: { program: Program; onClose: () => void }) {
+/**
+ * Ações inline (sem redirecionar de tela) reaproveitadas por ProgramsTab e
+ * OverviewTab — task: "remova o botão redirecionador genérico 'Gerenciar'".
+ * Arquivar chama PATCH status=ARCHIVED (nunca DELETE — Program.id pode ser
+ * referenciado por Referral/PartnerTermAcceptance/ProgramMembership).
+ */
+export function ProgramActions({
+  program,
+  onManageLevels,
+  onEdit,
+  onChanged,
+}: {
+  program: Program
+  onManageLevels: () => void
+  onEdit: () => void
+  onChanged: () => void
+}) {
+  const handleSetStatus = async (status: "ACTIVE" | "PAUSED_FOR_NEW_MEMBERS" | "ARCHIVED") => {
+    if (status === "PAUSED_FOR_NEW_MEMBERS") {
+      if (!confirm(`Pausar "${program.name}" para novas adesões? Parceiros já vinculados mantêm acesso total por 30 dias — eles serão avisados agora.`)) return
+    }
+    if (status === "ARCHIVED") {
+      if (!confirm(`Arquivar "${program.name}"? Todos os vínculos ativos serão encerrados imediatamente (o saldo já aprovado continua sacável).`)) return
+    }
+    await adminFetch(`/api/admin/programs/${program.id}`, { method: "PATCH", body: JSON.stringify({ status }) }).catch((e) =>
+      alert(e instanceof AdminApiError ? e.message : "Erro"),
+    )
+    onChanged()
+  }
+
+  return (
+    <div className="flex items-center gap-1 flex-shrink-0">
+      <IconActionButton icon={Trophy} label="Níveis de Crescimento" onClick={onManageLevels} />
+      <IconActionButton icon={Pencil} label="Editar" onClick={onEdit} />
+      {program.status === "ACTIVE" && (
+        <IconActionButton icon={PauseCircle} label="Pausar p/ novas adesões" onClick={() => handleSetStatus("PAUSED_FOR_NEW_MEMBERS")} />
+      )}
+      {program.status === "PAUSED_FOR_NEW_MEMBERS" && (
+        <IconActionButton icon={PlayCircle} label="Retomar adesões" onClick={() => handleSetStatus("ACTIVE")} />
+      )}
+      {program.status !== "ARCHIVED" && (
+        <IconActionButton icon={Archive} label="Arquivar" onClick={() => handleSetStatus("ARCHIVED")} className="text-red-600 hover:text-red-700" />
+      )}
+    </div>
+  )
+}
+
+export function LevelsManagerDialog({ program, onClose }: { program: Program; onClose: () => void }) {
   const [levels, setLevels] = useState<ProgramLevel[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -199,7 +223,7 @@ function LevelsManagerDialog({ program, onClose }: { program: Program; onClose: 
   )
 }
 
-function ProgramDialog({
+export function ProgramDialog({
   program,
   companies,
   onClose,

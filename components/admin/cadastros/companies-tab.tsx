@@ -397,6 +397,7 @@ function CompanyDialog({
   const [address, setAddress] = useState(company?.address ?? "")
   const [neighborhood, setNeighborhood] = useState(company?.neighborhood ?? "")
   const [city, setCity] = useState(company?.city ?? "")
+  const [segment, setSegment] = useState(company?.segment ?? "")
   const [state, setState] = useState(company?.state ?? "")
   const [zipCode, setZipCode] = useState(company?.zipCode ?? "")
   const [latitude, setLatitude] = useState(company?.latitude?.toString() ?? "")
@@ -495,6 +496,7 @@ function CompanyDialog({
             neighborhood,
             city,
             state,
+            segment: segment || null,
             zipCode,
             latitude: latitude ? Number(latitude) : null,
             longitude: longitude ? Number(longitude) : null,
@@ -706,6 +708,11 @@ function CompanyDialog({
                     <Label>UF</Label>
                     <Input value={state} onChange={(e) => setState(e.target.value)} maxLength={2} />
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Categoria/Segmento de negócio</Label>
+                  <Input value={segment} onChange={(e) => setSegment(e.target.value)} placeholder="ex: Pousada, Restaurante, Passeio de Buggy" />
+                  <p className="text-xs text-gray-400">Usado pelo parceiro para buscar/filtrar em Explorar Programas.</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Descrição curta</Label>

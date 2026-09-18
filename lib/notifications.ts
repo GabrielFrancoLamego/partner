@@ -91,3 +91,27 @@ export async function notifyPlatformAdmins(payload: Omit<NotifyInput, "userId" |
   })
   await Promise.all(admins.map((a) => notifyUser({ ...payload, userId: a.id, email: a.email, phone: a.phone })))
 }
+
+/**
+ * Notifica um Parceiro específico — resolve email/WhatsApp a partir do
+ * PartnerProfile (User.email é a credencial de login, nem sempre o contato
+ * preferido; PartnerProfile.whatsapp/email são os dados de cadastro do parceiro).
+ */
+export async function notifyPartner(userId: string, payload: Omit<NotifyInput, "userId" | "email" | "phone">) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, partnerProfile: { select: { email: true, whatsapp: true, phone: true } } },
+  })
+  if (!user) return null
+  return notifyUser({
+    ...payload,
+    userId,
+    email: user.partnerProfile?.email ?? user.email,
+    phone: user.partnerProfile?.whatsapp ?? user.partnerProfile?.phone ?? null,
+  })
+}
+
+/** Notifica vários Parceiros de uma vez (ex: todos os vinculados a um Program). */
+export async function notifyPartners(userIds: string[], payload: Omit<NotifyInput, "userId" | "email" | "phone">) {
+  await Promise.all(userIds.map((id) => notifyPartner(id, payload)))
+}

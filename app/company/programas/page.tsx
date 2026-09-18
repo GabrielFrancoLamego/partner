@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Power, Upload, FileText, Loader2 } from "lucide-react"
+import { PauseCircle, PlayCircle, Upload, FileText, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,6 +32,8 @@ type Program = {
   validFrom: string | null
   validUntil: string | null
   active: boolean
+  status: "ACTIVE" | "PAUSED_FOR_NEW_MEMBERS" | "ARCHIVED"
+  pauseEffectiveAt: string | null
 } | null
 
 const FORMAT_LABELS: Record<CommissionFormat, string> = {
@@ -110,9 +112,17 @@ export default function CompanyProgramsPage() {
     }
   }
 
-  const handleToggleActive = async () => {
+  // Empresa não pode cancelar o programa direto — só pausar para novas
+  // adesões, com aviso automático aos parceiros já vinculados e 30 dias de
+  // acesso garantido (ver lib/program-lifecycle.ts). O encerramento
+  // definitivo acontece sozinho depois disso.
+  const handleTogglePause = async () => {
     if (!program) return
-    await adminFetch("/api/company/program", { method: "PATCH", body: JSON.stringify({ active: !program.active }) }).catch((e) =>
+    const nextStatus = program.status === "ACTIVE" ? "PAUSED_FOR_NEW_MEMBERS" : "ACTIVE"
+    if (nextStatus === "PAUSED_FOR_NEW_MEMBERS" && !confirm("Pausar o programa para novas adesões? Os parceiros já vinculados serão avisados e mantêm acesso total por 30 dias.")) {
+      return
+    }
+    await adminFetch("/api/company/program", { method: "PATCH", body: JSON.stringify({ status: nextStatus }) }).catch((e) =>
       alert(e instanceof AdminApiError ? e.message : "Erro"),
     )
     load()
@@ -173,16 +183,28 @@ export default function CompanyProgramsPage() {
           <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Programa de Parceria</h1>
           <p className="text-gray-600 mt-1 text-sm">Como sua empresa recompensa parceiros que indicam clientes.</p>
         </div>
-        {program && (
-          <Button variant="outline" onClick={handleToggleActive} className="self-start sm:self-auto">
-            <Power className="h-4 w-4 mr-2" />
-            {program.active ? "Desativar" : "Ativar"}
+        {program && program.status !== "ARCHIVED" && (
+          <Button variant="outline" onClick={handleTogglePause} className="self-start sm:self-auto">
+            {program.status === "ACTIVE" ? <PauseCircle className="h-4 w-4 mr-2" /> : <PlayCircle className="h-4 w-4 mr-2" />}
+            {program.status === "ACTIVE" ? "Pausar p/ novas adesões" : "Retomar adesões"}
             <span className="ml-2">
-              <StatusBadge status={program.active ? "ACTIVE" : "INACTIVE"} />
+              <StatusBadge status={program.status} />
             </span>
           </Button>
         )}
       </div>
+
+      {program?.status === "PAUSED_FOR_NEW_MEMBERS" && program.pauseEffectiveAt && (
+        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 text-sm text-amber-800">
+          Programa fechado para novas adesões. Parceiros já vinculados mantêm acesso total (saques e QR Codes) até{" "}
+          <strong>{new Date(program.pauseEffectiveAt).toLocaleDateString("pt-BR")}</strong>, quando o programa é encerrado automaticamente.
+        </div>
+      )}
+      {program?.status === "ARCHIVED" && (
+        <div className="bg-gray-100 border border-gray-200 rounded-2xl p-4 text-sm text-gray-600">
+          Este programa foi arquivado pelo Admin da plataforma e não pode mais ser editado por aqui.
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-4 md:p-6 shadow-md border border-gray-100 space-y-5">
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -352,7 +374,7 @@ export default function CompanyProgramsPage() {
         </Tabs>
 
         <div className="flex justify-end pt-2">
-          <Button type="submit" variant="brand" disabled={isSaving}>
+          <Button type="submit" variant="brand" disabled={isSaving || program?.status === "ARCHIVED"}>
             {isSaving ? "Salvando..." : "Salvar Programa"}
           </Button>
         </div>

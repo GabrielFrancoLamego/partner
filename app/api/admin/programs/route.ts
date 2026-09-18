@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma"
 import { requirePlatformAdmin, handleApiError, ApiError } from "@/lib/api-auth"
 import { auditedClient } from "@/lib/audit"
+import { sweepPauseExpirations } from "@/lib/program-lifecycle"
 
 export async function GET(request: Request) {
   try {
     await requirePlatformAdmin()
+    await sweepPauseExpirations()
     const { searchParams } = new URL(request.url)
     const companyId = searchParams.get("companyId")
 
