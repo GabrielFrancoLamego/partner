@@ -20,6 +20,7 @@ type Partner = {
   status: "ACTIVE" | "INACTIVE"
   createdAt: string
   lastActiveAt: string | null
+  companies: { id: string; name: string }[]
   metrics: { qrGenerated: number; qrUsed: number; grossRevenueGenerated: number; convertedReferrals: number }
   partnerProfile: {
     partnerType: "INDIVIDUAL" | "AGENCY"
@@ -123,10 +124,7 @@ export function PartnersTab() {
             </SelectContent>
           </Select>
         </div>
-        <Button
-          onClick={() => setIsCreateOpen(true)}
-          className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90 shadow-md"
-        >
+        <Button onClick={() => setIsCreateOpen(true)} variant="brand">
           <Plus className="h-4 w-4 mr-2" />
           Novo Parceiro
         </Button>
@@ -150,6 +148,8 @@ export function PartnersTab() {
                     label: "Tipo",
                     value: partner.partnerProfile?.partnerType === "AGENCY" ? "Agência (PJ)" : "Pessoa física",
                   },
+                  { label: "Saldo em carteira", value: currency(Number(partner.partnerProfile?.walletBalance ?? 0)) },
+                  { label: "Empresa(s)", value: partner.companies.map((c) => c.name).join(", ") || "—" },
                   { label: "WhatsApp", value: partner.partnerProfile?.whatsapp ?? "—" },
                   { label: "Nível", value: partner.partnerProfile?.currentLevel?.name ?? "—" },
                   { label: "Indicações convertidas", value: partner.metrics.convertedReferrals },
@@ -181,6 +181,8 @@ export function PartnersTab() {
             <thead className="bg-gray-50 text-left text-xs text-gray-500">
               <tr>
                 <th className="px-4 py-3 font-medium">Nome</th>
+                <th className="px-4 py-3 font-medium">Empresa</th>
+                <th className="px-4 py-3 font-medium">Saldo</th>
                 <th className="px-4 py-3 font-medium">Nível</th>
                 <th className="px-4 py-3 font-medium">Indicações conv.</th>
                 <th className="px-4 py-3 font-medium">Faturamento gerado</th>
@@ -203,6 +205,12 @@ export function PartnersTab() {
                     {partner.partnerProfile?.bio && (
                       <p className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">{partner.partnerProfile.bio}</p>
                     )}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {partner.companies.length > 0 ? partner.companies.map((c) => c.name).join(", ") : "—"}
+                  </td>
+                  <td className="px-4 py-3 font-semibold text-[#3E2415]">
+                    {currency(Number(partner.partnerProfile?.walletBalance ?? 0))}
                   </td>
                   <td className="px-4 py-3 text-gray-600">{partner.partnerProfile?.currentLevel?.name ?? "—"}</td>
                   <td className="px-4 py-3 text-gray-600 font-medium">{partner.metrics.convertedReferrals}</td>
@@ -469,11 +477,7 @@ function PartnerDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white"
-            >
+            <Button type="submit" variant="brand" disabled={isSubmitting}>
               {partner ? "Salvar" : "Criar"}
             </Button>
           </DialogFooter>

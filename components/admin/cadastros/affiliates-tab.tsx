@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Pencil, Power, Trash2, Copy } from "lucide-react"
+import { Plus, Pencil, Power, Trash2, Copy, Flag, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,9 +9,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
+import { IconActionButton } from "@/components/ui/icon-action-button"
 import { formatPhone, isValidEmail, isValidPhone } from "@/lib/validators"
 
-type RewardType = "FIXED" | "PERCENTAGE"
+type RewardType = "FIXED" | "PERCENTAGE" | "PERCENTAGE_RECURRING"
+
+type Milestone = { id: string; order: number; targetCount: number; bonusAmount: string; achievedAt: string | null }
 
 type Affiliate = {
   id: string
@@ -23,6 +26,7 @@ type Affiliate = {
   rewardType: RewardType
   bonusPerPartner: string
   bonusPercentage: string | null
+  recurringPercentage: string | null
   milestoneClientCount: number
   milestoneBonus: string
   pixKey: string | null
@@ -41,10 +45,17 @@ type EligiblePartner = {
 
 const currency = (value: string) => Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
+const REWARD_TYPE_SUMMARY: Record<RewardType, (a: Affiliate) => string> = {
+  FIXED: (a) => `Comissão fixa: ${currency(a.bonusPerPartner)}`,
+  PERCENTAGE: (a) => `${a.bonusPercentage}% da 1ª comissão`,
+  PERCENTAGE_RECURRING: (a) => `${a.recurringPercentage}% recorrente sobre a rede`,
+}
+
 export function AffiliatesTab() {
   const [affiliates, setAffiliates] = useState<Affiliate[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [editing, setEditing] = useState<Affiliate | "new" | null>(null)
+  const [managingMilestones, setManagingMilestones] = useState<Affiliate | null>(null)
 
   const reload = () => {
     setIsLoading(true)
@@ -112,43 +123,32 @@ export function AffiliatesTab() {
                         Parceiro promovido
                       </span>
                     )}
+                    <span className="text-[10px] font-mono text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">{affiliate.code}</span>
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {affiliate._count.partners} parceiros indicados · {affiliate._count.payouts} pagamentos · saldo{" "}
                     {currency(affiliate.walletBalance)}
                   </p>
                   <p className="text-xs text-gray-600 mt-1">
-                    Bônus por parceiro:{" "}
-                    {affiliate.rewardType === "PERCENTAGE"
-                      ? `${affiliate.bonusPercentage}% da 1ª comissão`
-                      : currency(affiliate.bonusPerPartner)}{" "}
-                    · Bônus ao atingir {affiliate.milestoneClientCount} clientes: {currency(affiliate.milestoneBonus)}
+                    {REWARD_TYPE_SUMMARY[affiliate.rewardType](affiliate)} · Milestone {affiliate.milestoneClientCount}{" "}
+                    clientes: {currency(affiliate.milestoneBonus)}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <Button variant="ghost" size="icon" onClick={() => handleCopyLink(affiliate.code)} title="Copiar link de indicação">
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => setEditing(affiliate)} title="Editar">
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                  <IconActionButton icon={Copy} label="Copiar link de indicação" onClick={() => handleCopyLink(affiliate.code)} />
+                  <IconActionButton icon={Flag} label="Metas de Milestone" onClick={() => setManagingMilestones(affiliate)} />
+                  <IconActionButton icon={Pencil} label="Editar" onClick={() => setEditing(affiliate)} />
+                  <IconActionButton
+                    icon={Power}
+                    label={affiliate.active ? "Inativar" : "Ativar"}
                     onClick={() => handleToggleActive(affiliate)}
-                    title={affiliate.active ? "Inativar" : "Ativar"}
-                  >
-                    <Power className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                  />
+                  <IconActionButton
+                    icon={Trash2}
+                    label="Excluir"
                     onClick={() => handleDelete(affiliate)}
-                    title="Excluir"
                     className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  />
                 </div>
               </div>
             </div>
@@ -166,7 +166,105 @@ export function AffiliatesTab() {
           }}
         />
       )}
+
+      {managingMilestones && (
+        <MilestonesDialog affiliate={managingMilestones} onClose={() => setManagingMilestones(null)} />
+      )}
     </div>
+  )
+}
+
+function MilestonesDialog({ affiliate, onClose }: { affiliate: Affiliate; onClose: () => void }) {
+  const [milestones, setMilestones] = useState<Milestone[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [targetCount, setTargetCount] = useState("50")
+  const [bonusAmount, setBonusAmount] = useState("0")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const reload = () => {
+    setIsLoading(true)
+    adminFetch<Milestone[]>(`/api/admin/affiliates/${affiliate.id}/milestones`)
+      .then(setMilestones)
+      .finally(() => setIsLoading(false))
+  }
+  useEffect(reload, [affiliate.id])
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSubmitting(true)
+    try {
+      await adminFetch(`/api/admin/affiliates/${affiliate.id}/milestones`, {
+        method: "POST",
+        body: JSON.stringify({ targetCount: Number(targetCount), bonusAmount: Number(bonusAmount) }),
+      })
+      setTargetCount("50")
+      setBonusAmount("0")
+      reload()
+    } catch (e) {
+      alert(e instanceof AdminApiError ? e.message : "Erro ao adicionar marco")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleDelete = async (milestoneId: string) => {
+    await adminFetch(`/api/admin/affiliates/${affiliate.id}/milestones/${milestoneId}`, { method: "DELETE" }).catch(
+      (e) => alert(e instanceof AdminApiError ? e.message : "Erro ao remover"),
+    )
+    reload()
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Metas de Milestone — {affiliate.name}</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-gray-500">
+          Bonificação fixa paga uma única vez quando o Afiliado atinge N parceiros/empresas convertidos (ex: "Indique
+          10 e ganhe R$200").
+        </p>
+
+        {isLoading ? (
+          <LoadingState />
+        ) : (
+          <div className="space-y-2">
+            {milestones.length === 0 && <p className="text-xs text-gray-400">Nenhum marco cadastrado ainda.</p>}
+            {milestones.map((m) => (
+              <div key={m.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
+                <span className="text-sm text-[#3E2415]">
+                  Indique {m.targetCount} → {currency(m.bonusAmount)}
+                  {m.achievedAt && <span className="ml-2 text-xs text-green-600 font-medium">Atingido</span>}
+                </span>
+                <button onClick={() => handleDelete(m.id)} className="text-gray-400 hover:text-red-600">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <form onSubmit={handleAdd} className="flex items-end gap-2 pt-3 border-t border-gray-100">
+          <div className="space-y-1 flex-1">
+            <Label className="text-xs">Qtd. convertidos</Label>
+            <Input type="number" min={1} value={targetCount} onChange={(e) => setTargetCount(e.target.value)} />
+          </div>
+          <div className="space-y-1 flex-1">
+            <Label className="text-xs">Bônus (R$)</Label>
+            <Input type="number" step="0.01" min={0} value={bonusAmount} onChange={(e) => setBonusAmount(e.target.value)} />
+          </div>
+          <Button type="submit" size="icon" variant="brand" disabled={isSubmitting} aria-label="Adicionar marco">
+            <Plus className="h-4 w-4" />
+          </Button>
+        </form>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Fechar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -187,9 +285,9 @@ function AffiliateDialog({
   const [rewardType, setRewardType] = useState<RewardType>(affiliate?.rewardType ?? "FIXED")
   const [bonusPerPartner, setBonusPerPartner] = useState(affiliate?.bonusPerPartner ?? "0")
   const [bonusPercentage, setBonusPercentage] = useState(affiliate?.bonusPercentage ?? "")
+  const [recurringPercentage, setRecurringPercentage] = useState(affiliate?.recurringPercentage ?? "")
   const [milestoneClientCount, setMilestoneClientCount] = useState(String(affiliate?.milestoneClientCount ?? 10))
   const [milestoneBonus, setMilestoneBonus] = useState(affiliate?.milestoneBonus ?? "0")
-  const [pixKey, setPixKey] = useState(affiliate?.pixKey ?? "")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -220,9 +318,9 @@ function AffiliateDialog({
         rewardType,
         bonusPerPartner: rewardType === "FIXED" ? Number(bonusPerPartner) : 0,
         bonusPercentage: rewardType === "PERCENTAGE" ? Number(bonusPercentage) : null,
+        recurringPercentage: rewardType === "PERCENTAGE_RECURRING" ? Number(recurringPercentage) : null,
         milestoneClientCount: Number(milestoneClientCount),
         milestoneBonus: Number(milestoneBonus),
-        pixKey: pixKey || undefined,
       }
       if (affiliate) {
         await adminFetch(`/api/admin/affiliates/${affiliate.id}`, { method: "PATCH", body: JSON.stringify(payload) })
@@ -303,28 +401,35 @@ function AffiliateDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="FIXED">Valor fixo (R$)</SelectItem>
+                <SelectItem value="FIXED">Valor fixo (R$) por indicação convertida</SelectItem>
                 <SelectItem value="PERCENTAGE">Porcentagem (%) da 1ª comissão do indicado</SelectItem>
+                <SelectItem value="PERCENTAGE_RECURRING">Porcentagem (%) recorrente sobre toda a rede</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {rewardType === "FIXED" ? (
+            {rewardType === "FIXED" && (
               <div className="space-y-2">
                 <Label>Valor fixo (R$)</Label>
                 <Input type="number" step="0.01" value={bonusPerPartner} onChange={(e) => setBonusPerPartner(e.target.value)} />
               </div>
-            ) : (
+            )}
+            {rewardType === "PERCENTAGE" && (
               <div className="space-y-2">
                 <Label>Porcentagem (%)</Label>
                 <Input type="number" step="0.1" value={bonusPercentage} onChange={(e) => setBonusPercentage(e.target.value)} />
               </div>
             )}
-            <div className="space-y-2">
-              <Label>Chave PIX</Label>
-              <Input value={pixKey} onChange={(e) => setPixKey(e.target.value)} />
-            </div>
+            {rewardType === "PERCENTAGE_RECURRING" && (
+              <div className="space-y-2">
+                <Label>Porcentagem recorrente (%)</Label>
+                <Input type="number" step="0.1" value={recurringPercentage} onChange={(e) => setRecurringPercentage(e.target.value)} />
+              </div>
+            )}
           </div>
+          <p className="text-xs text-gray-400 -mt-2">
+            Sem dados bancários aqui — o pagamento usa a Chave PIX já cadastrada no perfil do parceiro (/partner/perfil).
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Nº de clientes p/ milestone</Label>

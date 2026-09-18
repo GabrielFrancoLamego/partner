@@ -21,6 +21,8 @@ export async function provisionCompanyWithMaster(input: {
   isExempt?: boolean
   exemptionMonths?: number | null
   billingDay?: number | null
+  /** Empresa cadastrada pelo link especial de um Afiliado (/join/company?ref=CODE) — ver /partner/afiliado. */
+  affiliateId?: string | null
 }) {
   const plan: PlanId = isPlanId(input.plan) ? input.plan : "ENTERPRISE"
   const catalog = await getPlanCatalog()
@@ -32,6 +34,7 @@ export async function provisionCompanyWithMaster(input: {
     data: {
       name: input.name,
       slug: input.slug,
+      affiliateId: input.affiliateId ?? null,
       license: {
         create: {
           plan,

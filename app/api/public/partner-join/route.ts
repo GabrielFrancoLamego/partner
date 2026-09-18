@@ -2,13 +2,16 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { isValidCpfOrCnpj, isValidEmail, isValidPhone } from "@/lib/validators"
 import { resolveValidLink } from "@/lib/link-validation"
+import { notifyCompanyManagement, notifyPlatformAdmins } from "@/lib/notifications"
 
 /**
  * Auto-cadastro público de Parceiro (/join/partner ou /join/partner/[affiliateCode],
  * opcionalmente com ?ref=CODIGO de Afiliado ou ?token=X de um link
  * PARTNER_GENERIC/PARTNER_FOR_COMPANY gerado em /admin/links) — sem
- * autenticação. Parceiro não pertence a uma empresa fixa, então companyId
- * fica sempre null; linkId é gravado só para atribuição/relatório.
+ * autenticação. companyId só é preenchido quando o link é PARTNER_FOR_COMPANY
+ * (parceiro pré-vinculado a uma empresa específica); PARTNER_GENERIC e o
+ * cadastro direto sem token deixam null (parceiro não pertence a uma
+ * empresa fixa — atua por indicação, ver model Referral).
  */
 const JoinPartnerSchema = z.object({
   name: z.string().trim().min(1, "Nome é obrigatório"),
@@ -27,6 +30,7 @@ export async function POST(request: Request) {
     }
 
     let linkId: string | null = null
+    let companyId: string | null = null
     if (parsed.data.token) {
       const link = await resolveValidLink(parsed.data.token)
       if (!link) {
@@ -34,12 +38,32 @@ export async function POST(request: Request) {
       }
       if (link.type === "PARTNER_GENERIC" || link.type === "PARTNER_FOR_COMPANY") {
         linkId = link.id
+        // Bug corrigido: o link PARTNER_FOR_COMPANY carregava a empresa de
+        // destino, mas o cadastro pendente nascia sempre com companyId=null
+        // — a vinculação era perdida antes mesmo da aprovação do Admin.
+        companyId = link.type === "PARTNER_FOR_COMPANY" ? link.companyId : null
       }
     }
 
     const existingUser = await prisma.user.findUnique({ where: { email: parsed.data.email } })
     if (existingUser) {
       return Response.json({ error: "Já existe uma conta com este email" }, { status: 409 })
+    }
+
+    // Restrição: um colaborador não pode virar parceiro comercial DA MESMA
+    // empresa em que trabalha (identidade cruzada pelo CPF/CNPJ, já que o
+    // cadastro de parceiro pode usar um email diferente do de colaborador).
+    // Outras empresas da plataforma continuam permitidas.
+    if (companyId) {
+      const employeeAtSameCompany = await prisma.employeeProfile.findFirst({
+        where: { cpf: parsed.data.document, user: { companyId } },
+      })
+      if (employeeAtSameCompany) {
+        return Response.json(
+          { error: "Colaboradores não podem se cadastrar como parceiro comercial da própria empresa" },
+          { status: 409 },
+        )
+      }
     }
 
     const existingPending = await prisma.publicRegistrationRequest.findFirst({
@@ -61,7 +85,7 @@ export async function POST(request: Request) {
     await prisma.publicRegistrationRequest.create({
       data: {
         linkId,
-        companyId: null,
+        companyId,
         role: "PARTNER",
         name: parsed.data.name,
         email: parsed.data.email,
@@ -70,6 +94,15 @@ export async function POST(request: Request) {
         affiliateId,
       },
     })
+
+    const notifyPayload = {
+      type: "REGISTRATION_PENDING" as const,
+      title: "Novo cadastro de parceiro pendente",
+      message: `${parsed.data.name} solicitou cadastro como parceiro e aguarda aprovação.`,
+      linkUrl: "/admin/cadastros?tab=approvals",
+    }
+    if (companyId) await notifyCompanyManagement(companyId, notifyPayload)
+    else await notifyPlatformAdmins(notifyPayload)
 
     return Response.json({ ok: true }, { status: 201 })
   } catch (error) {

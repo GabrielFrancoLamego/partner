@@ -27,6 +27,15 @@ export function PartnerJoinForm({ refCode, linkToken }: { refCode: string | null
       .finally(() => setIsCheckingLink(false))
   }, [linkToken])
 
+  useEffect(() => {
+    if (!refCode) return
+    fetch("/api/public/affiliate-visit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: refCode, target: "PARTNER" }),
+    }).catch(() => {})
+  }, [refCode])
+
   const emailError = email && !isValidEmail(email) ? "Email inválido" : ""
   const phoneError = phone && !isValidPhone(phone) ? "Telefone inválido" : ""
   const documentError = document && !isValidCpfOrCnpj(document) ? "CPF/CNPJ inválido" : ""

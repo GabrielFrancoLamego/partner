@@ -2,7 +2,12 @@ import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
 import { canManageFinance } from "@/lib/permissions"
 import { logAudit } from "@/lib/audit"
-import { checkAffiliateMilestone, payAffiliatePercentageBonus } from "@/lib/affiliate"
+import {
+  checkAffiliateMilestone,
+  checkAffiliateMilestones,
+  payAffiliatePercentageBonus,
+  payAffiliateRecurringCommission,
+} from "@/lib/affiliate"
 
 /**
  * Aprovar/reprovar/pagar uma comissão. Aprovar credita PartnerProfile.walletBalance
@@ -62,6 +67,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (status === "APPROVED") {
       await checkAffiliateMilestone(commission.partnerId)
       await payAffiliatePercentageBonus(commission.partnerId, finalValue)
+      await payAffiliateRecurringCommission(commission.partnerId, commission.id, finalValue)
+
+      const partnerProfile = await prisma.partnerProfile.findUnique({
+        where: { userId: commission.partnerId },
+        select: { affiliateId: true },
+      })
+      if (partnerProfile?.affiliateId) await checkAffiliateMilestones(partnerProfile.affiliateId)
     }
 
     return Response.json(updated)

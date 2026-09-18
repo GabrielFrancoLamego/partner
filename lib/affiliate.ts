@@ -101,6 +101,93 @@ export async function checkAffiliateMilestone(partnerUserId: string) {
 }
 
 /**
+ * Marcos de bonificação multi-nível cadastrados pelo Admin (botão "+" no
+ * painel do Afiliado) — cada um paga uma vez, quando o nº de
+ * parceiros+empresas convertidos (ver countAffiliateConversions) atinge
+ * `targetCount`. Chamado no mesmo hook de checkAffiliateMilestone (o
+ * milestone legado de campo único continua funcionando em paralelo).
+ */
+export async function checkAffiliateMilestones(affiliateId: string) {
+  const pendingMilestones = await prisma.affiliateMilestone.findMany({
+    where: { affiliateId, achievedAt: null },
+    orderBy: { order: "asc" },
+  })
+  if (pendingMilestones.length === 0) return
+
+  const convertedCount = await countAffiliateConversions(affiliateId)
+
+  for (const milestone of pendingMilestones) {
+    if (convertedCount < milestone.targetCount) continue
+    await prisma.$transaction([
+      prisma.affiliateMilestone.update({ where: { id: milestone.id }, data: { achievedAt: new Date() } }),
+      prisma.affiliate.update({ where: { id: affiliateId }, data: { walletBalance: { increment: milestone.bonusAmount } } }),
+      prisma.affiliatePayout.create({
+        data: { affiliateId, type: "MILESTONE_BONUS", amount: milestone.bonusAmount, status: "PENDING" },
+      }),
+    ])
+  }
+}
+
+/**
+ * "Cliente/Empresa Convertido" (distinto de "Lead", ver /partner/afiliado) —
+ * parceiros indicados com pelo menos 1 comissão aprovada/paga, mais empresas
+ * indicadas com licença paga ativa (ver countConvertedCompanies).
+ */
+export async function countAffiliateConversions(affiliateId: string): Promise<number> {
+  const [convertedPartners, convertedCompanies] = await Promise.all([
+    prisma.partnerProfile.count({
+      where: { affiliateId, user: { commissionsAsPartner: { some: { status: { in: ["APPROVED", "PAID"] } } } } },
+    }),
+    countConvertedCompanies(affiliateId),
+  ])
+  return convertedPartners + convertedCompanies
+}
+
+/** Empresa indicada é "Convertida" quando sai da isenção manual (licença paga de fato) — ver Company.affiliateId. */
+export async function countConvertedCompanies(affiliateId: string): Promise<number> {
+  return prisma.company.count({ where: { affiliateId, license: { isExempt: false, status: "ACTIVE" } } })
+}
+
+/**
+ * rewardType PERCENTAGE_RECURRING — paga recurringPercentage% sobre TODA
+ * comissão aprovada da rede de parceiros indicados (não só a 1ª). Chamado
+ * junto de payAffiliatePercentageBonus/checkAffiliateMilestone na aprovação
+ * de comissão. Idempotente por Commission (usa a própria commissionId como
+ * period key — nunca paga duas vezes a mesma comissão de origem).
+ */
+export async function payAffiliateRecurringCommission(partnerUserId: string, commissionId: string, approvedCommissionValue: number) {
+  const partnerProfile = await prisma.partnerProfile.findUnique({
+    where: { userId: partnerUserId },
+    include: { affiliate: true },
+  })
+  if (!partnerProfile?.affiliateId || !partnerProfile.affiliate) return
+  const affiliate = partnerProfile.affiliate
+  if (affiliate.rewardType !== "PERCENTAGE_RECURRING" || !affiliate.recurringPercentage) return
+
+  const alreadyPaid = await prisma.affiliatePayout.findFirst({
+    where: { affiliateId: affiliate.id, type: "RECURRING_COMMISSION", periodKey: commissionId },
+  })
+  if (alreadyPaid) return
+
+  const amount = Math.round(approvedCommissionValue * (Number(affiliate.recurringPercentage) / 100) * 100) / 100
+  if (amount <= 0) return
+
+  await prisma.$transaction([
+    prisma.affiliate.update({ where: { id: affiliate.id }, data: { walletBalance: { increment: amount } } }),
+    prisma.affiliatePayout.create({
+      data: {
+        affiliateId: affiliate.id,
+        partnerId: partnerProfile.id,
+        type: "RECURRING_COMMISSION",
+        amount,
+        status: "PENDING",
+        periodKey: commissionId,
+      },
+    }),
+  ])
+}
+
+/**
  * Se o usuário desativado for um Parceiro promovido a Afiliado (Affiliate.partnerProfileId),
  * desativa o Affiliate junto — o link de indicação dele para de aceitar cadastros
  * (ver resolveValidLink em lib/link-validation.ts) e as páginas públicas mostram "link expirado".

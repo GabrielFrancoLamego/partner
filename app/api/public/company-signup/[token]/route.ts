@@ -2,6 +2,7 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { isValidEmail, isValidPhone } from "@/lib/validators"
 import { resolveValidLink } from "@/lib/link-validation"
+import { notifyPlatformAdmins } from "@/lib/notifications"
 
 /**
  * Auto-cadastro público de uma NOVA empresa via link do tipo COMPANY_SIGNUP
@@ -22,6 +23,7 @@ const CompanySignupSchema = z.object({
   masterName: z.string().trim().min(1, "Nome do responsável é obrigatório"),
   masterEmail: z.string().trim().refine(isValidEmail, "Email inválido"),
   masterPhone: z.string().trim().refine(isValidPhone, "WhatsApp inválido"),
+  ref: z.string().trim().optional(),
 })
 
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
@@ -47,6 +49,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       return Response.json({ error: "Já existe uma conta com este email" }, { status: 409 })
     }
 
+    // Link especial do Afiliado para empresas: /join/company?token=X&ref=CODE
+    // (mesmo link COMPANY_SIGNUP do Admin, com o código do afiliado anexado).
+    let affiliateId: string | null = null
+    if (parsed.data.ref) {
+      const affiliate = await prisma.affiliate.findUnique({ where: { code: parsed.data.ref } })
+      if (affiliate?.active) affiliateId = affiliate.id
+    }
+
     await prisma.publicRegistrationRequest.create({
       data: {
         linkId: link.id,
@@ -57,7 +67,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         masterName: parsed.data.masterName,
         email: parsed.data.masterEmail,
         phone: parsed.data.masterPhone,
+        affiliateId,
       },
+    })
+
+    await notifyPlatformAdmins({
+      type: "REGISTRATION_PENDING",
+      title: "Nova empresa aguardando aprovação",
+      message: `"${parsed.data.companyName}" solicitou cadastro na plataforma e aguarda aprovação.`,
+      linkUrl: "/admin/cadastros?tab=approvals",
     })
 
     return Response.json({ ok: true }, { status: 201 })

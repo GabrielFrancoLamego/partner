@@ -39,9 +39,10 @@ const CreateAffiliateSchema = z
       .trim()
       .optional()
       .refine((v) => !v || isValidPhone(v), "Telefone inválido"),
-    rewardType: z.enum(["FIXED", "PERCENTAGE"]).default("FIXED"),
+    rewardType: z.enum(["FIXED", "PERCENTAGE", "PERCENTAGE_RECURRING"]).default("FIXED"),
     bonusPerPartner: z.number().min(0).default(0),
     bonusPercentage: z.number().min(0).max(100).nullable().optional(),
+    recurringPercentage: z.number().min(0).max(100).nullable().optional(),
     milestoneClientCount: z.number().int().min(1).default(10),
     milestoneBonus: z.number().min(0).default(0),
     pixKey: z.string().trim().optional(),
@@ -52,6 +53,9 @@ const CreateAffiliateSchema = z
     }
     if (data.rewardType === "PERCENTAGE" && !data.bonusPercentage) {
       ctx.addIssue({ code: "custom", message: "Informe a porcentagem de recompensa", path: ["bonusPercentage"] })
+    }
+    if (data.rewardType === "PERCENTAGE_RECURRING" && !data.recurringPercentage) {
+      ctx.addIssue({ code: "custom", message: "Informe a porcentagem recorrente", path: ["recurringPercentage"] })
     }
   })
 
@@ -90,6 +94,7 @@ export async function POST(request: Request) {
         rewardType: data.rewardType,
         bonusPerPartner: data.rewardType === "FIXED" ? data.bonusPerPartner : 0,
         bonusPercentage: data.rewardType === "PERCENTAGE" ? data.bonusPercentage : null,
+        recurringPercentage: data.rewardType === "PERCENTAGE_RECURRING" ? data.recurringPercentage : null,
         milestoneClientCount: data.milestoneClientCount,
         milestoneBonus: data.milestoneBonus,
         pixKey: data.pixKey || null,

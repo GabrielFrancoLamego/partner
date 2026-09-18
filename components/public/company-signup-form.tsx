@@ -9,8 +9,8 @@ import { formatPhone, isValidEmail, isValidPhone } from "@/lib/validators"
 
 type LinkInfo = { valid: boolean; plan: string | null }
 
-export function CompanySignupForm({ token }: { token: string }) {
-  const [linkInfo, setLinkInfo] = useState<LinkInfo | null>(null)
+export function CompanySignupForm({ token, refCode }: { token: string | null; refCode?: string | null }) {
+  const [linkInfo, setLinkInfo] = useState<LinkInfo | null>(token ? null : { valid: true, plan: null })
   const [companyName, setCompanyName] = useState("")
   const [desiredSlug, setDesiredSlug] = useState("")
   const [masterName, setMasterName] = useState("")
@@ -21,11 +21,21 @@ export function CompanySignupForm({ token }: { token: string }) {
   const [done, setDone] = useState(false)
 
   useEffect(() => {
+    if (!token) return
     fetch(`/api/public/links/${token}`)
       .then((r) => r.json())
       .then((data) => setLinkInfo({ valid: data.valid && data.type === "COMPANY_SIGNUP", plan: data.plan }))
       .catch(() => setLinkInfo({ valid: false, plan: null }))
   }, [token])
+
+  useEffect(() => {
+    if (!refCode) return
+    fetch("/api/public/affiliate-visit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: refCode, target: "COMPANY" }),
+    }).catch(() => {})
+  }, [refCode])
 
   const emailError = masterEmail && !isValidEmail(masterEmail) ? "Email inválido" : ""
   const phoneError = masterPhone && !isValidPhone(masterPhone) ? "WhatsApp inválido" : ""
@@ -39,7 +49,7 @@ export function CompanySignupForm({ token }: { token: string }) {
     }
     setIsSubmitting(true)
     try {
-      const response = await fetch(`/api/public/company-signup/${token}`, {
+      const response = await fetch(token ? `/api/public/company-signup/${token}` : "/api/public/company-signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -48,6 +58,7 @@ export function CompanySignupForm({ token }: { token: string }) {
           masterName,
           masterEmail,
           masterPhone,
+          ref: refCode || undefined,
         }),
       })
       const data = await response.json().catch(() => null)

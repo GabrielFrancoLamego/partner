@@ -1,9 +1,9 @@
 import { CompanySignupForm } from "@/components/public/company-signup-form"
 
-export default async function CompanySignupPage({ searchParams }: { searchParams: Promise<{ token?: string }> }) {
-  const { token } = await searchParams
+export default async function CompanySignupPage({ searchParams }: { searchParams: Promise<{ token?: string; ref?: string }> }) {
+  const { token, ref } = await searchParams
 
-  if (!token) {
+  if (!token && !ref) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F7F5F2] px-4">
         <div className="max-w-sm w-full bg-white rounded-2xl shadow-md border border-gray-100 p-6 text-center">
@@ -14,5 +14,5 @@ export default async function CompanySignupPage({ searchParams }: { searchParams
     )
   }
 
-  return <CompanySignupForm token={token} />
+  return <CompanySignupForm token={token ?? null} refCode={ref ?? null} />
 }

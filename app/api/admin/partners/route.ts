@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     // Agregações não dão para vir no mesmo findMany (Commission/Referral são
     // relations separadas) — busca em lote e junta em memória.
     const partnerIds = partners.map((p) => p.id)
-    const [qrGeneratedRows, qrUsedRows, billedRows, convertedRows] = await Promise.all([
+    const [qrGeneratedRows, qrUsedRows, billedRows, convertedRows, companyRows] = await Promise.all([
       prisma.commission.groupBy({
         by: ["partnerId"],
         where: { partnerId: { in: partnerIds }, qrCodeId: { not: null } },
@@ -63,6 +63,12 @@ export async function GET(request: Request) {
         where: { partnerId: { in: partnerIds }, visited: true },
         _count: { _all: true },
       }),
+      // Empresa(s) correspondente(s) — parceiro não tem 1 empresa fixa, atua por indicação (ver Referral/Commission).
+      prisma.referral.findMany({
+        where: { partnerId: { in: partnerIds } },
+        select: { partnerId: true, companyId: true, company: { select: { id: true, name: true } } },
+        distinct: ["partnerId", "companyId"],
+      }),
     ])
 
     const toMap = (rows: { partnerId: string; _count?: { _all: number }; _sum?: { amount: unknown } }[]) =>
@@ -72,8 +78,16 @@ export async function GET(request: Request) {
     const billedMap = toMap(billedRows)
     const convertedMap = toMap(convertedRows)
 
+    const companiesMap = new Map<string, { id: string; name: string }[]>()
+    for (const row of companyRows) {
+      const list = companiesMap.get(row.partnerId) ?? []
+      list.push(row.company)
+      companiesMap.set(row.partnerId, list)
+    }
+
     let enriched = partners.map((p) => ({
       ...p,
+      companies: companiesMap.get(p.id) ?? [],
       metrics: {
         qrGenerated: qrGeneratedMap.get(p.id)?._count?._all ?? 0,
         qrUsed: qrUsedMap.get(p.id)?._count?._all ?? 0,
