@@ -19,6 +19,46 @@ function isPastDeadline(reference: Date, deadline: string, now: Date) {
   return now > cutoff
 }
 
+/**
+ * Sequência obrigatória de fechamento — os 3 passos que precisam estar
+ * completos antes de liberar o botão "Finalizar Expediente" (ver POST abaixo,
+ * que reforça a mesma regra no servidor):
+ *   1. Todas as Commission de hoje com Valor da Conta preenchido (amount).
+ *   2. Nota diária de todos os colaboradores presentes hoje (com TimeEntry).
+ *   3. Faturamento total + foto do comprovante (checado pelo `closing` já existente).
+ */
+async function getClosingChecklist(companyId: string, date: Date) {
+  const end = new Date(date.getTime() + 24 * 60 * 60 * 1000)
+
+  const [pendingCommissions, presentEmployeeIds, evaluatedEmployeeIds] = await Promise.all([
+    prisma.commission.findMany({
+      where: { companyId, date: { gte: date, lt: end }, amount: null },
+      select: { id: true, clientName: true, commissionValue: true, partner: { select: { name: true } } },
+    }),
+    prisma.timeEntry.findMany({
+      where: { companyId, type: "CHECK_IN", createdAt: { gte: date, lt: end } },
+      select: { userId: true },
+      distinct: ["userId"],
+    }),
+    prisma.dailyEvaluation.findMany({ where: { companyId, date }, select: { employeeId: true } }),
+  ])
+
+  const evaluatedSet = new Set(evaluatedEmployeeIds.map((e) => e.employeeId))
+  const presentIds = Array.from(new Set(presentEmployeeIds.map((e) => e.userId)))
+  const pendingEmployeeIds = presentIds.filter((id) => !evaluatedSet.has(id))
+  const pendingEmployees =
+    pendingEmployeeIds.length > 0
+      ? await prisma.user.findMany({ where: { id: { in: pendingEmployeeIds } }, select: { id: true, name: true } })
+      : []
+
+  return {
+    pendingCommissions,
+    pendingEmployees,
+    step1Complete: pendingCommissions.length === 0,
+    step2Complete: pendingEmployees.length === 0,
+  }
+}
+
 /** Status do fechamento do dia — visível a todo o staff da empresa (dashboard do Master usa isso para o alerta). */
 export async function GET(request: Request) {
   try {
@@ -30,12 +70,13 @@ export async function GET(request: Request) {
     const date = startOfDay(dateParam ? new Date(dateParam) : new Date())
     const now = new Date()
 
-    const [closing, company] = await Promise.all([
+    const [closing, company, checklist] = await Promise.all([
       prisma.shiftClosing.findUnique({
         where: { companyId_date: { companyId, date } },
         include: { closedBy: { select: { id: true, name: true } } },
       }),
       prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { shiftClosingDeadline: true, createdAt: true } }),
+      getClosingChecklist(companyId, date),
     ])
 
     const overdue = !closing || closing.status !== "COMPLETED" ? isPastDeadline(date, company.shiftClosingDeadline, now) : false
@@ -62,6 +103,7 @@ export async function GET(request: Request) {
       overdue,
       canOverride: overdue && user.role === "COMPANY_MASTER",
       unclosedPastDays,
+      checklist,
     })
   } catch (error) {
     return handleApiError(error)
@@ -82,6 +124,16 @@ export async function POST(request: Request) {
 
     const date = startOfDay(dateRaw && typeof dateRaw === "string" ? new Date(dateRaw) : new Date())
     const now = new Date()
+
+    // Sequência obrigatória — reforça no servidor o que a UI já bloqueia:
+    // passos 1 e 2 têm que estar 100% completos antes do passo 3 (faturamento + foto).
+    const checklist = await getClosingChecklist(companyId, date)
+    if (!checklist.step1Complete) {
+      throw new ApiError(400, "Confirme o valor da conta de todos os clientes indicados hoje antes de finalizar o expediente")
+    }
+    if (!checklist.step2Complete) {
+      throw new ApiError(400, "Avalie todos os colaboradores presentes hoje antes de finalizar o expediente")
+    }
 
     const existing = await prisma.shiftClosing.findUnique({ where: { companyId_date: { companyId, date } } })
     if (!(file instanceof File) || file.size === 0) {
@@ -162,7 +214,7 @@ export async function POST(request: Request) {
               approvedAt: now,
             },
           })
-          if (rules.pointsChecklistLateOrRejected !== 0) {
+          if (rules.pointsChecklistFail !== 0) {
             const hasEmployeeProfile = await tx.employeeProfile.findUnique({ where: { userId: checklist.employeeId } })
             if (hasEmployeeProfile) {
               await awardXp(
@@ -170,7 +222,7 @@ export async function POST(request: Request) {
                   companyId,
                   employeeId: checklist.employeeId,
                   reason: "CHECKLIST_ON_TIME",
-                  points: rules.pointsChecklistLateOrRejected,
+                  points: rules.pointsChecklistFail,
                   sourceId: checklist.id,
                   note: "Fechamento do dia sem entrega",
                 },

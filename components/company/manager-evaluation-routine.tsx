@@ -21,7 +21,16 @@ type EmployeeRow = {
  * (tela dedicada da Gerente) quanto em /company/fechamento (passo obrigatório
  * do encerramento de expediente), para não duplicar a regra de justificativa.
  */
-export function ManagerEvaluationRoutine({ date, onDateChange }: { date?: string; onDateChange?: (date: string) => void }) {
+export function ManagerEvaluationRoutine({
+  date,
+  onDateChange,
+  onSaved,
+}: {
+  date?: string
+  onDateChange?: (date: string) => void
+  /** Chamado após cada nota salva — usado por /company/fechamento para reavaliar o passo 2 da sequência obrigatória. */
+  onSaved?: () => void
+}) {
   const [internalDate, setInternalDate] = useState(date ?? new Date().toISOString().slice(0, 10))
   const activeDate = date ?? internalDate
   const setDate = onDateChange ?? setInternalDate
@@ -67,6 +76,7 @@ export function ManagerEvaluationRoutine({ date, onDateChange }: { date?: string
         body: JSON.stringify({ employeeId, dateRaw: activeDate, score, justification: draft.justification }),
       })
       reload()
+      onSaved?.()
     } catch (e) {
       setErrors((prev) => ({ ...prev, [employeeId]: e instanceof AdminApiError ? e.message : "Erro ao salvar" }))
     } finally {

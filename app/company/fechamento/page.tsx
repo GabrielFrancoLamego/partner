@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Clock, Camera, CheckCircle2, AlertTriangle, ExternalLink } from "lucide-react"
+import { Clock, Camera, CheckCircle2, AlertTriangle, ExternalLink, Lock, ReceiptText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,6 +11,9 @@ import { LoadingState, AdminCard, EmptyState } from "@/components/admin/admin-ui
 import { useCompanyUser } from "@/lib/company-user-context"
 import { canManageDailyOperations } from "@/lib/permissions"
 import { ManagerEvaluationRoutine } from "@/components/company/manager-evaluation-routine"
+
+type PendingCommission = { id: string; clientName: string; commissionValue: string | null; partner: { name: string } }
+type PendingEmployee = { id: string; name: string }
 
 type ShiftClosingStatus = {
   date: string
@@ -27,6 +30,12 @@ type ShiftClosingStatus = {
     closedBy: { name: string } | null
     closedAt: string | null
   } | null
+  checklist: {
+    pendingCommissions: PendingCommission[]
+    pendingEmployees: PendingEmployee[]
+    step1Complete: boolean
+    step2Complete: boolean
+  }
 }
 
 function useCountdown(deadline: string | undefined) {
@@ -51,6 +60,18 @@ function useCountdown(deadline: string | undefined) {
   }, [deadline, now])
 }
 
+function StepBadge({ done, number }: { done: boolean; number: number }) {
+  return (
+    <span
+      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+        done ? "bg-green-500 text-white" : "bg-gray-200 text-gray-500"
+      }`}
+    >
+      {done ? <CheckCircle2 className="h-4 w-4" /> : number}
+    </span>
+  )
+}
+
 export default function CompanyFechamentoPage() {
   const user = useCompanyUser()
   const isManager = canManageDailyOperations(user.role)
@@ -63,7 +84,7 @@ export default function CompanyFechamentoPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Fechamento de Expediente</h1>
-        <p className="text-gray-600 mt-1 text-sm">Encerramento diário obrigatório do turno</p>
+        <p className="text-gray-600 mt-1 text-sm">Sequência obrigatória para encerrar o dia — os 3 passos precisam estar completos.</p>
       </div>
       <ShiftClosingPanel />
     </div>
@@ -97,11 +118,16 @@ function ShiftClosingPanel() {
   const isCompleted = status?.closing?.status === "COMPLETED"
   const isMasterOnlyOverride = status?.overdue && user.role === "COMPANY_GERENTE"
 
+  const step1Done = isCompleted || Boolean(status?.checklist.step1Complete)
+  const step2Done = isCompleted || Boolean(status?.checklist.step2Complete)
+  const step3Ready = Boolean((status?.closing?.receiptUrl || file) && revenueAmount)
+  const canFinish = step1Done && step2Done && step3Ready
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
-    if (!status?.closing?.receiptUrl && !file) {
-      setError("Foto do comprovante de fechamento do caixa é obrigatória")
+    if (!canFinish) {
+      setError("Complete os 3 passos da sequência antes de finalizar o expediente")
       return
     }
     setIsSubmitting(true)
@@ -150,42 +176,142 @@ function ShiftClosingPanel() {
       {isMasterOnlyOverride && !isCompleted ? (
         <EmptyState message="O prazo estourou — apenas o Master pode concluir o fechamento agora." />
       ) : (
-        <AdminCard title={isCompleted ? "Fechamento registrado" : "Encerrar Expediente"}>
-          {success && isCompleted && (
-            <div className="flex items-center gap-2 p-3 mb-4 bg-green-50 border border-green-200 rounded-xl text-sm text-green-800">
-              <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-              Fechamento salvo com sucesso.
+        <>
+          <AdminCard title="Passo 1 — Contas dos Clientes Indicados" icon={ReceiptText}>
+            <div className="flex items-center gap-2 mb-3">
+              <StepBadge done={step1Done} number={1} />
+              <p className="text-sm text-gray-600">
+                {step1Done
+                  ? "Todos os valores de conta do dia já foram confirmados."
+                  : `${status.checklist.pendingCommissions.length} indicação(ões) de hoje ainda sem valor de conta confirmado.`}
+              </p>
             </div>
-          )}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <div className="space-y-2">
-              <Label>Faturamento total do dia (R$)</Label>
-              <Input type="number" step="0.01" value={revenueAmount} onChange={(e) => setRevenueAmount(e.target.value)} />
+            {!step1Done && (
+              <div className="space-y-2">
+                {status.checklist.pendingCommissions.map((c) => (
+                  <PendingCommissionRow key={c.id} commission={c} onSaved={reload} />
+                ))}
+              </div>
+            )}
+          </AdminCard>
+
+          <AdminCard title="Passo 2 — Nota Diária dos Colaboradores Presentes">
+            <div className="flex items-center gap-2 mb-3">
+              <StepBadge done={step2Done} number={2} />
+              <p className="text-sm text-gray-600">
+                {step2Done
+                  ? "Todos os colaboradores presentes hoje já foram avaliados."
+                  : `Faltam avaliar: ${status.checklist.pendingEmployees.map((e) => e.name).join(", ")}.`}
+              </p>
             </div>
-            <div className="space-y-2">
-              <Label>Foto do comprovante de fechamento do caixa {!status.closing?.receiptUrl && "*"}</Label>
-              <Input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-              {status.closing?.receiptUrl && (
-                <a href={status.closing.receiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-[#F58220] hover:underline w-fit">
-                  <Camera className="h-3 w-3" /> Ver comprovante atual <ExternalLink className="h-3 w-3" />
-                </a>
+            <ManagerEvaluationRoutine onSaved={reload} />
+          </AdminCard>
+
+          <AdminCard title={isCompleted ? "Passo 3 — Fechamento registrado" : "Passo 3 — Faturamento Total do Caixa"}>
+            <div className="flex items-center gap-2 mb-3">
+              <StepBadge done={isCompleted} number={3} />
+              {!step1Done || !step2Done ? (
+                <p className="text-sm text-amber-700 flex items-center gap-1.5">
+                  <Lock className="h-4 w-4" /> Conclua os passos 1 e 2 para liberar o fechamento.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-600">Informe o faturamento total e anexe a foto do comprovante.</p>
               )}
             </div>
-            <div className="space-y-2">
-              <Label>Resumo do dia</Label>
-              <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Relato breve das ocorrências do expediente..." />
-            </div>
-            <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
-              {isCompleted ? "Atualizar Fechamento" : "Concluir Fechamento"}
-            </Button>
-          </form>
-        </AdminCard>
+            {success && isCompleted && (
+              <div className="flex items-center gap-2 p-3 mb-4 bg-green-50 border border-green-200 rounded-xl text-sm text-green-800">
+                <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                Fechamento salvo com sucesso.
+              </div>
+            )}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <div className="space-y-2">
+                <Label>Faturamento total do dia (R$)</Label>
+                <Input type="number" step="0.01" value={revenueAmount} onChange={(e) => setRevenueAmount(e.target.value)} disabled={!step1Done || !step2Done} />
+              </div>
+              <div className="space-y-2">
+                <Label>Foto do comprovante de fechamento do caixa {!status.closing?.receiptUrl && "*"}</Label>
+                <Input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,application/pdf"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  disabled={!step1Done || !step2Done}
+                />
+                {status.closing?.receiptUrl && (
+                  <a href={status.closing.receiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-[#F58220] hover:underline w-fit">
+                    <Camera className="h-3 w-3" /> Ver comprovante atual <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Resumo do dia</Label>
+                <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Relato breve das ocorrências do expediente..." disabled={!step1Done || !step2Done} />
+              </div>
+              <Button type="submit" disabled={isSubmitting || !canFinish} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white disabled:opacity-40">
+                {isCompleted ? "Atualizar Fechamento" : "Finalizar Expediente"}
+              </Button>
+            </form>
+          </AdminCard>
+        </>
       )}
+    </div>
+  )
+}
 
-      <AdminCard title="Notas Diárias da Equipe">
-        <ManagerEvaluationRoutine />
-      </AdminCard>
+function PendingCommissionRow({ commission, onSaved }: { commission: PendingCommission; onSaved: () => void }) {
+  const [amount, setAmount] = useState("")
+  const [justification, setJustification] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState("")
+
+  const isZero = amount !== "" && Number(amount) === 0
+
+  const handleSave = async () => {
+    setError("")
+    if (amount === "" || Number(amount) < 0) {
+      setError("Informe o valor da conta")
+      return
+    }
+    if (isZero && !justification.trim()) {
+      setError("Justificativa obrigatória para conta R$ 0,00")
+      return
+    }
+    setIsSaving(true)
+    try {
+      await adminFetch(`/api/company/shift-closing/commissions/${commission.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ amount: Number(amount), billJustification: justification }),
+      })
+      onSaved()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao salvar")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 space-y-2">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <p className="text-sm text-[#3E2415] flex-1">
+          <span className="font-semibold">{commission.clientName}</span>
+          <span className="text-gray-500"> · indicado por {commission.partner.name}</span>
+        </p>
+        <Input type="number" step="0.01" min="0" placeholder="Valor da conta" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-36 bg-white" />
+        <Button type="button" size="sm" disabled={isSaving} onClick={handleSave} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+          Salvar
+        </Button>
+      </div>
+      {isZero && (
+        <Textarea
+          placeholder="Justificativa para conta R$ 0,00 (obrigatória)"
+          value={justification}
+          onChange={(e) => setJustification(e.target.value)}
+          className="bg-white"
+        />
+      )}
+      {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   )
 }
