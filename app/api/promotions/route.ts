@@ -22,6 +22,8 @@ export async function GET() {
         title: true,
         description: true,
         bannerUrl: true,
+        offerType: true,
+        creditAmount: true,
         cost: true,
         stock: true,
         usedCount: true,

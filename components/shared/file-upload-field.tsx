@@ -19,6 +19,7 @@ export function FileUploadField({
   kind,
   onUploaded,
   variant = "image",
+  maxSizeMB,
 }: {
   label: string
   hint?: string
@@ -28,6 +29,8 @@ export function FileUploadField({
   kind: string
   onUploaded: (url: string) => void
   variant?: "image" | "pdf"
+  /** Limite de peso aplicado no cliente antes do upload (ex: 3 para "Peso máximo: 3MB" — a rota de upload não valida isso sozinha). */
+  maxSizeMB?: number
 }) {
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState("")
@@ -35,6 +38,10 @@ export function FileUploadField({
 
   const handleFile = async (file: File) => {
     setError("")
+    if (maxSizeMB && file.size > maxSizeMB * 1024 * 1024) {
+      setError(`Arquivo excede ${maxSizeMB}MB`)
+      return
+    }
     setIsUploading(true)
     try {
       const body = new FormData()

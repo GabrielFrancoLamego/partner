@@ -20,10 +20,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       originalPrice,
       discountedPrice,
       discountPercentage,
+      creditAmount,
     } = body
 
-    const existing = await prisma.promotion.findUnique({ where: { id }, select: { companyId: true } })
+    const existing = await prisma.promotion.findUnique({ where: { id }, select: { companyId: true, creditAmount: true } })
     if (!existing) throw new ApiError(404, "Promoção não encontrada")
+    if (offerType === "CASH_CREDIT" && creditAmount === undefined && !existing.creditAmount) {
+      throw new ApiError(400, "Informe o valor do crédito na comanda")
+    }
 
     const db = auditedClient({ userId: admin.id, role: admin.role, companyId: existing.companyId })
     const promotion = await db.promotion.update({
@@ -41,6 +45,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...(originalPrice !== undefined ? { originalPrice: originalPrice ?? null } : {}),
         ...(discountedPrice !== undefined ? { discountedPrice: discountedPrice ?? null } : {}),
         ...(discountPercentage !== undefined ? { discountPercentage: discountPercentage ?? null } : {}),
+        ...(creditAmount !== undefined ? { creditAmount: creditAmount ?? null } : {}),
       },
     })
 

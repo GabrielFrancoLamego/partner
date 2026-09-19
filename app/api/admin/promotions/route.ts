@@ -41,10 +41,14 @@ export async function POST(request: Request) {
       originalPrice,
       discountedPrice,
       discountPercentage,
+      creditAmount,
     } = body
 
     if (!companyId || !title || !validFrom || !validUntil || cost === undefined) {
       throw new ApiError(400, "Empresa, título, período e custo são obrigatórios")
+    }
+    if (offerType === "CASH_CREDIT" && !creditAmount) {
+      throw new ApiError(400, "Informe o valor do crédito na comanda")
     }
 
     const db = auditedClient({ userId: admin.id, role: admin.role, companyId })
@@ -62,6 +66,7 @@ export async function POST(request: Request) {
         originalPrice: originalPrice ?? null,
         discountedPrice: discountedPrice ?? null,
         discountPercentage: discountPercentage ?? null,
+        creditAmount: creditAmount ?? null,
         units: unitIds?.length ? { create: unitIds.map((unitId: string) => ({ unitId })) } : undefined,
       },
     })

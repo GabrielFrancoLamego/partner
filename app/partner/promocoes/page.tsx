@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Send, Mail, MessageCircle } from "lucide-react"
+import Link from "next/link"
+import { Send, Mail, MessageCircle, Compass } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,16 +16,18 @@ type Promotion = {
   title: string
   description: string
   bannerUrl: string | null
-  offerType: "DISCOUNT" | "FREE_GIFT" | "DOUBLE_BENEFIT"
+  offerType: "DISCOUNT" | "FREE_GIFT" | "DOUBLE_BENEFIT" | "CASH_CREDIT"
   originalPrice: string | null
   discountedPrice: string | null
   discountPercentage: string | null
+  creditAmount: string | null
   company: { id: string; name: string; profilePictureUrl: string | null }
 }
 
 function benefitLabel(p: Promotion) {
   if (p.offerType === "FREE_GIFT") return "Brinde gratuito"
   if (p.offerType === "DOUBLE_BENEFIT") return "Pediu 1, levou 2"
+  if (p.offerType === "CASH_CREDIT") return p.creditAmount ? `R$ ${p.creditAmount} de crédito` : "Crédito na comanda"
   if (p.discountPercentage) return `${p.discountPercentage}% OFF`
   if (p.originalPrice && p.discountedPrice) return `R$ ${p.originalPrice} → R$ ${p.discountedPrice}`
   return "Desconto especial"
@@ -41,15 +44,33 @@ export default function PartnerPromotionsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Promoções para indicar</h1>
-        <p className="text-gray-600 mt-1 text-sm">Envie um benefício direto para o cliente que você está indicando.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Minhas Promoções</h1>
+          <p className="text-gray-600 mt-1 text-sm">
+            Promoções ativas das empresas cujo Programa de Parceria você já aderiu.
+          </p>
+        </div>
+        <Link href="/partner/descobrir">
+          <Button variant="outline" size="sm">
+            <Compass className="h-4 w-4 mr-1.5" /> Descobrir mais promoções
+          </Button>
+        </Link>
       </div>
 
       {isLoading ? (
         <LoadingState />
       ) : promotions.length === 0 ? (
-        <EmptyState message="Nenhuma promoção ativa no momento." />
+        <div className="space-y-3">
+          <EmptyState message="Nenhuma promoção disponível ainda — participe de um Programa de Parceria para liberar promoções." />
+          <div className="flex justify-center">
+            <Link href="/partner/descobrir">
+              <Button variant="brand">
+                <Compass className="h-4 w-4 mr-1.5" /> Descobrir Promoções
+              </Button>
+            </Link>
+          </div>
+        </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {promotions.map((p) => (

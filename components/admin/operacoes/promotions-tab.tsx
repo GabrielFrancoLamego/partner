@@ -14,7 +14,7 @@ import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-
 import { FileUploadField } from "@/components/shared/file-upload-field"
 import { IconActionButton } from "@/components/ui/icon-action-button"
 
-type OfferType = "DISCOUNT" | "FREE_GIFT" | "DOUBLE_BENEFIT"
+type OfferType = "DISCOUNT" | "FREE_GIFT" | "DOUBLE_BENEFIT" | "CASH_CREDIT"
 
 type Promotion = {
   id: string
@@ -25,6 +25,7 @@ type Promotion = {
   originalPrice: string | null
   discountedPrice: string | null
   discountPercentage: string | null
+  creditAmount: string | null
   validFrom: string
   validUntil: string
   cost: string
@@ -39,11 +40,13 @@ const OFFER_LABELS: Record<OfferType, string> = {
   DISCOUNT: "Desconto",
   FREE_GIFT: "Brinde Gratuito",
   DOUBLE_BENEFIT: "Benefício em Dobro (Pediu 1, levou 2)",
+  CASH_CREDIT: "Crédito na Comanda (R$)",
 }
 
 function offerSummary(promotion: Promotion) {
   if (promotion.offerType === "FREE_GIFT") return "Brinde gratuito"
   if (promotion.offerType === "DOUBLE_BENEFIT") return "Pediu 1, levou 2"
+  if (promotion.offerType === "CASH_CREDIT") return promotion.creditAmount ? `R$ ${promotion.creditAmount} de crédito` : "Crédito na comanda"
   if (promotion.discountPercentage) return `${promotion.discountPercentage}% off`
   if (promotion.originalPrice && promotion.discountedPrice) {
     return `De R$ ${promotion.originalPrice} por R$ ${promotion.discountedPrice}`
@@ -182,6 +185,7 @@ function PromotionDialog({
   const [originalPrice, setOriginalPrice] = useState(promotion?.originalPrice ?? "")
   const [discountedPrice, setDiscountedPrice] = useState(promotion?.discountedPrice ?? "")
   const [discountPercentage, setDiscountPercentage] = useState(promotion?.discountPercentage ?? "")
+  const [creditAmount, setCreditAmount] = useState(promotion?.creditAmount ?? "")
   const [validFrom, setValidFrom] = useState(promotion?.validFrom.slice(0, 10) ?? "")
   const [validUntil, setValidUntil] = useState(promotion?.validUntil.slice(0, 10) ?? "")
   const [cost, setCost] = useState(promotion?.cost ?? "")
@@ -189,9 +193,42 @@ function PromotionDialog({
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Cálculo automático: preenche o 3º campo a partir dos outros 2, sem loop —
+  // cada onChange só recalcula o campo QUE NÃO foi editado agora.
+  const handleOriginalPriceChange = (value: string) => {
+    setOriginalPrice(value)
+    const original = Number(value)
+    if (!original) return
+    if (discountedPrice) {
+      const pct = Math.round((1 - Number(discountedPrice) / original) * 1000) / 10
+      setDiscountPercentage(String(Math.max(0, pct)))
+    } else if (discountPercentage) {
+      const price = Math.round(original * (1 - Number(discountPercentage) / 100) * 100) / 100
+      setDiscountedPrice(String(price))
+    }
+  }
+  const handleDiscountedPriceChange = (value: string) => {
+    setDiscountedPrice(value)
+    const original = Number(originalPrice)
+    if (!original) return
+    const pct = Math.round((1 - Number(value) / original) * 1000) / 10
+    setDiscountPercentage(String(Math.max(0, pct)))
+  }
+  const handleDiscountPercentageChange = (value: string) => {
+    setDiscountPercentage(value)
+    const original = Number(originalPrice)
+    if (!original) return
+    const price = Math.round(original * (1 - Number(value) / 100) * 100) / 100
+    setDiscountedPrice(String(price))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    if (offerType === "CASH_CREDIT" && !creditAmount) {
+      setError("Informe o valor do crédito na comanda")
+      return
+    }
     setIsSubmitting(true)
     try {
       const payload = {
@@ -202,6 +239,7 @@ function PromotionDialog({
         originalPrice: offerType === "DISCOUNT" && originalPrice ? Number(originalPrice) : null,
         discountedPrice: offerType === "DISCOUNT" && discountedPrice ? Number(discountedPrice) : null,
         discountPercentage: offerType === "DISCOUNT" && discountPercentage ? Number(discountPercentage) : null,
+        creditAmount: offerType === "CASH_CREDIT" && creditAmount ? Number(creditAmount) : null,
         validFrom,
         validUntil,
         cost: Number(cost),
@@ -253,13 +291,15 @@ function PromotionDialog({
             <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
           </div>
           <FileUploadField
-            label="Foto da promoção"
+            label="Banner de capa da promoção"
+            hint="Tamanho recomendado: 1200x630px | Formatos: PNG, JPG, WEBP | Peso máximo: 3MB"
             accept="image/png,image/jpeg,image/webp"
             currentUrl={bannerUrl || null}
             uploadEndpoint="/api/admin/uploads"
             kind="promotion-photo"
             onUploaded={setBannerUrl}
             variant="image"
+            maxSizeMB={3}
           />
           <div className="space-y-2">
             <Label>Descrição</Label>
@@ -286,18 +326,28 @@ function PromotionDialog({
             <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-orange-50/50 border border-orange-100">
               <div className="space-y-2">
                 <Label className="text-xs">Valor real (R$)</Label>
-                <Input type="number" step="0.01" value={originalPrice} onChange={(e) => setOriginalPrice(e.target.value)} />
+                <Input type="number" step="0.01" value={originalPrice} onChange={(e) => handleOriginalPriceChange(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label className="text-xs">Valor promocional (R$)</Label>
-                <Input type="number" step="0.01" value={discountedPrice} onChange={(e) => setDiscountedPrice(e.target.value)} />
+                <Input type="number" step="0.01" value={discountedPrice} onChange={(e) => handleDiscountedPriceChange(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">ou % de desconto</Label>
-                <Input type="number" step="0.1" value={discountPercentage} onChange={(e) => setDiscountPercentage(e.target.value)} />
+                <Label className="text-xs">% de desconto</Label>
+                <Input type="number" step="0.1" value={discountPercentage} onChange={(e) => handleDiscountPercentageChange(e.target.value)} />
               </div>
               <p className="col-span-3 text-[11px] text-gray-500">
-                Preencha "Valor promocional" OU "% de desconto" — o que for informado é o que aparece para o cliente.
+                Preencha 2 dos 3 campos — o terceiro é calculado automaticamente.
+              </p>
+            </div>
+          )}
+
+          {offerType === "CASH_CREDIT" && (
+            <div className="space-y-2 p-3 rounded-lg bg-orange-50/50 border border-orange-100">
+              <Label className="text-xs">Valor do crédito na comanda (R$)</Label>
+              <Input type="number" step="0.01" value={creditAmount} onChange={(e) => setCreditAmount(e.target.value)} placeholder="ex: 30,00" required />
+              <p className="text-[11px] text-gray-500">
+                Use a descrição acima para as condições que o atendente do PDV deve validar ao escanear o QR Code do indicado.
               </p>
             </div>
           )}

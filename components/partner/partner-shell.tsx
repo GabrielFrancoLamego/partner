@@ -3,7 +3,7 @@
 import type React from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
-import { LayoutDashboard, Wallet, Banknote, LogOut, Gift, Map, MessagesSquare, Star, Rocket, UserCircle2, Compass } from "lucide-react"
+import { LayoutDashboard, Wallet, Banknote, LogOut, Gift, Map, MessagesSquare, Star, Rocket, UserCircle2, Compass, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PartnerUserProvider, type PartnerUser } from "@/lib/partner-user-context"
 import { PartnerTermAcceptanceGate } from "./term-acceptance-gate"
@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { href: "/partner/saques", label: "Saques PIX", shortLabel: "Saques", icon: Banknote },
   { href: "/partner/afiliado", label: "Afiliado", icon: Star },
   { href: "/partner/promocoes", label: "Promoções", icon: Gift },
+  { href: "/partner/descobrir", label: "Descobrir Promo", shortLabel: "Descobrir", icon: Search },
   { href: "/partner/mapa", label: "Mapa", icon: Map },
   { href: "/partner/perfil", label: "Meu Perfil", icon: UserCircle2 },
   { href: "/partner/ajuda", label: "Ajuda", icon: MessagesSquare },

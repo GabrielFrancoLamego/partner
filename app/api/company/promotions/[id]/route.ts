@@ -27,7 +27,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       originalPrice,
       discountedPrice,
       discountPercentage,
+      creditAmount,
     } = body
+
+    if (offerType === "CASH_CREDIT" && creditAmount === undefined && !existing.creditAmount) {
+      throw new ApiError(400, "Informe o valor do crédito na comanda")
+    }
 
     const db = auditedClient({ userId: user.id, role: user.role, companyId })
     const promotion = await db.promotion.update({
@@ -45,6 +50,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...(originalPrice !== undefined ? { originalPrice: originalPrice ?? null } : {}),
         ...(discountedPrice !== undefined ? { discountedPrice: discountedPrice ?? null } : {}),
         ...(discountPercentage !== undefined ? { discountPercentage: discountPercentage ?? null } : {}),
+        ...(creditAmount !== undefined ? { creditAmount: creditAmount ?? null } : {}),
       },
     })
 

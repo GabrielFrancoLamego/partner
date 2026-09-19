@@ -1,14 +1,26 @@
 import { prisma } from "@/lib/prisma"
 import { requirePartner, handleApiError } from "@/lib/api-auth"
 
-/** Promoções ativas de qualquer empresa — o parceiro não pertence a uma empresa fixa. */
+/**
+ * "Minhas Promoções" — promoções ativas SÓ das empresas cujo Programa de
+ * Parceria o parceiro já aderiu (ProgramMembership ACTIVE). Para a vitrine
+ * aberta de TODAS as empresas, ver /api/partner/discover-promotions
+ * (/partner/descobrir).
+ */
 export async function GET() {
   try {
-    await requirePartner()
+    const user = await requirePartner()
     const now = new Date()
 
+    const memberships = await prisma.programMembership.findMany({
+      where: { partnerId: user.id, status: "ACTIVE" },
+      select: { companyId: true },
+    })
+    const companyIds = memberships.map((m) => m.companyId)
+    if (companyIds.length === 0) return Response.json([])
+
     const promotions = await prisma.promotion.findMany({
-      where: { active: true, validFrom: { lte: now }, validUntil: { gte: now } },
+      where: { companyId: { in: companyIds }, active: true, validFrom: { lte: now }, validUntil: { gte: now } },
       include: { company: { select: { id: true, name: true, profilePictureUrl: true } } },
       orderBy: { createdAt: "desc" },
     })

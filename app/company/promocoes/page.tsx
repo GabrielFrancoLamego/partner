@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, StatusBadge } from "@/components/admin/admin-ui"
 
-type OfferType = "DISCOUNT" | "FREE_GIFT" | "DOUBLE_BENEFIT"
+type OfferType = "DISCOUNT" | "FREE_GIFT" | "DOUBLE_BENEFIT" | "CASH_CREDIT"
 
 type Promotion = {
   id: string
@@ -22,6 +22,7 @@ type Promotion = {
   originalPrice: string | null
   discountedPrice: string | null
   discountPercentage: string | null
+  creditAmount: string | null
   validFrom: string
   validUntil: string
   cost: string
@@ -30,10 +31,27 @@ type Promotion = {
   active: boolean
 }
 
-const OFFER_LABELS: Record<OfferType, string> = {
+export const OFFER_LABELS: Record<OfferType, string> = {
   DISCOUNT: "Desconto",
   FREE_GIFT: "Brinde Gratuito",
   DOUBLE_BENEFIT: "Benefício em Dobro (Pediu 1, levou 2)",
+  CASH_CREDIT: "Crédito na Comanda (R$)",
+}
+
+/** Resumo de benefício reutilizado nas telas do parceiro (Minhas Promoções/Descobrir) — mantém os 3 lugares consistentes. */
+export function promotionOfferSummary(p: {
+  offerType: OfferType
+  discountPercentage: string | null
+  originalPrice: string | null
+  discountedPrice: string | null
+  creditAmount: string | null
+}) {
+  if (p.offerType === "FREE_GIFT") return "Brinde gratuito"
+  if (p.offerType === "DOUBLE_BENEFIT") return "Pediu 1, levou 2"
+  if (p.offerType === "CASH_CREDIT") return p.creditAmount ? `R$ ${p.creditAmount} de crédito` : "Crédito na comanda"
+  if (p.discountPercentage) return `${p.discountPercentage}% OFF`
+  if (p.originalPrice && p.discountedPrice) return `R$ ${p.originalPrice} → R$ ${p.discountedPrice}`
+  return "Desconto especial"
 }
 
 export default function CompanyPromotionsPage() {
@@ -132,6 +150,7 @@ function PromotionDialog({ promotion, onClose, onSaved }: { promotion: Promotion
   const [originalPrice, setOriginalPrice] = useState(promotion?.originalPrice ?? "")
   const [discountedPrice, setDiscountedPrice] = useState(promotion?.discountedPrice ?? "")
   const [discountPercentage, setDiscountPercentage] = useState(promotion?.discountPercentage ?? "")
+  const [creditAmount, setCreditAmount] = useState(promotion?.creditAmount ?? "")
   const [validFrom, setValidFrom] = useState(promotion?.validFrom.slice(0, 10) ?? "")
   const [validUntil, setValidUntil] = useState(promotion?.validUntil.slice(0, 10) ?? "")
   const [cost, setCost] = useState(promotion?.cost ?? "")
@@ -171,6 +190,10 @@ function PromotionDialog({ promotion, onClose, onSaved }: { promotion: Promotion
   }
 
   const handleUploadPhoto = async (file: File) => {
+    if (file.size > 3 * 1024 * 1024) {
+      alert("Arquivo excede 3MB")
+      return
+    }
     setIsUploading(true)
     try {
       const body = new FormData()
@@ -188,6 +211,10 @@ function PromotionDialog({ promotion, onClose, onSaved }: { promotion: Promotion
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    if (offerType === "CASH_CREDIT" && !creditAmount) {
+      setError("Informe o valor do crédito na comanda")
+      return
+    }
     setIsSubmitting(true)
     try {
       const payload = {
@@ -198,6 +225,7 @@ function PromotionDialog({ promotion, onClose, onSaved }: { promotion: Promotion
         originalPrice: offerType === "DISCOUNT" && originalPrice ? Number(originalPrice) : null,
         discountedPrice: offerType === "DISCOUNT" && discountedPrice ? Number(discountedPrice) : null,
         discountPercentage: offerType === "DISCOUNT" && discountPercentage ? Number(discountPercentage) : null,
+        creditAmount: offerType === "CASH_CREDIT" && creditAmount ? Number(creditAmount) : null,
         validFrom,
         validUntil,
         cost: Number(cost),
@@ -230,8 +258,8 @@ function PromotionDialog({ promotion, onClose, onSaved }: { promotion: Promotion
           </div>
 
           <div className="space-y-2">
-            <Label>Foto</Label>
-            <p className="text-xs text-gray-400">Tamanho recomendado: 1080x1080px · Máx: 5MB</p>
+            <Label>Banner de capa da promoção</Label>
+            <p className="text-xs text-gray-400">Tamanho recomendado: 1200x630px | Formatos: PNG, JPG, WEBP | Peso máximo: 3MB</p>
             <div className="flex items-center gap-3">
               {bannerUrl && <img src={bannerUrl} alt="Foto" className="w-16 h-16 object-cover rounded-lg border border-gray-200" />}
               <input
@@ -285,6 +313,16 @@ function PromotionDialog({ promotion, onClose, onSaved }: { promotion: Promotion
               </div>
               <p className="col-span-1 sm:col-span-3 text-[11px] text-gray-500">
                 Preencha 2 dos 3 campos — o terceiro é calculado automaticamente.
+              </p>
+            </div>
+          )}
+
+          {offerType === "CASH_CREDIT" && (
+            <div className="space-y-2 p-3 rounded-lg bg-orange-50/50 border border-orange-100">
+              <Label className="text-xs">Valor do crédito na comanda (R$)</Label>
+              <Input type="number" step="0.01" value={creditAmount} onChange={(e) => setCreditAmount(e.target.value)} placeholder="ex: 30,00" required />
+              <p className="text-[11px] text-gray-500">
+                Use a descrição acima para as condições que o atendente do PDV deve validar ao escanear o QR Code do indicado (ex: "válido só no jantar", "consumo mínimo de R$100").
               </p>
             </div>
           )}

@@ -13,10 +13,19 @@ type Promotion = {
   title: string
   description: string
   bannerUrl: string | null
+  offerType: "DISCOUNT" | "FREE_GIFT" | "DOUBLE_BENEFIT" | "CASH_CREDIT"
+  creditAmount: string | null
   cost: string
   stock: number | null
   usedCount: number
   validUntil: string
+}
+
+const OFFER_TYPE_PDV_LABELS: Record<Promotion["offerType"], string> = {
+  DISCOUNT: "Desconto",
+  FREE_GIFT: "Brinde",
+  DOUBLE_BENEFIT: "Pediu 1, levou 2",
+  CASH_CREDIT: "Crédito na comanda",
 }
 
 type PartnerOption = {
@@ -282,7 +291,13 @@ function RegistrationFlow({ mode, onBack }: { mode: Mode; onBack: () => void }) 
                     {promo.bannerUrl && <img src={promo.bannerUrl} alt={promo.title} className="w-full h-full object-cover" />}
                   </div>
                   <div className="p-4">
-                    <p className="font-bold text-[#3E2415]">{promo.title}</p>
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <p className="font-bold text-[#3E2415]">{promo.title}</p>
+                      <span className="text-[10px] font-medium text-orange-700 bg-orange-50 rounded-full px-2 py-0.5">
+                        {OFFER_TYPE_PDV_LABELS[promo.offerType]}
+                        {promo.offerType === "CASH_CREDIT" && promo.creditAmount ? `: R$ ${promo.creditAmount}` : ""}
+                      </span>
+                    </div>
                     <p className="text-xs text-gray-500 line-clamp-2 mt-1">{promo.description}</p>
                     <p className="text-sm font-bold text-[#F58220] mt-2">{currency(promo.cost)}</p>
                   </div>

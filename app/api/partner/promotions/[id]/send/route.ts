@@ -2,9 +2,16 @@ import { prisma } from "@/lib/prisma"
 import { requirePartner, handleApiError, ApiError } from "@/lib/api-auth"
 import { generatePromotionQrDataUrl, buildWhatsAppShareUrl, sendPromotionEmail } from "@/lib/promotion-share"
 
-function describeBenefit(promotion: { offerType: string; discountPercentage: unknown; discountedPrice: unknown; originalPrice: unknown }) {
+function describeBenefit(promotion: {
+  offerType: string
+  discountPercentage: unknown
+  discountedPrice: unknown
+  originalPrice: unknown
+  creditAmount: unknown
+}) {
   if (promotion.offerType === "FREE_GIFT") return "Brinde gratuito"
   if (promotion.offerType === "DOUBLE_BENEFIT") return "Pediu 1, levou 2"
+  if (promotion.offerType === "CASH_CREDIT") return promotion.creditAmount ? `R$ ${promotion.creditAmount} de crédito na comanda` : "Crédito na comanda"
   if (promotion.discountPercentage) return `${promotion.discountPercentage}% de desconto`
   if (promotion.originalPrice && promotion.discountedPrice) return `De R$ ${promotion.originalPrice} por R$ ${promotion.discountedPrice}`
   return "Desconto especial"
@@ -18,9 +25,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const promotion = await prisma.promotion.findFirst({
       where: { id, active: true },
-      include: { company: { select: { name: true } } },
+      include: { company: { select: { id: true, name: true } } },
     })
     if (!promotion) throw new ApiError(404, "Promoção não encontrada")
+
+    // Só quem já aderiu ao Programa de Parceria da empresa pode ofertar a
+    // promoção dela ao cliente indicado (ver /partner/descobrir).
+    const membership = await prisma.programMembership.findFirst({
+      where: { partnerId: user.id, companyId: promotion.company.id, status: "ACTIVE" },
+    })
+    if (!membership) throw new ApiError(403, "Você precisa aderir ao Programa de Parceria desta empresa antes de ofertar esta promoção")
 
     const body = await request.json()
     const { clientEmail, clientPhone } = body as { clientEmail?: string; clientPhone?: string }
