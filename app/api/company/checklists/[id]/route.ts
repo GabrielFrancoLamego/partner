@@ -61,7 +61,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       // Só quem tem EmployeeProfile participa do sistema de XP — quando a
       // reassumpção automática cai no Master/Gerente (sem EmployeeProfile),
       // a tarefa é aprovada/reprovada normalmente, só sem pontuar ninguém.
-      const points = status === "APPROVED" ? (onTime ? rules.pointsChecklistOnTime : 0) : rules.pointsChecklistLateOrRejected
+      const points = status === "APPROVED" ? (onTime ? rules.pointsChecklistOnTime : rules.pointsChecklistLate) : rules.pointsChecklistFail
       if (points !== 0) {
         const hasEmployeeProfile = await tx.employeeProfile.findUnique({ where: { userId: checklist.employeeId } })
         if (hasEmployeeProfile) {

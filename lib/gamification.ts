@@ -58,14 +58,18 @@ export async function getMonthlyScore(companyId: string, employeeId: string, now
   return basePoints + (agg._sum.points ?? 0)
 }
 
-export type ServiceFeeAdjustment = { type: "PENALTY" | "BONUS"; percentage: number | null; fixedAmount: number | null } | null
+export type ServiceFeeAdjustment = {
+  percentage: number | null
+  fixedAmount: number | null
+  minPoints: number
+  maxPoints: number
+} | null
 
 /**
- * Faixa de ganho/perda de Taxa de Serviço aplicável ao colaborador no mês
- * corrente (ver InternalServiceFeeTier) — escolhe a faixa mais severa/generosa
- * entre as que o colaborador se qualifica (menor thresholdPoints para
- * PENALTY, maior thresholdPoints para BONUS). Retorna null se não há faixa
- * configurada ou a empresa não tem Programa Interno.
+ * Faixa/range de Taxa de Serviço aplicável ao colaborador no mês corrente
+ * (ver InternalServiceFeeTier — [minPoints, maxPoints], efeito assinado:
+ * negativo = redução, positivo = aumento). Retorna null se a pontuação não
+ * cai em nenhum range configurado ou a empresa não tem Programa Interno.
  */
 export async function getServiceFeeAdjustment(companyId: string, employeeId: string, now = new Date()): Promise<ServiceFeeAdjustment> {
   const program = await prisma.internalProgram.findUnique({
@@ -75,22 +79,28 @@ export async function getServiceFeeAdjustment(companyId: string, employeeId: str
   if (!program) return null
 
   const score = await getMonthlyScore(companyId, employeeId, now)
-
-  const penaltyTiers = program.serviceFeeTiers.filter((t) => t.type === "PENALTY" && score <= t.thresholdPoints)
-  const bonusTiers = program.serviceFeeTiers.filter((t) => t.type === "BONUS" && score >= t.thresholdPoints)
-
-  // Entre as faixas de PENALTY aplicáveis, a de menor threshold é a mais severa; entre BONUS, a de maior threshold é a mais generosa.
-  const penalty = penaltyTiers.sort((a, b) => a.thresholdPoints - b.thresholdPoints)[0]
-  const bonus = bonusTiers.sort((a, b) => b.thresholdPoints - a.thresholdPoints)[0]
-
-  const tier = penalty ?? bonus
+  const tier = program.serviceFeeTiers.find((t) => score >= t.minPoints && score <= t.maxPoints)
   if (!tier) return null
 
   return {
-    type: tier.type,
     percentage: tier.percentage ? Number(tier.percentage) : null,
     fixedAmount: tier.fixedAmount ? Number(tier.fixedAmount) : null,
+    minPoints: tier.minPoints,
+    maxPoints: tier.maxPoints,
   }
+}
+
+/**
+ * Todas as faixas configuradas, ordenadas — usado pelo card "Projeção de
+ * Ganhos" para mostrar a faixa atual e os próximos degraus (ver
+ * app/company/crescimento e app/api/company/gamification/xp-history).
+ */
+export async function getServiceFeeTiersSorted(companyId: string) {
+  const program = await prisma.internalProgram.findUnique({
+    where: { companyId },
+    select: { serviceFeeTiers: { orderBy: { minPoints: "asc" } } },
+  })
+  return program?.serviceFeeTiers ?? []
 }
 
 export type EfficiencyMedal = { stars: 1 | 2 | 3 | 4 | 5; label: string; colorHex: string; efficiencyPercent: number }
@@ -173,19 +183,25 @@ export async function promoteEmployee(employeeId: string, newLevelId: string, tx
 }
 
 export type InternalProgramRules = {
-  pointsOnTimeCheckIn: number
+  pointsPunctualEntry: number
   pointsChecklistOnTime: number
-  pointsChecklistLateOrRejected: number
-  pointsOccurrencePenalty: number
+  pointsChecklistLate: number
+  pointsChecklistFail: number
+  pointsAbsenceJustified: number
+  pointsAbsenceUnjustified: number
+  pointsOccurrence: number
   minEfficiencyPercent: number
   efficiencyBonusAmount: number | null
 }
 
 const DEFAULT_INTERNAL_PROGRAM_RULES: InternalProgramRules = {
-  pointsOnTimeCheckIn: 5,
+  pointsPunctualEntry: 5,
   pointsChecklistOnTime: 5,
-  pointsChecklistLateOrRejected: -3,
-  pointsOccurrencePenalty: -10,
+  pointsChecklistLate: -3,
+  pointsChecklistFail: -5,
+  pointsAbsenceJustified: 0,
+  pointsAbsenceUnjustified: -15,
+  pointsOccurrence: -10,
   minEfficiencyPercent: 90,
   efficiencyBonusAmount: null,
 }
@@ -207,10 +223,13 @@ export async function getInternalProgramRules(companyId: string): Promise<Intern
   const program = await prisma.internalProgram.findUnique({ where: { companyId } })
   if (!program) return DEFAULT_INTERNAL_PROGRAM_RULES
   return {
-    pointsOnTimeCheckIn: program.pointsOnTimeCheckIn,
+    pointsPunctualEntry: program.pointsPunctualEntry,
     pointsChecklistOnTime: program.pointsChecklistOnTime,
-    pointsChecklistLateOrRejected: program.pointsChecklistLateOrRejected,
-    pointsOccurrencePenalty: program.pointsOccurrencePenalty,
+    pointsChecklistLate: program.pointsChecklistLate,
+    pointsChecklistFail: program.pointsChecklistFail,
+    pointsAbsenceJustified: program.pointsAbsenceJustified,
+    pointsAbsenceUnjustified: program.pointsAbsenceUnjustified,
+    pointsOccurrence: program.pointsOccurrence,
     minEfficiencyPercent: program.minEfficiencyPercent,
     efficiencyBonusAmount: program.efficiencyBonusAmount ? Number(program.efficiencyBonusAmount) : null,
   }

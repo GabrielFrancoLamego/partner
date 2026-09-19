@@ -11,7 +11,7 @@ export async function GET() {
     if (!program) return Response.json([])
     const tiers = await prisma.internalServiceFeeTier.findMany({
       where: { internalProgramId: program.id },
-      orderBy: [{ type: "asc" }, { thresholdPoints: "asc" }],
+      orderBy: { minPoints: "asc" },
     })
     return Response.json(tiers)
   } catch (error) {
@@ -26,25 +26,29 @@ export async function POST(request: Request) {
     const companyId = user.companyId
 
     const body = await request.json()
-    const { type, thresholdPoints, percentage, fixedAmount } = body as {
-      type: "PENALTY" | "BONUS"
-      thresholdPoints: number
+    const { minPoints, maxPoints, kind, percentage, fixedAmount } = body as {
+      minPoints: number
+      maxPoints: number
+      kind: "PERCENTAGE" | "FIXED" | "BOTH"
       percentage?: number
       fixedAmount?: number
     }
 
-    if (type !== "PENALTY" && type !== "BONUS") throw new ApiError(400, "Tipo inválido")
-    if (thresholdPoints === undefined) throw new ApiError(400, "Informe a pontuação limite da faixa")
-    if (!percentage && !fixedAmount) throw new ApiError(400, "Informe a % ou o valor fixo da faixa")
+    if (minPoints === undefined || maxPoints === undefined) throw new ApiError(400, "Informe o range de pontuação (mínimo e máximo)")
+    if (Number(minPoints) > Number(maxPoints)) throw new ApiError(400, "A pontuação mínima não pode ser maior que a máxima")
+    if (!["PERCENTAGE", "FIXED", "BOTH"].includes(kind)) throw new ApiError(400, "Tipo de impacto financeiro inválido")
+    if (kind !== "FIXED" && !percentage) throw new ApiError(400, "Informe a % da faixa")
+    if (kind !== "PERCENTAGE" && !fixedAmount) throw new ApiError(400, "Informe o valor fixo (R$) da faixa")
 
     const program = await getOrCreateInternalProgram(companyId)
     const tier = await prisma.internalServiceFeeTier.create({
       data: {
         internalProgramId: program.id,
-        type,
-        thresholdPoints: Number(thresholdPoints),
-        percentage: percentage ? Number(percentage) : null,
-        fixedAmount: fixedAmount ? Number(fixedAmount) : null,
+        minPoints: Number(minPoints),
+        maxPoints: Number(maxPoints),
+        kind,
+        percentage: kind !== "FIXED" ? Number(percentage) : null,
+        fixedAmount: kind !== "PERCENTAGE" ? Number(fixedAmount) : null,
       },
     })
 

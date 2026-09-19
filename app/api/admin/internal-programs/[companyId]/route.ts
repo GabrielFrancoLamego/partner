@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { requirePlatformAdmin, handleApiError, ApiError } from "@/lib/api-auth"
 import { logAudit } from "@/lib/audit"
 
-const MEASUREMENT_PERIODS: MeasurementPeriod[] = ["MONTHLY", "SEMIANNUAL", "ANNUAL"]
+const MEASUREMENT_PERIODS: MeasurementPeriod[] = ["MONTHLY", "BIMONTHLY", "SEMIANNUAL", "ANNUAL"]
 
 /** Visão cross-tenant do Programa Interno — o Admin vê/edita o de qualquer empresa. */
 export async function GET(_request: Request, { params }: { params: Promise<{ companyId: string }> }) {
@@ -39,10 +39,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ co
     const termsContent = formData.get("termsContent")
     const measurementPeriod = formData.get("measurementPeriod")
     const basePoints = formData.get("basePoints")
-    const pointsOnTimeCheckIn = formData.get("pointsOnTimeCheckIn")
+    const pointsPunctualEntry = formData.get("pointsPunctualEntry")
     const pointsChecklistOnTime = formData.get("pointsChecklistOnTime")
-    const pointsChecklistLateOrRejected = formData.get("pointsChecklistLateOrRejected")
-    const pointsOccurrencePenalty = formData.get("pointsOccurrencePenalty")
+    const pointsChecklistLate = formData.get("pointsChecklistLate")
+    const pointsChecklistFail = formData.get("pointsChecklistFail")
+    const pointsAbsenceJustified = formData.get("pointsAbsenceJustified")
+    const pointsAbsenceUnjustified = formData.get("pointsAbsenceUnjustified")
+    const pointsOccurrence = formData.get("pointsOccurrence")
     const minEfficiencyPercent = formData.get("minEfficiencyPercent")
     const efficiencyBonusAmount = formData.get("efficiencyBonusAmount")
     const videoUrl = formData.get("videoUrl")
@@ -60,10 +63,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ co
       termsContent: typeof termsContent === "string" ? termsContent : undefined,
       measurementPeriod: (measurementPeriod as MeasurementPeriod) || undefined,
       ...(basePoints ? { basePoints: Number(basePoints) } : {}),
-      ...(pointsOnTimeCheckIn ? { pointsOnTimeCheckIn: Number(pointsOnTimeCheckIn) } : {}),
+      ...(pointsPunctualEntry ? { pointsPunctualEntry: Number(pointsPunctualEntry) } : {}),
       ...(pointsChecklistOnTime ? { pointsChecklistOnTime: Number(pointsChecklistOnTime) } : {}),
-      ...(pointsChecklistLateOrRejected ? { pointsChecklistLateOrRejected: Number(pointsChecklistLateOrRejected) } : {}),
-      ...(pointsOccurrencePenalty ? { pointsOccurrencePenalty: Number(pointsOccurrencePenalty) } : {}),
+      ...(pointsChecklistLate ? { pointsChecklistLate: Number(pointsChecklistLate) } : {}),
+      ...(pointsChecklistFail ? { pointsChecklistFail: Number(pointsChecklistFail) } : {}),
+      ...(pointsAbsenceJustified ? { pointsAbsenceJustified: Number(pointsAbsenceJustified) } : {}),
+      ...(pointsAbsenceUnjustified ? { pointsAbsenceUnjustified: Number(pointsAbsenceUnjustified) } : {}),
+      ...(pointsOccurrence ? { pointsOccurrence: Number(pointsOccurrence) } : {}),
       ...(minEfficiencyPercent ? { minEfficiencyPercent: Number(minEfficiencyPercent) } : {}),
       ...(efficiencyBonusAmount ? { efficiencyBonusAmount: Number(efficiencyBonusAmount) } : {}),
       ...(typeof videoUrl === "string" ? { videoUrl: videoUrl || null } : {}),

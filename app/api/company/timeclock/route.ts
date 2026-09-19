@@ -131,7 +131,7 @@ export async function POST(request: Request) {
           companyId,
           employeeId: user.id,
           reason: "ATTENDANCE",
-          points: rules.pointsOnTimeCheckIn,
+          points: rules.pointsPunctualEntry,
           sourceId: entry.id,
           note: "Entrada pontual",
         })

@@ -13,6 +13,7 @@ import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, AdminCard, StatusBadge } from "@/components/admin/admin-ui"
 import { useCompanyUser } from "@/lib/company-user-context"
 import { canManageDailyOperations } from "@/lib/permissions"
+import { MedalGlyph, type MedalIconKey } from "@/components/shared/medal-picker"
 
 type Level = {
   id: string
@@ -22,6 +23,7 @@ type Level = {
   bonusDescription: string | null
   badgeColorHex: string
   imageUrl: string | null
+  medalIcon?: MedalIconKey
   benefitType?: "PERCENTAGE" | "FIXED" | "BOTH"
   salaryIncreasePercent?: string | null
   bonusAmount?: string | null
@@ -100,7 +102,7 @@ function GrowthTrail({ levels, me }: { levels: Level[]; me: Summary["me"] }) {
           <div key={l.id} className="flex items-center flex-shrink-0">
             <div className="flex flex-col items-center gap-1 w-20">
               <div
-                className={`relative w-12 h-12 rounded-full flex items-center justify-center border-4 transition-all ${
+                className={`relative w-12 h-12 rounded-full flex items-center justify-center border-4 overflow-hidden transition-all ${
                   isCurrent ? "scale-110 shadow-lg" : ""
                 }`}
                 style={{
@@ -108,10 +110,12 @@ function GrowthTrail({ levels, me }: { levels: Level[]; me: Summary["me"] }) {
                   borderColor: isCurrent ? "#FFC800" : "transparent",
                 }}
               >
-                {unlocked ? (
-                  <Trophy className="h-5 w-5 text-white" />
-                ) : (
+                {!unlocked ? (
                   <Lock className="h-4 w-4 text-gray-400" />
+                ) : l.imageUrl ? (
+                  <img src={l.imageUrl} alt={l.name} className="w-full h-full object-cover" />
+                ) : (
+                  <MedalGlyph medalIcon={l.medalIcon && l.medalIcon !== "CUSTOM" ? l.medalIcon : "GOLD"} className="h-5 w-5 text-white" />
                 )}
                 {isCurrent && (
                   <span className="absolute -top-1 -right-1 flex h-3 w-3">
@@ -163,8 +167,17 @@ function GrowthTips({ me }: { me: Summary["me"] }) {
   )
 }
 
-type ServiceFeeAdjustment = { type: "PENALTY" | "BONUS"; percentage: number | null; fixedAmount: number | null } | null
-type XpHistoryResponse = { monthlyScore: number; basePoints: number; entries: XpEntry[]; serviceFeeAdjustment: ServiceFeeAdjustment }
+type ServiceFeeAdjustment = { percentage: number | null; fixedAmount: number | null; minPoints: number; maxPoints: number } | null
+type NextTier = { minPoints: number; maxPoints: number; percentage: number | null; fixedAmount: number | null; pointsMissing: number } | null
+type Tier = { id: string; minPoints: number; maxPoints: number; percentage: string | null; fixedAmount: string | null }
+type XpHistoryResponse = {
+  monthlyScore: number
+  basePoints: number
+  entries: XpEntry[]
+  serviceFeeAdjustment: ServiceFeeAdjustment
+  tiers: Tier[]
+  nextTier: NextTier
+}
 
 function useXpHistory() {
   const [data, setData] = useState<XpHistoryResponse | null>(null)
@@ -174,13 +187,29 @@ function useXpHistory() {
   return data
 }
 
-/** Card de Pontuação Mensal — pontos do mês corrente (base + eventos) e a faixa de Taxa de Serviço que isso rende. */
+function feeEffectValue(fee: { percentage: number | null; fixedAmount: number | null }) {
+  return (fee.percentage ?? 0) + (fee.fixedAmount ?? 0)
+}
+
+function feeEffectLabel(fee: { percentage: number | null; fixedAmount: number | null }) {
+  const parts: string[] = []
+  if (fee.percentage) parts.push(`${fee.percentage > 0 ? "+" : ""}${fee.percentage}%`)
+  if (fee.fixedAmount) parts.push(`${fee.fixedAmount > 0 ? "+" : ""}R$ ${fee.fixedAmount.toFixed(2)}`)
+  return parts.join(" · ") || "sem impacto"
+}
+
+/**
+ * "Projeção de Ganhos e Bônus de Eficiência" — pontuação do mês, faixa atual
+ * de Taxa de Serviço/Salário e o próximo degrau (quantos pontos faltam para
+ * ampliar o ganho). Usado em /company/crescimento (dashboard do colaborador).
+ */
 function MonthlyScoreCard() {
   const data = useXpHistory()
   if (!data) return null
 
   const percent = data.basePoints > 0 ? Math.max(0, Math.min(100, Math.round((data.monthlyScore / data.basePoints) * 100))) : 0
-  const { serviceFeeAdjustment: fee } = data
+  const { serviceFeeAdjustment: fee, nextTier } = data
+  const effect = fee ? feeEffectValue(fee) : 0
 
   return (
     <div className="bg-white rounded-2xl p-5 shadow-md border border-gray-100">
@@ -188,12 +217,12 @@ function MonthlyScoreCard() {
         <div className="w-8 h-8 bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-lg flex items-center justify-center">
           <Gauge className="w-4 h-4 text-white" />
         </div>
-        <h3 className="text-base font-bold text-[#3E2415]">Pontuação Mensal</h3>
+        <h3 className="text-base font-bold text-[#3E2415]">Projeção de Ganhos e Bônus de Eficiência</h3>
       </div>
 
       <div className="flex items-end gap-1.5 mb-2">
         <span className="text-3xl font-bold text-[#3E2415]">{data.monthlyScore}</span>
-        <span className="text-sm text-gray-400 mb-1">/ {data.basePoints} pts</span>
+        <span className="text-sm text-gray-400 mb-1">/ {data.basePoints} pts este mês</span>
       </div>
       <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden mb-3">
         <div
@@ -203,17 +232,21 @@ function MonthlyScoreCard() {
       </div>
 
       {fee ? (
-        <div className={`flex items-center gap-2 rounded-xl p-3 text-xs font-medium ${fee.type === "BONUS" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-          {fee.type === "BONUS" ? <TrendingUp className="h-4 w-4 flex-shrink-0" /> : <TrendingDown className="h-4 w-4 flex-shrink-0" />}
+        <div className={`flex items-center gap-2 rounded-xl p-3 text-xs font-medium ${effect > 0 ? "bg-green-50 text-green-700" : effect < 0 ? "bg-red-50 text-red-700" : "bg-gray-50 text-gray-600"}`}>
+          {effect > 0 ? <TrendingUp className="h-4 w-4 flex-shrink-0" /> : effect < 0 ? <TrendingDown className="h-4 w-4 flex-shrink-0" /> : <Gauge className="h-4 w-4 flex-shrink-0" />}
           <span>
-            Com essa pontuação, você está {fee.type === "BONUS" ? "ganhando um bônus" : "com uma perda"} na Taxa de Serviço deste mês:{" "}
-            {fee.percentage ? `${fee.percentage}%` : ""}
-            {fee.percentage && fee.fixedAmount ? " + " : ""}
-            {fee.fixedAmount ? `R$ ${fee.fixedAmount}` : ""}
+            Faixa atual ({fee.minPoints}-{fee.maxPoints} pts): {feeEffectLabel(fee)} na Taxa de Serviço/Salário deste mês.
           </span>
         </div>
       ) : (
-        <p className="text-xs text-gray-400">Nenhuma faixa de Taxa de Serviço atingida com a pontuação atual.</p>
+        <p className="text-xs text-gray-400 mb-1">Nenhuma faixa de Taxa de Serviço configurada para a pontuação atual.</p>
+      )}
+
+      {nextTier && (
+        <p className="text-xs text-amber-700 mt-2">
+          Faltam <strong>{nextTier.pointsMissing}</strong> pts para a próxima faixa ({nextTier.minPoints}-{nextTier.maxPoints} pts):{" "}
+          {feeEffectLabel(nextTier)}.
+        </p>
       )}
     </div>
   )
@@ -279,7 +312,7 @@ function AchievementsGallery({ levels, me }: { levels: Level[]; me: Summary["me"
                 <img src={l.imageUrl} alt={l.name} className="w-10 h-10 rounded-full object-cover shadow-sm" />
               ) : (
                 <div className="w-10 h-10 rounded-full flex items-center justify-center shadow-sm" style={{ backgroundColor: l.badgeColorHex }}>
-                  <Trophy className="h-4 w-4 text-white" />
+                  <MedalGlyph medalIcon={l.medalIcon && l.medalIcon !== "CUSTOM" ? l.medalIcon : "GOLD"} className="h-4 w-4 text-white" />
                 </div>
               )}
               <span className="text-[9px] text-center text-gray-600 leading-tight">{l.name}</span>

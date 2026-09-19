@@ -164,7 +164,10 @@ export async function POST(request: Request) {
       })
 
       // Abono automático: ATESTADO registrado em até 24h de uma FALTA do
-      // mesmo colaborador no mesmo dia perdoa o abate daquela falta.
+      // mesmo colaborador no mesmo dia perdoa o abate daquela falta — e
+      // reverte a penalidade de XP de falta sem atestado já creditada (ver
+      // bloco de XP abaixo), já que a ausência passa a ser justificada.
+      let waivedFaltaId: string | null = null
       if (type === "ATESTADO" && employee) {
         const matchingFalta = await tx.occurrence.findFirst({
           where: {
@@ -179,22 +182,58 @@ export async function POST(request: Request) {
         })
         if (matchingFalta) {
           await tx.occurrence.update({ where: { id: matchingFalta.id }, data: { discountWaived: true } })
+          waivedFaltaId = matchingFalta.id
         }
       }
 
-      return created
+      return { created, waivedFaltaId }
     })
 
-    if (type === "ADVERTENCIA" && employee) {
-      const rules = await getInternalProgramRules(companyId)
-      await awardXp({
-        companyId,
-        employeeId: employee.id,
-        reason: "OCCURRENCE_PENALTY",
-        points: rules.pointsOccurrencePenalty,
-        sourceId: occurrence.id,
-        note: "Advertência registrada",
-      })
+    const rules = await getInternalProgramRules(companyId)
+
+    if (employee) {
+      if (type === "ADVERTENCIA") {
+        await awardXp({
+          companyId,
+          employeeId: employee.id,
+          reason: "OCCURRENCE_PENALTY",
+          points: rules.pointsOccurrence,
+          sourceId: occurrence.created.id,
+          note: "Advertência registrada",
+        })
+      } else if (type === "FALTA") {
+        await awardXp({
+          companyId,
+          employeeId: employee.id,
+          reason: "OCCURRENCE_PENALTY",
+          points: rules.pointsAbsenceUnjustified,
+          sourceId: occurrence.created.id,
+          note: "Falta sem atestado",
+        })
+      } else if (type === "ATESTADO") {
+        await awardXp({
+          companyId,
+          employeeId: employee.id,
+          reason: "OCCURRENCE_PENALTY",
+          points: rules.pointsAbsenceJustified,
+          sourceId: occurrence.created.id,
+          note: "Falta com atestado",
+        })
+        // Reverte o XP da FALTA que este ATESTADO acabou de abonar (mesmo
+        // padrão de reaplicação usado em app/api/company/evaluations).
+        if (occurrence.waivedFaltaId) {
+          const previousEntry = await prisma.xpEntry.findFirst({
+            where: { sourceId: occurrence.waivedFaltaId, reason: "OCCURRENCE_PENALTY" },
+          })
+          if (previousEntry) {
+            await prisma.xpEntry.delete({ where: { id: previousEntry.id } })
+            await prisma.employeeProfile.update({
+              where: { userId: employee.id },
+              data: { xpPoints: { decrement: previousEntry.points } },
+            })
+          }
+        }
+      }
     }
 
     await logAudit({
@@ -202,11 +241,11 @@ export async function POST(request: Request) {
       companyId,
       action: "CREATE",
       entity: "Occurrence",
-      entityId: occurrence.id,
+      entityId: occurrence.created.id,
       details: { employeeId: employee?.id ?? null, employeeNameFreeText, type },
     })
 
-    return Response.json(occurrence, { status: 201 })
+    return Response.json(occurrence.created, { status: 201 })
   } catch (error) {
     return handleApiError(error)
   }
