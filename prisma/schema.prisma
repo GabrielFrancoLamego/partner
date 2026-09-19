@@ -178,6 +178,7 @@ enum TicketStatus {
 
 enum MeasurementPeriod {
   MONTHLY
+  BIMONTHLY
   SEMIANNUAL
   ANNUAL
 }
@@ -303,16 +304,25 @@ enum BenefitType {
 
 // Unidade do período de mensuração de um nível/cargo — ALL_TIME = nunca
 // rebaixa/reavalia; DAYS/MONTHS combinam com um valor numérico (ver
-// measurementValue/periodMonths nos models que usam este enum).
+// measurementValue/periodMonths nos models que usam este enum). A UI (ver
+// lib/level-measurement.ts) expõe só um seletor estrito (Vitalício/Mensal/
+// Bimestral/Semestral/Anual) que mapeia para (unit, value) — o schema
+// continua flexível para não quebrar dados existentes.
 enum MeasurementUnit {
   ALL_TIME
   DAYS
   MONTHS
 }
 
-enum InternalServiceFeeTierType {
-  PENALTY // pontuação final do mês <= thresholdPoints
-  BONUS // pontuação final do mês >= thresholdPoints
+// Selo/medalha de um nível — preset do sistema (Ouro/Prata/Bronze/Diamante) ou
+// CUSTOM quando o ícone vem de upload (ver ProgramLevel.imageUrl/
+// InternalLevelRule.imageUrl). Cor real do selo é sempre badgeColorHex.
+enum MedalIcon {
+  GOLD
+  SILVER
+  BRONZE
+  DIAMOND
+  CUSTOM
 }
 
 // Tipo do link publico gerado em /admin/links — decide o formulario e a regra
@@ -720,6 +730,7 @@ model Program {
   termAcceptances PartnerTermAcceptance[]
   changeLog       ProgramChangeLog[]
   memberships     ProgramMembership[]
+  commissions     Commission[]
 }
 
 model ProgramLevel {
@@ -746,6 +757,11 @@ model ProgramLevel {
   // Benefício concedido ao atingir o nível, além da comissão base do Program.
   benefitType      BenefitType @default(PERCENTAGE)
   bonusFixedAmount Decimal?    @db.Decimal(10, 2)
+
+  // Personalização visual — badgeColorHex já existia (tema/paleta do nível);
+  // medalIcon escolhe entre as 4 medalhas do sistema ou CUSTOM (ver imageUrl).
+  medalIcon MedalIcon @default(GOLD)
+  imageUrl  String? // ícone customizado (upload) — sobrepõe medalIcon quando presente
 
   partners PartnerProfile[]
 
@@ -902,6 +918,11 @@ model Commission {
   unit              Unit?            @relation(fields: [unitId], references: [id])
   promotionId       String?
   promotion         Promotion?       @relation(fields: [promotionId], references: [id])
+  // Preenchido só na indicação "pura" ao Programa de Parceria (sem Promotion
+  // específica) registrada no Scanner PDV — guarda qual Program/regra de
+  // comissão foi aplicado no cálculo automático (ver lib/referral-commission.ts).
+  programId         String?
+  program           Program?         @relation(fields: [programId], references: [id])
   referralId        String?          @unique
   referral          Referral?        @relation(fields: [referralId], references: [id])
   scannedById       String?
@@ -909,7 +930,11 @@ model Commission {
   clientName        String
   customerPhone     String?
   qrCodeId          String?          @unique
+  // Valor total da conta do cliente indicado — obrigatório no registro do PDV
+  // (mesmo comissão fixa, para fins de faturamento gerado). Pode ser 0,00
+  // quando acompanhado de billJustification.
   amount            Decimal?         @db.Decimal(10, 2)
+  billJustification String? // obrigatória quando amount = 0 (ex: "cliente desistiu antes de consumir")
   commissionValue   Decimal?         @db.Decimal(10, 2)
   status            CommissionStatus @default(PENDING)
   acceptedAt        DateTime?
@@ -1443,10 +1468,13 @@ model InternalProgram {
   basePoints Int @default(100)
 
   // Regras de pontuação (aplicadas em lib/gamification.ts em vez de constantes fixas)
-  pointsOnTimeCheckIn           Int @default(5)
-  pointsChecklistOnTime         Int @default(5)
-  pointsChecklistLateOrRejected Int @default(-3)
-  pointsOccurrencePenalty       Int @default(-10)
+  pointsPunctualEntry      Int @default(5) // GPS/ponto batido dentro do horário
+  pointsChecklistOnTime    Int @default(5)
+  pointsChecklistLate      Int @default(-3) // entregue, porém fora do prazo
+  pointsChecklistFail      Int @default(-5) // devolvido/reprovado ou não entregue
+  pointsAbsenceJustified   Int @default(0) // FALTA abonada por ATESTADO em até 24h
+  pointsAbsenceUnjustified Int @default(-15) // FALTA sem ATESTADO
+  pointsOccurrence         Int @default(-10) // ADVERTENCIA/demais ocorrências
 
   // Bônus de eficiência: colaborador com % de checklist no prazo >= minEfficiencyPercent
   // no período de medição recebe efficiencyBonusAmount (calculado em lib/gamification.ts)
@@ -1462,18 +1490,21 @@ model InternalProgram {
   serviceFeeTiers InternalServiceFeeTier[]
 }
 
-// Faixa de ganho/perda de Taxa de Serviço com base na pontuação final do mês
-// (apuração de 30 dias) — múltiplas faixas por empresa, tanto de PENALTY
-// quanto de BONUS (ver lib/gamification.ts#getServiceFeeAdjustment).
+// Faixa/range de pontuação final do mês (apuração de 30 dias) -> impacto na
+// Taxa de Serviço/Salário — ranges [minPoints, maxPoints] cobrindo toda a
+// régua (perda, neutro, bônus são só ranges com efeito negativo/zero/positivo),
+// ver lib/gamification.ts#getServiceFeeAdjustment. `kind` decide se a faixa
+// usa percentage, fixedAmount ou ambos — sinal negativo = redução, positivo = aumento.
 model InternalServiceFeeTier {
-  id                String                     @id @default(cuid())
+  id                String          @id @default(cuid())
   internalProgramId String
-  internalProgram   InternalProgram            @relation(fields: [internalProgramId], references: [id], onDelete: Cascade)
-  type              InternalServiceFeeTierType
-  thresholdPoints   Int
-  percentage        Decimal?                   @db.Decimal(5, 2)
-  fixedAmount       Decimal?                   @db.Decimal(10, 2)
-  createdAt         DateTime                   @default(now())
+  internalProgram   InternalProgram @relation(fields: [internalProgramId], references: [id], onDelete: Cascade)
+  minPoints         Int
+  maxPoints         Int
+  kind              BenefitType     @default(PERCENTAGE)
+  percentage        Decimal?        @db.Decimal(6, 2) // pode ser negativo
+  fixedAmount       Decimal?        @db.Decimal(10, 2) // pode ser negativo
+  createdAt         DateTime        @default(now())
 
   @@index([internalProgramId])
 }
@@ -1491,7 +1522,8 @@ model InternalLevelRule {
   order                 Int             @default(0)
   pointsRequired        Int
   salaryIncreasePercent Decimal?        @db.Decimal(5, 2)
-  imageUrl              String? // imagem/selo da promoção
+  imageUrl              String? // ícone customizado (upload) — sobrepõe medalIcon quando presente
+  medalIcon             MedalIcon       @default(GOLD)
   bonusDescription      String?
   bonusAmount           Decimal?        @db.Decimal(10, 2)
   badgeColorHex         String          @default("#F58220")
