@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Power, Trash2, Check, X, Camera, Undo2, PartyPopper, RefreshCcw } from "lucide-react"
+import { Plus, Power, Trash2, Pencil, Check, X, Camera, Undo2, PartyPopper, RefreshCcw, HandHelping, Minimize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,6 +15,8 @@ import { LoadingState, EmptyState, StatusBadge } from "@/components/admin/admin-
 import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
 import { canManageDailyOperations } from "@/lib/permissions"
+import { resolveChecklistUrgency, CHECKLIST_URGENCY_CLASSES, CHECKLIST_URGENCY_TEXT_CLASSES } from "@/lib/checklist-urgency"
+import { useSearchParams, useRouter } from "next/navigation"
 
 const RECURRENCE_LABELS: Record<string, string> = {
   DAILY: "Diária",
@@ -75,25 +77,46 @@ type ChecklistInstance = {
   forDate: string
   createdAt: string
   isAutoReassigned: boolean
+  isExtraTask: boolean
   rejectionReason: string | null
-  employee: { id: string; name: string }
+  employee: { id: string; name: string; role: string }
   template: { id: string; title: string; requiresPhoto: boolean } | null
 }
 
+/**
+ * Modo fullscreen (?fullscreen=1) — atalho do menu do colaborador no mobile
+ * abre aqui direto (ver company-shell.tsx). `fixed inset-0` cobre a sidebar/
+ * topbar do shell só em telas pequenas; em desktop (`lg:`) volta a ser um
+ * bloco normal dentro do layout.
+ */
 export default function CompanyChecklistsPage() {
   const user = useCompanyUser()
   const isManager = canManageDailyOperations(user.role)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const isFullscreen = searchParams.get("fullscreen") === "1"
 
-  return (
+  const content = (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Checklists Operacionais</h1>
-        <p className="text-gray-600 mt-1 text-sm">Tarefas por turno com comprovação fotográfica</p>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Checklists Operacionais</h1>
+          <p className="text-gray-600 mt-1 text-sm">Tarefas por turno com comprovação fotográfica</p>
+        </div>
+        {isFullscreen && (
+          <Button variant="outline" size="sm" onClick={() => router.replace("/company/checklists")} className="flex-shrink-0">
+            <Minimize2 className="h-4 w-4 mr-1" /> Sair da tela cheia
+          </Button>
+        )}
       </div>
 
       {isManager ? <ManagerView /> : <EmployeeView />}
     </div>
   )
+
+  if (!isFullscreen) return content
+
+  return <div className="fixed inset-0 z-[60] bg-[#F7F5F2] overflow-y-auto p-4 pb-10 lg:static lg:z-auto lg:bg-transparent lg:p-0">{content}</div>
 }
 
 function EfficiencyBar({ percent, onCelebrationSeen }: { percent: number; onCelebrationSeen: () => void }) {
@@ -144,29 +167,53 @@ function EfficiencyBar({ percent, onCelebrationSeen }: { percent: number; onCele
   )
 }
 
+type VolunteerOpportunity = {
+  templateId: string
+  title: string
+  dueTime: string
+  requiresPhoto: boolean
+  primaryEmployee: { id: string; name: string }
+}
+
 function EmployeeView() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [instances, setInstances] = useState<ChecklistInstance[]>([])
+  const [opportunities, setOpportunities] = useState<VolunteerOpportunity[]>([])
   const [efficiency, setEfficiency] = useState<{ total: number; approved: number; percent: number } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [executing, setExecuting] = useState<Template | "custom" | null>(null)
   const [submitting, setSubmitting] = useState<ChecklistInstance | null>(null)
   const [markingNotExecuted, setMarkingNotExecuted] = useState<ChecklistInstance | null>(null)
+  const [volunteering, setVolunteering] = useState<string | null>(null)
 
   const reload = () => {
     setIsLoading(true)
     Promise.all([
       adminFetch<Template[]>("/api/company/checklists/templates"),
       adminFetch<{ checklists: ChecklistInstance[]; efficiency: typeof efficiency }>("/api/company/checklists"),
+      adminFetch<VolunteerOpportunity[]>("/api/company/checklists/volunteer"),
     ])
-      .then(([t, res]) => {
+      .then(([t, res, vol]) => {
         setTemplates(t)
         setInstances(res.checklists)
         setEfficiency(res.efficiency)
+        setOpportunities(vol)
       })
       .finally(() => setIsLoading(false))
   }
   useEffect(reload, [])
+
+  const handleVolunteer = async (templateId: string) => {
+    setVolunteering(templateId)
+    try {
+      await adminFetch("/api/company/checklists/volunteer", { method: "POST", body: JSON.stringify({ templateId }) })
+      reload()
+    } catch (e) {
+      alert(e instanceof AdminApiError ? e.message : "Erro ao se voluntariar")
+    } finally {
+      setVolunteering(null)
+    }
+  }
 
   if (isLoading) return <LoadingState />
 
@@ -187,33 +234,81 @@ function EmployeeView() {
         <div className="space-y-3">
           <h4 className="font-semibold text-[#3E2415]">Minhas tarefas de hoje</h4>
           <div className="grid gap-2">
-            {pending.map((i) => (
-              <div key={i.id} className="p-3 rounded-xl border border-gray-100 bg-white">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-medium text-[#3E2415] text-sm">{i.title}</p>
-                  <StatusBadge status={i.priority} />
-                  {i.isAutoReassigned && (
-                    <span className="text-[10px] font-medium text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">
-                      Reatribuída a você
-                    </span>
+            {pending.map((i) => {
+              const urgency = resolveChecklistUrgency(i.dueAt)
+              return (
+                <div key={i.id} className={`p-3 rounded-xl border ${CHECKLIST_URGENCY_CLASSES[urgency]}`}>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium text-[#3E2415] text-sm">{i.title}</p>
+                    <StatusBadge status={i.priority} />
+                    {i.isAutoReassigned && (
+                      <span className="text-[10px] font-medium text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">
+                        Reatribuída a você
+                      </span>
+                    )}
+                    {i.isExtraTask && (
+                      <span className="text-[10px] font-medium text-purple-700 bg-purple-50 rounded-full px-2 py-0.5">
+                        Tarefa Extra
+                      </span>
+                    )}
+                    {urgency === "OVERDUE" && (
+                      <span className="text-[10px] font-bold text-red-700 bg-red-100 rounded-full px-2 py-0.5">Atrasada</span>
+                    )}
+                    {urgency === "SOON" && (
+                      <span className="text-[10px] font-bold text-orange-700 bg-orange-100 rounded-full px-2 py-0.5">Quase no limite</span>
+                    )}
+                  </div>
+                  {i.dueAt && (
+                    <p className={`text-xs mt-0.5 ${CHECKLIST_URGENCY_TEXT_CLASSES[urgency]}`}>
+                      Prazo: {new Date(i.dueAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                    </p>
                   )}
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <Button size="sm" variant="outline" disabled className="text-xs">
+                      Em andamento
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => setSubmitting(i)}
+                      className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white text-xs"
+                    >
+                      <Camera className="h-3.5 w-3.5 mr-1" /> Concluído
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setMarkingNotExecuted(i)} className="text-xs text-red-600 border-red-200">
+                      Não executado
+                    </Button>
+                  </div>
                 </div>
-                {i.dueAt && <p className="text-xs text-gray-500 mt-0.5">Prazo: {new Date(i.dueAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>}
-                <div className="flex flex-wrap gap-2 mt-2">
-                  <Button size="sm" variant="outline" disabled className="text-xs">
-                    Em andamento
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => setSubmitting(i)}
-                    className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white text-xs"
-                  >
-                    <Camera className="h-3.5 w-3.5 mr-1" /> Concluído
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setMarkingNotExecuted(i)} className="text-xs text-red-600 border-red-200">
-                    Não executado
-                  </Button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {opportunities.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-semibold text-[#3E2415] flex items-center gap-1.5">
+            <HandHelping className="h-4 w-4 text-[#F58220]" /> Tarefas que você pode ajudar
+          </h4>
+          <p className="text-xs text-gray-500 -mt-2">
+            O responsável principal está presente hoje — ajudar conta como Tarefa Extra e bonifica sua eficiência.
+          </p>
+          <div className="grid gap-2">
+            {opportunities.map((o) => (
+              <div key={o.templateId} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-purple-100 bg-purple-50/50 flex-wrap">
+                <div>
+                  <p className="font-medium text-[#3E2415] text-sm">{o.title}</p>
+                  <p className="text-xs text-gray-500">Principal: {o.primaryEmployee.name} · até às {o.dueTime}</p>
                 </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={volunteering === o.templateId}
+                  onClick={() => handleVolunteer(o.templateId)}
+                  className="text-xs border-purple-200 text-purple-700 hover:bg-purple-100"
+                >
+                  <HandHelping className="h-3.5 w-3.5 mr-1" /> Ajudar nesta tarefa
+                </Button>
               </div>
             ))}
           </div>
@@ -557,6 +652,11 @@ function MasterTab() {
                     Reatribuída
                   </span>
                 )}
+                {i.isExtraTask && (
+                  <span className="text-[10px] font-medium text-purple-700 bg-purple-50 rounded-full px-2 py-0.5">
+                    Tarefa Extra
+                  </span>
+                )}
               </div>
               <p className="text-xs text-gray-500 mt-0.5">
                 Responsável: {i.employee.name}
@@ -575,6 +675,7 @@ function TemplatesTab() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [editing, setEditing] = useState<Template | null>(null)
 
   const reload = () => {
     setIsLoading(true)
@@ -639,10 +740,13 @@ function TemplatesTab() {
                 </p>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
-                <Button variant="ghost" size="icon" onClick={() => handleToggle(t)}>
+                <Button variant="ghost" size="icon" onClick={() => setEditing(t)} title="Editar tarefa">
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => handleToggle(t)} title={t.active ? "Inativar" : "Ativar"}>
                   <Power className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => handleDelete(t)} className="text-red-600">
+                <Button variant="ghost" size="icon" onClick={() => handleDelete(t)} className="text-red-600" title="Excluir">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -654,8 +758,19 @@ function TemplatesTab() {
         <TemplateDialog
           employees={employees}
           onClose={() => setIsCreateOpen(false)}
-          onCreated={() => {
+          onSaved={() => {
             setIsCreateOpen(false)
+            reload()
+          }}
+        />
+      )}
+      {editing && (
+        <TemplateDialog
+          template={editing}
+          employees={employees}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null)
             reload()
           }}
         />
@@ -664,18 +779,28 @@ function TemplatesTab() {
   )
 }
 
-function TemplateDialog({ employees, onClose, onCreated }: { employees: Employee[]; onClose: () => void; onCreated: () => void }) {
-  const [title, setTitle] = useState("")
-  const [description, setDescription] = useState("")
-  const [recurrence, setRecurrence] = useState("DAILY")
-  const [dayOfWeek, setDayOfWeek] = useState<string>("none")
-  const [dayOfMonth, setDayOfMonth] = useState<string>("none")
-  const [anchorMonth, setAnchorMonth] = useState<string>("0")
-  const [priority, setPriority] = useState("MEDIUM")
-  const [dueTime, setDueTime] = useState("18:00")
-  const [requiresPhoto, setRequiresPhoto] = useState(true)
-  const [primaryEmployeeId, setPrimaryEmployeeId] = useState<string>("none")
-  const [secondaryEmployeeId, setSecondaryEmployeeId] = useState<string>("none")
+function TemplateDialog({
+  template,
+  employees,
+  onClose,
+  onSaved,
+}: {
+  template?: Template
+  employees: Employee[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [title, setTitle] = useState(template?.title ?? "")
+  const [description, setDescription] = useState(template?.description ?? "")
+  const [recurrence, setRecurrence] = useState(template?.recurrence ?? "DAILY")
+  const [dayOfWeek, setDayOfWeek] = useState<string>(template?.recurrenceDayOfWeek != null ? String(template.recurrenceDayOfWeek) : "none")
+  const [dayOfMonth, setDayOfMonth] = useState<string>(template?.recurrenceDayOfMonth != null ? String(template.recurrenceDayOfMonth) : "none")
+  const [anchorMonth, setAnchorMonth] = useState<string>(template?.recurrenceAnchorMonth != null ? String(template.recurrenceAnchorMonth) : "0")
+  const [priority, setPriority] = useState(template?.priority ?? "MEDIUM")
+  const [dueTime, setDueTime] = useState(template?.dueTime ?? "18:00")
+  const [requiresPhoto, setRequiresPhoto] = useState(template?.requiresPhoto ?? true)
+  const [primaryEmployeeId, setPrimaryEmployeeId] = useState<string>(template?.primaryEmployee?.id ?? "none")
+  const [secondaryEmployeeId, setSecondaryEmployeeId] = useState<string>(template?.secondaryEmployee?.id ?? "none")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -688,25 +813,27 @@ function TemplateDialog({ employees, onClose, onCreated }: { employees: Employee
     setError("")
     setIsSubmitting(true)
     try {
-      await adminFetch("/api/company/checklists/templates", {
-        method: "POST",
-        body: JSON.stringify({
-          title,
-          description,
-          recurrence,
-          recurrenceDayOfWeek: showWeekday && dayOfWeek !== "none" ? Number(dayOfWeek) : null,
-          recurrenceDayOfMonth: showMonthDay && dayOfMonth !== "none" ? Number(dayOfMonth) : null,
-          recurrenceAnchorMonth: showAnchorMonth ? Number(anchorMonth) : null,
-          priority,
-          dueTime,
-          requiresPhoto,
-          primaryEmployeeId: primaryEmployeeId !== "none" ? primaryEmployeeId : null,
-          secondaryEmployeeId: secondaryEmployeeId !== "none" ? secondaryEmployeeId : null,
-        }),
-      })
-      onCreated()
+      const payload = {
+        title,
+        description,
+        recurrence,
+        recurrenceDayOfWeek: showWeekday && dayOfWeek !== "none" ? Number(dayOfWeek) : null,
+        recurrenceDayOfMonth: showMonthDay && dayOfMonth !== "none" ? Number(dayOfMonth) : null,
+        recurrenceAnchorMonth: showAnchorMonth ? Number(anchorMonth) : null,
+        priority,
+        dueTime,
+        requiresPhoto,
+        primaryEmployeeId: primaryEmployeeId !== "none" ? primaryEmployeeId : null,
+        secondaryEmployeeId: secondaryEmployeeId !== "none" ? secondaryEmployeeId : null,
+      }
+      if (template) {
+        await adminFetch(`/api/company/checklists/templates/${template.id}`, { method: "PATCH", body: JSON.stringify(payload) })
+      } else {
+        await adminFetch("/api/company/checklists/templates", { method: "POST", body: JSON.stringify(payload) })
+      }
+      onSaved()
     } catch (e) {
-      setError(e instanceof AdminApiError ? e.message : "Erro ao criar tarefa")
+      setError(e instanceof AdminApiError ? e.message : "Erro ao salvar tarefa")
     } finally {
       setIsSubmitting(false)
     }
@@ -716,7 +843,7 @@ function TemplateDialog({ employees, onClose, onCreated }: { employees: Employee
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Nova Tarefa Recorrente</DialogTitle>
+          <DialogTitle>{template ? `Editar "${template.title}"` : "Nova Tarefa Recorrente"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -876,7 +1003,7 @@ function TemplateDialog({ employees, onClose, onCreated }: { employees: Employee
               Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
-              Criar
+              {template ? "Salvar" : "Criar"}
             </Button>
           </DialogFooter>
         </form>
@@ -887,10 +1014,14 @@ function TemplateDialog({ employees, onClose, onCreated }: { employees: Employee
 
 /** Double-check: Aprovar / Devolver / Não entregue (com justificativa) das tarefas entregues pelos colaboradores. */
 function ReviewTab() {
+  const user = useCompanyUser()
   const [instances, setInstances] = useState<ChecklistInstance[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [returning, setReturning] = useState<ChecklistInstance | null>(null)
   const [rejecting, setRejecting] = useState<ChecklistInstance | null>(null)
+
+  // Tarefa escalada para a própria Gerente só pode ser avaliada pelo Master (ver app/api/company/checklists/[id]).
+  const canReview = (i: ChecklistInstance) => !(user.role === "COMPANY_GERENTE" && i.employee.role === "COMPANY_GERENTE")
 
   const reload = () => {
     setIsLoading(true)
@@ -930,9 +1061,15 @@ function ReviewTab() {
                     Ver foto
                   </a>
                 )}
-                <MobileCardAction icon={Check} label="Aprovar" onClick={() => handleApprove(i)} />
-                <MobileCardAction icon={Undo2} label="Devolver" onClick={() => setReturning(i)} />
-                <MobileCardAction icon={X} label="Não entregue" tone="danger" onClick={() => setRejecting(i)} />
+                {canReview(i) ? (
+                  <>
+                    <MobileCardAction icon={Check} label="Aprovar" onClick={() => handleApprove(i)} />
+                    <MobileCardAction icon={Undo2} label="Devolver" onClick={() => setReturning(i)} />
+                    <MobileCardAction icon={X} label="Não entregue" tone="danger" onClick={() => setRejecting(i)} />
+                  </>
+                ) : (
+                  <span className="text-xs text-gray-400">Só o Master avalia</span>
+                )}
               </>
             }
           />
@@ -971,17 +1108,21 @@ function ReviewTab() {
                   <StatusBadge status={i.status} />
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="icon" className="text-green-600" onClick={() => handleApprove(i)} title="Aprovar">
-                      <Check className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-amber-600" onClick={() => setReturning(i)} title="Devolver">
-                      <Undo2 className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-red-600" onClick={() => setRejecting(i)} title="Não entregue">
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  {canReview(i) ? (
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon" className="text-green-600" onClick={() => handleApprove(i)} title="Aprovar">
+                        <Check className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="text-amber-600" onClick={() => setReturning(i)} title="Devolver">
+                        <Undo2 className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="text-red-600" onClick={() => setRejecting(i)} title="Não entregue">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-400">Só o Master avalia</span>
+                  )}
                 </td>
               </tr>
             ))}

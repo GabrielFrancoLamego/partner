@@ -120,6 +120,7 @@ enum ShiftClosingStatus {
 enum XpReason {
   ATTENDANCE
   CHECKLIST_ON_TIME
+  CHECKLIST_EXTRA_TASK // secundário ajudou numa tarefa já coberta pelo principal presente — bônus, não substitui a nota do principal
   DAILY_EVALUATION
   OCCURRENCE_PENALTY
   MANUAL_ADJUSTMENT
@@ -215,6 +216,7 @@ enum PromotionOfferType {
   DISCOUNT // Desconto sobre o valor real
   FREE_GIFT // Brinde gratuito
   DOUBLE_BENEFIT // "Pediu 1, levou 2"
+  CASH_CREDIT // Crédito em dinheiro na comanda (ver Promotion.creditAmount)
 }
 
 enum AffiliatePayoutType {
@@ -859,6 +861,7 @@ model Promotion {
   originalPrice         Decimal?           @db.Decimal(10, 2) // "Valor Real" (de-para do desconto)
   discountedPrice       Decimal?           @db.Decimal(10, 2) // "Valor Promocional" — alternativa a discountPercentage
   discountPercentage    Decimal?           @db.Decimal(5, 2) // "% de Desconto" — alternativa a discountedPrice
+  creditAmount          Decimal?           @db.Decimal(10, 2) // valor do crédito em dinheiro na comanda (offerType = CASH_CREDIT)
   validFrom             DateTime
   validUntil            DateTime
   qrCodeValidityMinutes Int                @default(15)
@@ -1109,6 +1112,11 @@ model Checklist {
   status           ChecklistStatus    @default(PENDING)
   submittedAt      DateTime? // quando o colaborador entregou (distinto de createdAt = quando a instância foi gerada)
   isAutoReassigned Boolean            @default(false) // true = caiu aqui por ausência do responsável original (alerta visual)
+  // true = instância voluntária do responsável SECUNDÁRIO ajudando com o
+  // principal presente (não é reatribuição por ausência) — linha extra e
+  // independente da instância do principal, aprovada com bônus de XP
+  // (ver lib/gamification.ts InternalProgram.pointsChecklistExtraTask).
+  isExtraTask      Boolean            @default(false)
   rejectionReason  String? // motivo de "Devolver" ou "Não Entregue"
   approvedById     String?
   approvedBy       User?              @relation("ChecklistApprover", fields: [approvedById], references: [id])
@@ -1472,6 +1480,7 @@ model InternalProgram {
   pointsChecklistOnTime    Int @default(5)
   pointsChecklistLate      Int @default(-3) // entregue, porém fora do prazo
   pointsChecklistFail      Int @default(-5) // devolvido/reprovado ou não entregue
+  pointsChecklistExtraTask Int @default(8) // secundário ajudou numa tarefa do principal presente (bônus, ver Checklist.isExtraTask)
   pointsAbsenceJustified   Int @default(0) // FALTA abonada por ATESTADO em até 24h
   pointsAbsenceUnjustified Int @default(-15) // FALTA sem ATESTADO
   pointsOccurrence         Int @default(-10) // ADVERTENCIA/demais ocorrências

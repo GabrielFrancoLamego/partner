@@ -2,13 +2,13 @@ import "server-only"
 import type { ChecklistTemplate } from "@prisma/client"
 import { prisma } from "./prisma"
 
-function startOfDay(date: Date) {
+export function startOfDay(date: Date) {
   const d = new Date(date)
   d.setHours(0, 0, 0, 0)
   return d
 }
 
-function combineDateAndTime(day: Date, time: string) {
+export function combineDateAndTime(day: Date, time: string) {
   const [h, m] = time.split(":").map(Number)
   const result = new Date(day)
   result.setHours(h || 0, m || 0, 0, 0)
@@ -27,7 +27,7 @@ function combineDateAndTime(day: Date, time: string) {
  * - FORTNIGHTLY (quinzenal, já existia no enum antes deste pacote) se comporta
  *   como semanal — não há data-âncora para calcular a alternância de semanas.
  */
-function matchesRecurrenceToday(template: ChecklistTemplate, today: Date): boolean {
+export function matchesRecurrenceToday(template: ChecklistTemplate, today: Date): boolean {
   const dow = today.getDay()
   const month = today.getMonth() // 0-11
   const dom = today.getDate()
@@ -61,7 +61,7 @@ function matchesRecurrenceToday(template: ChecklistTemplate, today: Date): boole
   }
 }
 
-async function isEmployeeAbsentToday(companyId: string, employeeId: string, dayStart: Date, dayEnd: Date) {
+export async function isEmployeeAbsentToday(companyId: string, employeeId: string, dayStart: Date, dayEnd: Date) {
   const user = await prisma.user.findUnique({ where: { id: employeeId }, select: { status: true } })
   if (!user || user.status !== "ACTIVE") return true
 

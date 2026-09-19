@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -45,13 +46,22 @@ type NavItem = {
   shortLabel?: string
   icon: typeof LayoutDashboard
   show: (user: CompanyUser) => boolean
+  /** Item ganha um selo piscante (ver useChecklistPendingCount) quando há tarefas de checklist pendentes para o turno. */
+  pulseWhenChecklistPending?: boolean
 }
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/company", label: "Dashboard", icon: LayoutDashboard, show: () => true },
   { href: "/company/mural", label: "Mural", icon: Newspaper, show: () => true },
   { href: "/company/ponto", label: "Ponto Digital", shortLabel: "Ponto", icon: Clock, show: (u) => canOperateFrontDesk(u.role) },
-  { href: "/company/checklists", label: "Checklists", shortLabel: "Checklist", icon: ListChecks, show: (u) => canOperateFrontDesk(u.role) },
+  {
+    href: "/company/checklists",
+    label: "Checklists",
+    shortLabel: "Checklist",
+    icon: ListChecks,
+    show: (u) => canOperateFrontDesk(u.role),
+    pulseWhenChecklistPending: true,
+  },
   { href: "/company/pdv", label: "Scanner PDV", shortLabel: "Scanner", icon: ScanLine, show: (u) => canOperateFrontDesk(u.role) },
   { href: "/company/avaliacoes", label: "Avaliação Diária", shortLabel: "Avaliação", icon: ClipboardCheck, show: () => true },
   { href: "/company/crescimento", label: "Crescimento", icon: Trophy, show: () => true },
@@ -85,6 +95,17 @@ export function CompanyShell({
   const router = useRouter()
   const items = NAV_ITEMS.filter((item) => item.show(user))
   const canSeeBillingWarning = user.role === "COMPANY_MASTER" || user.role === "COMPANY_FINANCE"
+  const hasChecklistNavItem = items.some((i) => i.pulseWhenChecklistPending)
+  const [hasPendingChecklists, setHasPendingChecklists] = useState(false)
+
+  useEffect(() => {
+    if (!hasChecklistNavItem) return
+    fetch("/api/company/checklists/pending-count")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { count: number } | null) => setHasPendingChecklists(Boolean(data && data.count > 0)))
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasChecklistNavItem, pathname])
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
@@ -126,18 +147,27 @@ export function CompanyShell({
             {items.map((item) => {
               const Icon = item.icon
               const active = isActive(item.href)
+              const pulsing = item.pulseWhenChecklistPending && hasPendingChecklists
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
+                    "relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium",
                     active
                       ? "bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white shadow-md"
                       : "text-[#3E2415] hover:bg-[#F7F5F2]",
                   )}
                 >
-                  <Icon className="h-5 w-5 flex-shrink-0" />
+                  <span className="relative flex-shrink-0">
+                    <Icon className="h-5 w-5" />
+                    {pulsing && (
+                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                      </span>
+                    )}
+                  </span>
                   <span className="font-heading">{item.label}</span>
                 </Link>
               )
@@ -177,16 +207,27 @@ export function CompanyShell({
             {items.map((item) => {
               const Icon = item.icon
               const active = isActive(item.href)
+              const pulsing = item.pulseWhenChecklistPending && hasPendingChecklists
+              // No mobile, o atalho do Checklist abre direto em modo fullscreen (ver app/company/checklists/page.tsx).
+              const href = item.pulseWhenChecklistPending ? `${item.href}?fullscreen=1` : item.href
               return (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={href}
                   className={cn(
-                    "flex flex-shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2.5 py-2 min-w-[60px] text-center transition-colors",
+                    "relative flex flex-shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2.5 py-2 min-w-[60px] text-center transition-colors",
                     active ? "bg-[#3E2415] text-white" : "bg-[#F7F5F2] text-[#3E2415]",
                   )}
                 >
-                  <Icon className="h-5 w-5" />
+                  <span className="relative">
+                    <Icon className="h-5 w-5" />
+                    {pulsing && (
+                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                      </span>
+                    )}
+                  </span>
                   <span className="text-[10px] font-medium leading-tight whitespace-nowrap">
                     {item.shortLabel ?? item.label}
                   </span>

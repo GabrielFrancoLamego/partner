@@ -31,7 +31,7 @@ export async function GET(request: Request) {
         ...(status ? { status: status as "PENDING" | "SUBMITTED" | "APPROVED" | "RETURNED" | "REJECTED" } : {}),
       },
       include: {
-        employee: { select: { id: true, name: true } },
+        employee: { select: { id: true, name: true, role: true } },
         unit: { select: { id: true, name: true } },
         template: { select: { id: true, title: true, recurrence: true, requiresPhoto: true } },
       },

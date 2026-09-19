@@ -18,8 +18,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const { id } = await params
     const companyId = user.companyId
 
-    const checklist = await prisma.checklist.findFirst({ where: { id, companyId } })
+    const checklist = await prisma.checklist.findFirst({
+      where: { id, companyId },
+      include: { employee: { select: { role: true } } },
+    })
     if (!checklist) throw new ApiError(404, "Checklist não encontrado")
+
+    // Tarefa escalada para a própria Gerente (ausência do principal/secundário)
+    // não pode ser autoavaliada — só o Master (ou Admin) decide sobre ela.
+    if (checklist.employee.role === "COMPANY_GERENTE" && user.role === "COMPANY_GERENTE") {
+      throw new ApiError(403, "Tarefas atribuídas à Gerente só podem ser avaliadas pelo Master")
+    }
 
     const body = await request.json()
     const { status, note } = body as { status: "APPROVED" | "RETURNED" | "REJECTED"; note?: string }
@@ -61,7 +70,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       // Só quem tem EmployeeProfile participa do sistema de XP — quando a
       // reassumpção automática cai no Master/Gerente (sem EmployeeProfile),
       // a tarefa é aprovada/reprovada normalmente, só sem pontuar ninguém.
-      const points = status === "APPROVED" ? (onTime ? rules.pointsChecklistOnTime : rules.pointsChecklistLate) : rules.pointsChecklistFail
+      // Tarefa Extra (secundário ajudando com o principal presente) só
+      // bonifica quando aprovada — reprovar uma ajuda voluntária não penaliza.
+      const points = checklist.isExtraTask
+        ? status === "APPROVED"
+          ? rules.pointsChecklistExtraTask
+          : 0
+        : status === "APPROVED"
+          ? onTime
+            ? rules.pointsChecklistOnTime
+            : rules.pointsChecklistLate
+          : rules.pointsChecklistFail
       if (points !== 0) {
         const hasEmployeeProfile = await tx.employeeProfile.findUnique({ where: { userId: checklist.employeeId } })
         if (hasEmployeeProfile) {
@@ -69,10 +88,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             {
               companyId,
               employeeId: checklist.employeeId,
-              reason: "CHECKLIST_ON_TIME",
+              reason: checklist.isExtraTask ? "CHECKLIST_EXTRA_TASK" : "CHECKLIST_ON_TIME",
               points,
               sourceId: id,
-              note: status === "APPROVED" ? (onTime ? "No prazo" : "Fora do prazo") : "Não entregue",
+              note: checklist.isExtraTask
+                ? "Tarefa extra — ajuda voluntária"
+                : status === "APPROVED"
+                  ? onTime
+                    ? "No prazo"
+                    : "Fora do prazo"
+                  : "Não entregue",
             },
             tx,
           )
