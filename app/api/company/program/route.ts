@@ -3,6 +3,7 @@ import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from
 import { canConfigureCompany } from "@/lib/permissions"
 import { auditedClient } from "@/lib/audit"
 import { pauseProgramForNewMembers, reactivateProgram, recordProgramChangeIfNeeded, sweepPauseExpirations } from "@/lib/program-lifecycle"
+import { deriveCommissionType } from "@/lib/commission-format"
 
 /** Programa de Parceria da própria empresa (1:1 com Company) — Master configura sem depender do Admin da plataforma. */
 export async function GET() {
@@ -57,7 +58,6 @@ export async function PUT(request: Request) {
     const {
       name,
       description,
-      commissionType,
       commissionValue,
       commissionFormat,
       fixedValue,
@@ -70,14 +70,18 @@ export async function PUT(request: Request) {
       validUntil,
     } = body
 
-    if (!name || !commissionType || commissionValue === undefined) {
-      throw new ApiError(400, "Nome, tipo e valor de comissão são obrigatórios")
+    if (!name || commissionValue === undefined) {
+      throw new ApiError(400, "Nome e valor de comissão são obrigatórios")
     }
-    if (commissionFormat === "PRODUCT_UNIT" && !productUnitLabel) {
+    const format = commissionFormat ?? "PERCENTAGE"
+    if (format === "PRODUCT_UNIT" && !productUnitLabel) {
       throw new ApiError(400, "Informe o rótulo da unidade de produto (ex: 'diária grátis')")
     }
+    // Tipo de comissão é derivado do formato + valor fixo extra — nunca mais
+    // um segundo seletor independente (ver lib/commission-format.ts).
+    const commissionType = deriveCommissionType(format, Boolean(fixedValue))
     if (commissionType === "BOTH" && !fixedValue) {
-      throw new ApiError(400, "Informe o valor fixo adicional (comissão 'Ambas')")
+      throw new ApiError(400, "Informe o valor fixo adicional (comissão combinada)")
     }
 
     const before = await prisma.program.findUnique({ where: { companyId } })
@@ -90,9 +94,9 @@ export async function PUT(request: Request) {
       description: description ?? "",
       commissionType,
       commissionValue,
-      commissionFormat: commissionFormat ?? "PERCENTAGE",
+      commissionFormat: format,
       fixedValue: commissionType === "BOTH" ? fixedValue : null,
-      productUnitLabel: commissionFormat === "PRODUCT_UNIT" ? productUnitLabel : null,
+      productUnitLabel: format === "PRODUCT_UNIT" ? productUnitLabel : null,
       imageUrl: imageUrl || null,
       pdfUrl: pdfUrl || null,
       videoUrl: videoUrl || null,

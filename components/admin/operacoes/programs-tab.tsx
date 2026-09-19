@@ -5,6 +5,7 @@ import { Plus, Trophy, Pencil, PlayCircle, PauseCircle, Archive } from "lucide-r
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -198,6 +199,11 @@ export function LevelsManagerDialog({ program, onClose }: { program: Program; on
     reload()
   }
 
+  const handleUpdate = async (level: ProgramLevel, input: ProgramLevelInput) => {
+    await adminFetch(`/api/admin/programs/${program.id}/levels/${level.id}`, { method: "PATCH", body: JSON.stringify(input) })
+    reload()
+  }
+
   const handleDelete = async (level: ProgramLevel) => {
     if (!confirm(`Excluir o nível "${level.name}"?`)) return
     await adminFetch(`/api/admin/programs/${program.id}/levels/${level.id}`, { method: "DELETE" }).catch((e) =>
@@ -212,7 +218,14 @@ export function LevelsManagerDialog({ program, onClose }: { program: Program; on
         <DialogHeader>
           <DialogTitle>Níveis de Crescimento — {program.name}</DialogTitle>
         </DialogHeader>
-        <ProgramLevelsManager levels={levels} isLoading={isLoading} onCreate={handleCreate} onDelete={handleDelete} />
+        <ProgramLevelsManager
+          levels={levels}
+          isLoading={isLoading}
+          onCreate={handleCreate}
+          onUpdate={handleUpdate}
+          onDelete={handleDelete}
+          uploadEndpoint="/api/admin/uploads"
+        />
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Fechar
@@ -237,9 +250,9 @@ export function ProgramDialog({
   const [companyId, setCompanyId] = useState(program?.company.id ?? companies[0]?.id ?? "")
   const [name, setName] = useState(program?.name ?? "")
   const [description, setDescription] = useState(program?.description ?? "")
-  const [commissionType, setCommissionType] = useState<"FIXED" | "VARIABLE" | "BOTH">(program?.commissionType ?? "VARIABLE")
   const [commissionFormat, setCommissionFormat] = useState<CommissionFormat>(program?.commissionFormat ?? "PERCENTAGE")
   const [commissionValue, setCommissionValue] = useState(program?.commissionValue ?? "")
+  const [hasFixedExtra, setHasFixedExtra] = useState(program?.commissionType === "BOTH")
   const [fixedValue, setFixedValue] = useState(program?.fixedValue ?? "")
   const [productUnitLabel, setProductUnitLabel] = useState(program?.productUnitLabel ?? "")
   const [imageUrl, setImageUrl] = useState(program?.imageUrl ?? "")
@@ -258,7 +271,7 @@ export function ProgramDialog({
       setError("Informe o rótulo da unidade de produto (ex: 'diária grátis')")
       return
     }
-    if (commissionType === "BOTH" && !fixedValue) {
+    if (commissionFormat === "PERCENTAGE" && hasFixedExtra && !fixedValue) {
       setError("Informe o valor fixo adicional por indicação")
       return
     }
@@ -267,10 +280,9 @@ export function ProgramDialog({
       const payload = {
         name,
         description,
-        commissionType,
         commissionValue: Number(commissionValue),
         commissionFormat,
-        fixedValue: commissionType === "BOTH" ? Number(fixedValue) : null,
+        fixedValue: commissionFormat === "PERCENTAGE" && hasFixedExtra ? Number(fixedValue) : null,
         productUnitLabel: commissionFormat === "PRODUCT_UNIT" ? productUnitLabel : null,
         imageUrl: imageUrl || null,
         pdfUrl: pdfUrl || null,
@@ -331,35 +343,21 @@ export function ProgramDialog({
             </TabsList>
 
             <TabsContent value="comissao" className="space-y-4 pt-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Tipo de comissão</Label>
-                  <Select value={commissionType} onValueChange={(v) => setCommissionType(v as "FIXED" | "VARIABLE" | "BOTH")}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="FIXED">Fixa (R$)</SelectItem>
-                      <SelectItem value="VARIABLE">Variável (%)</SelectItem>
-                      <SelectItem value="BOTH">Ambas (% + R$ fixo)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Formato do valor</Label>
-                  <Select value={commissionFormat} onValueChange={(v) => setCommissionFormat(v as CommissionFormat)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(FORMAT_LABELS) as CommissionFormat[]).map((key) => (
-                        <SelectItem key={key} value={key}>
-                          {FORMAT_LABELS[key]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label>Formato da comissão</Label>
+                <Select value={commissionFormat} onValueChange={(v) => setCommissionFormat(v as CommissionFormat)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(FORMAT_LABELS) as CommissionFormat[]).map((key) => (
+                      <SelectItem key={key} value={key}>
+                        {FORMAT_LABELS[key]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-400">O tipo de comissão (fixa/variável/combinada) é definido automaticamente por este formato.</p>
               </div>
               <div className="space-y-2">
                 <Label>Valor da comissão ({valueSuffix})</Label>
@@ -386,16 +384,23 @@ export function ProgramDialog({
                   />
                 </div>
               )}
-              {commissionType === "BOTH" && (
-                <div className="space-y-2">
-                  <Label>+ Valor fixo por indicação (R$)</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">R$</span>
-                    <Input type="number" step="0.01" value={fixedValue} onChange={(e) => setFixedValue(e.target.value)} className="pl-9" required />
-                  </div>
-                  <p className="text-xs text-gray-400">
-                    Ex: {commissionValue || "10"}% da venda + R${fixedValue || "5,00"} fixo por indicação.
-                  </p>
+              {commissionFormat === "PERCENTAGE" && (
+                <div className="space-y-2 pt-2 border-t border-gray-100">
+                  <label className="flex items-center gap-2 text-sm text-[#3E2415]">
+                    <Checkbox checked={hasFixedExtra} onCheckedChange={(v) => setHasFixedExtra(v === true)} />
+                    Comissão combinada — somar um valor fixo (R$) além da %
+                  </label>
+                  {hasFixedExtra && (
+                    <>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">R$</span>
+                        <Input type="number" step="0.01" value={fixedValue} onChange={(e) => setFixedValue(e.target.value)} className="pl-9" required />
+                      </div>
+                      <p className="text-xs text-gray-400">
+                        Ex: {commissionValue || "10"}% da venda + R${fixedValue || "5,00"} fixo por indicação.
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
             </TabsContent>

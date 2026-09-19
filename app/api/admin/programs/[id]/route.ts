@@ -7,6 +7,7 @@ import {
   reactivateProgram,
   recordProgramChangeIfNeeded,
 } from "@/lib/program-lifecycle"
+import { deriveCommissionType } from "@/lib/commission-format"
 
 const VALID_STATUSES = ["ACTIVE", "PAUSED_FOR_NEW_MEMBERS", "ARCHIVED"] as const
 
@@ -18,7 +19,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const {
       name,
       description,
-      commissionType,
       commissionValue,
       commissionFormat,
       fixedValue,
@@ -32,15 +32,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     } = body
 
     if (status !== undefined && !VALID_STATUSES.includes(status)) throw new ApiError(400, "Status inválido")
-    if (commissionFormat === "PRODUCT_UNIT" && productUnitLabel !== undefined && !productUnitLabel) {
-      throw new ApiError(400, "Informe o rótulo da unidade de produto (ex: 'diária grátis')")
-    }
-    if (commissionType === "BOTH" && fixedValue !== undefined && !fixedValue) {
-      throw new ApiError(400, "Informe o valor fixo adicional (comissão 'Ambas')")
-    }
 
     const before = await prisma.program.findUnique({ where: { id } })
     if (!before) throw new ApiError(404, "Programa não encontrado")
+
+    // Tipo de comissão é sempre derivado do formato + valor fixo extra
+    // efetivos após esta atualização (ver lib/commission-format.ts) — nunca
+    // um segundo seletor independente vindo do cliente.
+    const effectiveFormat = commissionFormat ?? before.commissionFormat
+    const effectiveHasFixed = fixedValue !== undefined ? Boolean(fixedValue) : Boolean(before.fixedValue)
+    const commissionType = deriveCommissionType(effectiveFormat, effectiveHasFixed)
+
+    if (effectiveFormat === "PRODUCT_UNIT" && productUnitLabel !== undefined && !productUnitLabel) {
+      throw new ApiError(400, "Informe o rótulo da unidade de produto (ex: 'diária grátis')")
+    }
+    if (commissionType === "BOTH" && !effectiveHasFixed) {
+      throw new ApiError(400, "Informe o valor fixo adicional (comissão combinada)")
+    }
 
     // Transições de status (Ativar/Pausar/Arquivar) têm efeitos colaterais
     // (notificação, contagem de 30 dias, encerramento de vínculos) — tratadas
@@ -55,9 +63,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const hasFieldUpdates =
       name !== undefined ||
       description !== undefined ||
-      commissionType !== undefined ||
       commissionValue !== undefined ||
       commissionFormat !== undefined ||
+      fixedValue !== undefined ||
       imageUrl !== undefined ||
       pdfUrl !== undefined ||
       videoUrl !== undefined ||
@@ -73,11 +81,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         data: {
           ...(name !== undefined ? { name } : {}),
           ...(description !== undefined ? { description } : {}),
-          ...(commissionType !== undefined ? { commissionType } : {}),
           ...(commissionValue !== undefined ? { commissionValue } : {}),
+          ...(commissionFormat !== undefined || fixedValue !== undefined ? { commissionType, fixedValue: commissionType === "BOTH" ? fixedValue : null } : {}),
           ...(commissionFormat !== undefined ? { commissionFormat } : {}),
-          ...(commissionType !== undefined ? { fixedValue: commissionType === "BOTH" ? fixedValue : null } : {}),
-          ...(productUnitLabel !== undefined ? { productUnitLabel: commissionFormat === "PRODUCT_UNIT" ? productUnitLabel : null } : {}),
+          ...(productUnitLabel !== undefined ? { productUnitLabel: effectiveFormat === "PRODUCT_UNIT" ? productUnitLabel : null } : {}),
           ...(imageUrl !== undefined ? { imageUrl } : {}),
           ...(pdfUrl !== undefined ? { pdfUrl } : {}),
           ...(videoUrl !== undefined ? { videoUrl } : {}),
