@@ -68,6 +68,8 @@ export async function GET() {
             name: profile.currentLevel.name,
             order: profile.currentLevel.order,
             badgeColorHex: profile.currentLevel.badgeColorHex,
+            medalIcon: profile.currentLevel.medalIcon,
+            imageUrl: profile.currentLevel.imageUrl,
             commissionPercentage: Number(profile.currentLevel.commissionPercentage),
             bonusDescription: profile.currentLevel.bonusDescription,
           }
@@ -78,10 +80,21 @@ export async function GET() {
             name: nextLevel.name,
             order: nextLevel.order,
             requiredReferralCount: nextLevel.requiredReferralCount,
+            requiredRevenueAmount: nextLevel.requiredRevenueAmount ? Number(nextLevel.requiredRevenueAmount) : null,
+            criteria: nextLevel.criteria,
             badgeColorHex: nextLevel.badgeColorHex,
+            medalIcon: nextLevel.medalIcon,
+            imageUrl: nextLevel.imageUrl,
           }
         : null,
-      levels: levels.map((l) => ({ id: l.id, name: l.name, order: l.order, badgeColorHex: l.badgeColorHex })),
+      levels: levels.map((l) => ({
+        id: l.id,
+        name: l.name,
+        order: l.order,
+        badgeColorHex: l.badgeColorHex,
+        medalIcon: l.medalIcon,
+        imageUrl: l.imageUrl,
+      })),
       qualifyingCount,
       commissions: {
         pending: { total: Number(pendingAgg._sum.commissionValue ?? 0), count: pendingAgg._count },

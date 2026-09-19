@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Trash2 } from "lucide-react"
+import { Plus, Trash2, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,10 +9,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { EmptyState, LoadingState } from "@/components/admin/admin-ui"
-import { FileUploadField } from "@/components/shared/file-upload-field"
+import { MedalGlyph, MedalPicker, type MedalIconKey } from "@/components/shared/medal-picker"
+import { MEASUREMENT_PRESET_LABELS, toMeasurementPreset, fromMeasurementPreset, type MeasurementPreset, type MeasurementUnit } from "@/lib/level-measurement"
 
 export type BenefitType = "PERCENTAGE" | "FIXED" | "BOTH"
-export type MeasurementUnit = "ALL_TIME" | "DAYS" | "MONTHS"
+export type { MeasurementUnit }
 
 export type InternalLevelRule = {
   id: string
@@ -22,6 +23,7 @@ export type InternalLevelRule = {
   pointsRequired: number
   salaryIncreasePercent: string | null
   imageUrl: string | null
+  medalIcon: MedalIconKey
   bonusDescription: string | null
   bonusAmount: string | null
   badgeColorHex: string
@@ -41,22 +43,10 @@ export type InternalLevelRuleInput = {
   measurementUnit: MeasurementUnit
   measurementValue?: number
   badgeColorHex: string
-  imageUrl?: string
+  medalIcon: MedalIconKey
+  imageUrl?: string | null
 }
 
-/** Atalhos do período de mensuração pedidos no produto: 30 dias, 6 meses, 1 ano (além de vitalício/customizado). */
-const MEASUREMENT_PRESETS: { label: string; unit: MeasurementUnit; value?: number }[] = [
-  { label: "Vitalício", unit: "ALL_TIME" },
-  { label: "30 dias", unit: "DAYS", value: 30 },
-  { label: "6 meses", unit: "MONTHS", value: 6 },
-  { label: "1 ano", unit: "MONTHS", value: 12 },
-]
-
-const MEASUREMENT_UNIT_LABELS: Record<MeasurementUnit, string> = {
-  ALL_TIME: "Vitalício (nunca reavalia)",
-  DAYS: "Dias",
-  MONTHS: "Meses",
-}
 const BENEFIT_TYPE_LABELS: Record<BenefitType, string> = {
   PERCENTAGE: "% de aumento salarial",
   FIXED: "Bônus fixo (R$)",
@@ -68,16 +58,19 @@ export function InternalLevelRuleManager({
   levels,
   isLoading,
   onCreate,
+  onUpdate,
   onDelete,
   uploadEndpoint,
 }: {
   levels: InternalLevelRule[]
   isLoading: boolean
   onCreate: (input: InternalLevelRuleInput) => Promise<void>
+  onUpdate?: (level: InternalLevelRule, input: InternalLevelRuleInput) => Promise<void>
   onDelete: (level: InternalLevelRule) => Promise<void>
   uploadEndpoint: string
 }) {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [editing, setEditing] = useState<InternalLevelRule | null>(null)
 
   if (isLoading) return <LoadingState />
 
@@ -94,11 +87,16 @@ export function InternalLevelRuleManager({
         <div className="grid gap-2">
           {levels.map((l) => (
             <div key={l.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white">
-              {l.imageUrl ? (
-                <img src={l.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
-              ) : (
-                <span className="w-10 h-10 rounded-lg flex-shrink-0" style={{ backgroundColor: l.badgeColorHex }} />
-              )}
+              <span
+                className="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden"
+                style={{ backgroundColor: l.badgeColorHex }}
+              >
+                {l.imageUrl ? (
+                  <img src={l.imageUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <MedalGlyph medalIcon={l.medalIcon === "CUSTOM" ? "GOLD" : l.medalIcon} className="h-4 w-4 text-white" />
+                )}
+              </span>
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-[#3E2415] text-sm">{l.name}</p>
                 <p className="text-xs text-gray-500">
@@ -106,20 +104,31 @@ export function InternalLevelRuleManager({
                   {l.salaryIncreasePercent && ` · +${l.salaryIncreasePercent}% salário`}
                   {l.bonusAmount && ` · +R$${l.bonusAmount}`}
                   {l.bonusDescription && ` · ${l.bonusDescription}`}
-                  {l.measurementUnit !== "ALL_TIME" && l.measurementValue && ` · reavaliado a cada ${l.measurementValue} ${l.measurementUnit === "DAYS" ? "dias" : "meses"}`}
+                  {l.measurementUnit !== "ALL_TIME" && ` · ${MEASUREMENT_PRESET_LABELS[toMeasurementPreset(l.measurementUnit, l.measurementValue)]}`}
                 </p>
               </div>
-              <button onClick={() => onDelete(l)} className="text-red-400 hover:text-red-700 flex-shrink-0">
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {onUpdate && (
+                  <button onClick={() => setEditing(l)} className="text-gray-400 hover:text-[#F58220] p-1">
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                )}
+                <button onClick={() => onDelete(l)} className="text-red-400 hover:text-red-700 p-1">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
       {isCreateOpen && (
+        <LevelDialog onClose={() => setIsCreateOpen(false)} onSave={onCreate} uploadEndpoint={uploadEndpoint} />
+      )}
+      {editing && onUpdate && (
         <LevelDialog
-          onClose={() => setIsCreateOpen(false)}
-          onCreate={onCreate}
+          level={editing}
+          onClose={() => setEditing(null)}
+          onSave={(input) => onUpdate(editing, input)}
           uploadEndpoint={uploadEndpoint}
         />
       )}
@@ -128,38 +137,39 @@ export function InternalLevelRuleManager({
 }
 
 function LevelDialog({
+  level,
   onClose,
-  onCreate,
+  onSave,
   uploadEndpoint,
 }: {
+  level?: InternalLevelRule
   onClose: () => void
-  onCreate: (input: InternalLevelRuleInput) => Promise<void>
+  onSave: (input: InternalLevelRuleInput) => Promise<void>
   uploadEndpoint: string
 }) {
-  const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
-  const [pointsRequired, setPointsRequired] = useState("100")
-  const [benefitType, setBenefitType] = useState<BenefitType>("PERCENTAGE")
-  const [salaryIncreasePercent, setSalaryIncreasePercent] = useState("")
-  const [bonusAmount, setBonusAmount] = useState("")
-  const [bonusDescription, setBonusDescription] = useState("")
-  const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>("ALL_TIME")
-  const [measurementValue, setMeasurementValue] = useState("")
-  const [badgeColorHex, setBadgeColorHex] = useState("#F58220")
-  const [imageUrl, setImageUrl] = useState("")
+  const [name, setName] = useState(level?.name ?? "")
+  const [description, setDescription] = useState(level?.description ?? "")
+  const [pointsRequired, setPointsRequired] = useState(level ? String(level.pointsRequired) : "100")
+  const [benefitType, setBenefitType] = useState<BenefitType>(level?.benefitType ?? "PERCENTAGE")
+  const [salaryIncreasePercent, setSalaryIncreasePercent] = useState(level?.salaryIncreasePercent ?? "")
+  const [bonusAmount, setBonusAmount] = useState(level?.bonusAmount ?? "")
+  const [bonusDescription, setBonusDescription] = useState(level?.bonusDescription ?? "")
+  const [measurementPreset, setMeasurementPreset] = useState<MeasurementPreset>(
+    level ? toMeasurementPreset(level.measurementUnit, level.measurementValue) : "ALL_TIME",
+  )
+  const [badgeColorHex, setBadgeColorHex] = useState(level?.badgeColorHex ?? "#F58220")
+  const [medalIcon, setMedalIcon] = useState<MedalIconKey>(level?.medalIcon ?? "GOLD")
+  const [imageUrl, setImageUrl] = useState<string | null>(level?.imageUrl ?? null)
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
-    if (measurementUnit !== "ALL_TIME" && !measurementValue) {
-      setError("Informe o valor do período de mensuração")
-      return
-    }
     setIsSubmitting(true)
     try {
-      await onCreate({
+      const { unit, value } = fromMeasurementPreset(measurementPreset)
+      await onSave({
         name,
         description: description || undefined,
         pointsRequired: Number(pointsRequired),
@@ -167,14 +177,15 @@ function LevelDialog({
         salaryIncreasePercent: benefitType !== "FIXED" ? Number(salaryIncreasePercent) : undefined,
         bonusAmount: benefitType !== "PERCENTAGE" ? Number(bonusAmount) : undefined,
         bonusDescription: bonusDescription || undefined,
-        measurementUnit,
-        measurementValue: measurementUnit !== "ALL_TIME" ? Number(measurementValue) : undefined,
+        measurementUnit: unit,
+        measurementValue: value || undefined,
         badgeColorHex,
-        imageUrl: imageUrl || undefined,
+        medalIcon,
+        imageUrl,
       })
       onClose()
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao criar cargo")
+      setError(e instanceof Error ? e.message : "Erro ao salvar cargo")
     } finally {
       setIsSubmitting(false)
     }
@@ -184,7 +195,7 @@ function LevelDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Novo Cargo do Plano de Carreira</DialogTitle>
+          <DialogTitle>{level ? "Editar Cargo do Plano de Carreira" : "Novo Cargo do Plano de Carreira"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -201,64 +212,35 @@ function LevelDialog({
             <Input type="number" value={pointsRequired} onChange={(e) => setPointsRequired(e.target.value)} required />
           </div>
 
-          <FileUploadField
-            label="Imagem da promoção (selo/medalha)"
-            hint="Exibida na trilha de carreira do colaborador ao atingir este cargo"
-            accept="image/png,image/jpeg,image/webp"
-            currentUrl={imageUrl || null}
+          <div className="space-y-2 pt-2 border-t border-gray-100">
+            <Label>Cor do nível (tema/badge do dashboard ao atingir este cargo)</Label>
+            <Input type="color" value={badgeColorHex} onChange={(e) => setBadgeColorHex(e.target.value)} className="h-10 w-20" />
+          </div>
+
+          <MedalPicker
+            medalIcon={medalIcon}
+            imageUrl={imageUrl}
+            badgeColorHex={badgeColorHex}
+            onChange={setMedalIcon}
+            onImageUploaded={setImageUrl}
             uploadEndpoint={uploadEndpoint}
-            kind="internal-level-image"
-            onUploaded={setImageUrl}
-            variant="image"
+            uploadKind="internal-level-image"
           />
 
           <div className="space-y-2 pt-2 border-t border-gray-100">
             <Label>Período de mensuração do cargo</Label>
-            <div className="flex flex-wrap gap-1.5 mb-1">
-              {MEASUREMENT_PRESETS.map((preset) => {
-                const isActive = measurementUnit === preset.unit && (preset.unit === "ALL_TIME" || Number(measurementValue) === preset.value)
-                return (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    onClick={() => {
-                      setMeasurementUnit(preset.unit)
-                      setMeasurementValue(preset.value ? String(preset.value) : "")
-                    }}
-                    className={`text-xs px-2.5 py-1 rounded-full border cursor-pointer transition-colors ${
-                      isActive
-                        ? "bg-[#F58220] border-[#F58220] text-white"
-                        : "bg-white border-gray-200 text-gray-600 hover:border-[#F58220]"
-                    }`}
-                  >
-                    {preset.label}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Select value={measurementUnit} onValueChange={(v) => setMeasurementUnit(v as MeasurementUnit)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(MEASUREMENT_UNIT_LABELS) as MeasurementUnit[]).map((u) => (
-                    <SelectItem key={u} value={u}>
-                      {MEASUREMENT_UNIT_LABELS[u]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {measurementUnit !== "ALL_TIME" && (
-                <Input
-                  type="number"
-                  value={measurementValue}
-                  onChange={(e) => setMeasurementValue(e.target.value)}
-                  placeholder={measurementUnit === "DAYS" ? "ex: 180" : "ex: 6"}
-                  required
-                />
-              )}
-            </div>
+            <Select value={measurementPreset} onValueChange={(v) => setMeasurementPreset(v as MeasurementPreset)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(MEASUREMENT_PRESET_LABELS) as MeasurementPreset[]).map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {MEASUREMENT_PRESET_LABELS[p]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <p className="text-xs text-gray-400">
               Se o colaborador não sustentar a pontuação exigida nesse prazo, o cargo é reavaliado/rebaixado.
             </p>
@@ -297,16 +279,12 @@ function LevelDialog({
             <Label>Bônus associado (descrição livre)</Label>
             <Input value={bonusDescription} onChange={(e) => setBonusDescription(e.target.value)} placeholder="Ex: Vale-combustível" />
           </div>
-          <div className="space-y-2">
-            <Label>Cor do selo</Label>
-            <Input type="color" value={badgeColorHex} onChange={(e) => setBadgeColorHex(e.target.value)} className="h-10 w-20" />
-          </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
             <Button type="submit" variant="brand" disabled={isSubmitting}>
-              Criar
+              {level ? "Salvar" : "Criar"}
             </Button>
           </DialogFooter>
         </form>

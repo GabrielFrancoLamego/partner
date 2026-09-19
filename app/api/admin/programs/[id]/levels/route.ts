@@ -34,6 +34,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       bonusFixedAmount,
       bonusDescription,
       badgeColorHex,
+      medalIcon,
+      imageUrl,
     } = body
 
     if (!name) throw new ApiError(400, "Nome do nível é obrigatório")
@@ -55,6 +57,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         bonusFixedAmount: bonusFixedAmount ? Number(bonusFixedAmount) : null,
         bonusDescription: bonusDescription || null,
         badgeColorHex: badgeColorHex || "#C0C0C0",
+        medalIcon: medalIcon || "GOLD",
+        imageUrl: imageUrl || null,
       },
     })
 

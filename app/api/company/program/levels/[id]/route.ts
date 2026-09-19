@@ -29,6 +29,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       bonusFixedAmount,
       bonusDescription,
       badgeColorHex,
+      medalIcon,
+      imageUrl,
       order,
     } = body
 
@@ -46,6 +48,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...(bonusFixedAmount !== undefined ? { bonusFixedAmount: bonusFixedAmount ? Number(bonusFixedAmount) : null } : {}),
         ...(bonusDescription !== undefined ? { bonusDescription: bonusDescription || null } : {}),
         ...(badgeColorHex !== undefined ? { badgeColorHex } : {}),
+        ...(medalIcon !== undefined ? { medalIcon } : {}),
+        ...(imageUrl !== undefined ? { imageUrl: imageUrl || null } : {}),
         ...(order !== undefined ? { order: Number(order) } : {}),
       },
     })

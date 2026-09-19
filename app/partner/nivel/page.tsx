@@ -1,15 +1,18 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Trophy, Lock, Sparkles, Award, History, Rocket } from "lucide-react"
+import { Lock, Sparkles, Award, History, Rocket } from "lucide-react"
 import { LoadingState, AdminCard } from "@/components/admin/admin-ui"
+import { MedalGlyph, type MedalIconKey } from "@/components/shared/medal-picker"
 
-type Level = { id: string; name: string; order: number; badgeColorHex: string }
+type Level = { id: string; name: string; order: number; badgeColorHex: string; medalIcon: MedalIconKey; imageUrl: string | null }
 type Dashboard = {
   walletBalance: number
   qualifyingCount: number
-  currentLevel: { id: string; name: string; order: number; badgeColorHex: string; commissionPercentage: number; bonusDescription: string | null } | null
-  nextLevel: { id: string; name: string; order: number; requiredReferralCount: number; badgeColorHex: string } | null
+  currentLevel:
+    | (Level & { commissionPercentage: number; bonusDescription: string | null })
+    | null
+  nextLevel: (Level & { requiredReferralCount: number; requiredRevenueAmount: number | null; criteria: "REFERRAL_COUNT" | "REVENUE" | "BOTH" }) | null
   levels: Level[]
   commissions: { pending: { total: number; count: number }; approved: { total: number; count: number }; paid: { total: number; count: number } }
   recentCommissions: { id: string; clientName: string; commissionValue: string | null; status: string; date: string; company: { name: string } }[]
@@ -35,10 +38,16 @@ function LevelTrail({ levels, currentOrder }: { levels: Level[]; currentOrder: n
           <div key={l.id} className="flex items-center flex-shrink-0">
             <div className="flex flex-col items-center gap-1 w-20">
               <div
-                className={`relative w-12 h-12 rounded-full flex items-center justify-center border-4 transition-all ${isCurrent ? "scale-110 shadow-lg" : ""}`}
+                className={`relative w-12 h-12 rounded-full flex items-center justify-center border-4 overflow-hidden transition-all ${isCurrent ? "scale-110 shadow-lg" : ""}`}
                 style={{ backgroundColor: unlocked ? l.badgeColorHex : "#F3F4F6", borderColor: isCurrent ? "#FFC800" : "transparent" }}
               >
-                {unlocked ? <Trophy className="h-5 w-5 text-white" /> : <Lock className="h-4 w-4 text-gray-400" />}
+                {!unlocked ? (
+                  <Lock className="h-4 w-4 text-gray-400" />
+                ) : l.imageUrl ? (
+                  <img src={l.imageUrl} alt={l.name} className="w-full h-full object-cover" />
+                ) : (
+                  <MedalGlyph medalIcon={l.medalIcon === "CUSTOM" ? "GOLD" : l.medalIcon} className="h-5 w-5 text-white" />
+                )}
                 {isCurrent && (
                   <span className="absolute -top-1 -right-1 flex h-3 w-3">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FFC800] opacity-75" />
@@ -75,6 +84,13 @@ export default function PartnerLevelPage() {
   const progressPercent = data.nextLevel
     ? Math.max(0, Math.min(100, Math.round((data.qualifyingCount / data.nextLevel.requiredReferralCount) * 100)))
     : 100
+  const nextLevelRequirementLabel = data.nextLevel
+    ? data.nextLevel.criteria === "REVENUE"
+      ? `${currency(data.nextLevel.requiredRevenueAmount ?? 0)} em faturamento gerado`
+      : data.nextLevel.criteria === "BOTH" && data.nextLevel.requiredRevenueAmount
+        ? `${missing} indicações · ${currency(data.nextLevel.requiredRevenueAmount)} faturados`
+        : `${missing} indicações convertidas`
+    : ""
 
   return (
     <div className="space-y-6">
@@ -119,7 +135,7 @@ export default function PartnerLevelPage() {
           <div className="flex items-center gap-2 mb-2">
             <Sparkles className="h-4 w-4 text-amber-600" />
             <p className="text-sm font-semibold text-[#3E2415]">
-              Faltam {missing} indicações convertidas para {data.nextLevel.name}
+              Faltam {nextLevelRequirementLabel} para {data.nextLevel.name}
             </p>
           </div>
           <ul className="space-y-1.5">
@@ -147,8 +163,15 @@ export default function PartnerLevelPage() {
                 .filter((l) => l.order <= currentOrder)
                 .map((l) => (
                   <div key={l.id} className="flex flex-col items-center gap-1 w-16">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center shadow-sm" style={{ backgroundColor: l.badgeColorHex }}>
-                      <Trophy className="h-4 w-4 text-white" />
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center shadow-sm overflow-hidden"
+                      style={{ backgroundColor: l.badgeColorHex }}
+                    >
+                      {l.imageUrl ? (
+                        <img src={l.imageUrl} alt={l.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <MedalGlyph medalIcon={l.medalIcon === "CUSTOM" ? "GOLD" : l.medalIcon} className="h-4 w-4 text-white" />
+                      )}
                     </div>
                     <span className="text-[9px] text-center text-gray-600 leading-tight">{l.name}</span>
                   </div>

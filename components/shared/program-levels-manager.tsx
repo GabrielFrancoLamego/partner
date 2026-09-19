@@ -1,17 +1,19 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Trash2, Trophy } from "lucide-react"
+import { Plus, Trash2, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { EmptyState, LoadingState } from "@/components/admin/admin-ui"
+import { MedalGlyph, MedalPicker, type MedalIconKey } from "@/components/shared/medal-picker"
+import { MEASUREMENT_PRESET_LABELS, toMeasurementPreset, fromMeasurementPreset, type MeasurementPreset, type MeasurementUnit } from "@/lib/level-measurement"
 
 export type LevelCriteria = "REFERRAL_COUNT" | "REVENUE" | "BOTH"
 export type BenefitType = "PERCENTAGE" | "FIXED" | "BOTH"
-export type MeasurementUnit = "ALL_TIME" | "DAYS" | "MONTHS"
+export type { MeasurementUnit }
 
 export type ProgramLevel = {
   id: string
@@ -27,6 +29,8 @@ export type ProgramLevel = {
   bonusFixedAmount: string | null
   bonusDescription: string | null
   badgeColorHex: string
+  medalIcon: MedalIconKey
+  imageUrl: string | null
 }
 
 export type ProgramLevelInput = {
@@ -41,6 +45,8 @@ export type ProgramLevelInput = {
   bonusFixedAmount?: number
   bonusDescription?: string
   badgeColorHex: string
+  medalIcon: MedalIconKey
+  imageUrl?: string | null
 }
 
 const CRITERIA_LABELS: Record<LevelCriteria, string> = {
@@ -57,22 +63,27 @@ const BENEFIT_LABELS: Record<BenefitType, string> = {
 /**
  * Régua de Níveis de Crescimento (Prata/Ouro/Diamante) — usada tanto em
  * /company/programas quanto na aba Programas do Admin, sempre contra um
- * `programId` já existente. O chamador injeta `onCreate`/`onDelete` ligados
- * ao endpoint correto (empresa vê só o próprio programa; Admin escolhe
+ * `programId` já existente. O chamador injeta `onCreate`/`onUpdate`/`onDelete`
+ * ligados ao endpoint correto (empresa vê só o próprio programa; Admin escolhe
  * qualquer um).
  */
 export function ProgramLevelsManager({
   levels,
   isLoading,
   onCreate,
+  onUpdate,
   onDelete,
+  uploadEndpoint = "/api/company/uploads",
 }: {
   levels: ProgramLevel[]
   isLoading: boolean
   onCreate: (input: ProgramLevelInput) => Promise<void>
+  onUpdate?: (level: ProgramLevel, input: ProgramLevelInput) => Promise<void>
   onDelete: (level: ProgramLevel) => Promise<void>
+  uploadEndpoint?: string
 }) {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [editing, setEditing] = useState<ProgramLevel | null>(null)
 
   if (isLoading) return <LoadingState />
 
@@ -91,8 +102,15 @@ export function ProgramLevelsManager({
         <div className="grid gap-2">
           {levels.map((l) => (
             <div key={l.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white">
-              <span className="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center" style={{ backgroundColor: l.badgeColorHex }}>
-                <Trophy className="h-4 w-4 text-white" />
+              <span
+                className="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden"
+                style={{ backgroundColor: l.badgeColorHex }}
+              >
+                {l.imageUrl ? (
+                  <img src={l.imageUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <MedalGlyph medalIcon={l.medalIcon === "CUSTOM" ? "GOLD" : l.medalIcon} className="h-4 w-4 text-white" />
+                )}
               </span>
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-[#3E2415] text-sm">{l.name}</p>
@@ -100,64 +118,93 @@ export function ProgramLevelsManager({
                   {l.criteria !== "REVENUE" && `${l.requiredReferralCount} indicações`}
                   {l.criteria === "BOTH" && " + "}
                   {l.criteria !== "REFERRAL_COUNT" && l.requiredRevenueAmount && `R$ ${l.requiredRevenueAmount} faturados`}
-                  {l.measurementUnit !== "ALL_TIME" && ` · reavaliado a cada ${l.periodMonths} meses`}
+                  {l.measurementUnit !== "ALL_TIME" && ` · ${MEASUREMENT_PRESET_LABELS[toMeasurementPreset(l.measurementUnit, l.periodMonths)]}`}
                   {l.benefitType !== "FIXED" && ` · +${l.commissionPercentage}% comissão`}
                   {l.benefitType !== "PERCENTAGE" && l.bonusFixedAmount && ` · +R$${l.bonusFixedAmount}`}
                 </p>
               </div>
-              <button onClick={() => onDelete(l)} className="text-red-400 hover:text-red-700 flex-shrink-0">
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {onUpdate && (
+                  <button onClick={() => setEditing(l)} className="text-gray-400 hover:text-[#F58220] p-1">
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                )}
+                <button onClick={() => onDelete(l)} className="text-red-400 hover:text-red-700 p-1">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {isCreateOpen && <LevelDialog onClose={() => setIsCreateOpen(false)} onCreate={onCreate} />}
+      {isCreateOpen && (
+        <LevelDialog onClose={() => setIsCreateOpen(false)} onSave={onCreate} uploadEndpoint={uploadEndpoint} />
+      )}
+      {editing && onUpdate && (
+        <LevelDialog
+          level={editing}
+          onClose={() => setEditing(null)}
+          onSave={(input) => onUpdate(editing, input)}
+          uploadEndpoint={uploadEndpoint}
+        />
+      )}
     </div>
   )
 }
 
-function LevelDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (input: ProgramLevelInput) => Promise<void> }) {
-  const [name, setName] = useState("")
-  const [criteria, setCriteria] = useState<LevelCriteria>("REFERRAL_COUNT")
-  const [requiredReferralCount, setRequiredReferralCount] = useState("10")
-  const [requiredRevenueAmount, setRequiredRevenueAmount] = useState("")
-  const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>("ALL_TIME")
-  const [periodMonths, setPeriodMonths] = useState("12")
-  const [benefitType, setBenefitType] = useState<BenefitType>("PERCENTAGE")
-  const [commissionPercentage, setCommissionPercentage] = useState("")
-  const [bonusFixedAmount, setBonusFixedAmount] = useState("")
-  const [bonusDescription, setBonusDescription] = useState("")
-  const [badgeColorHex, setBadgeColorHex] = useState("#C0C0C0")
+function LevelDialog({
+  level,
+  onClose,
+  onSave,
+  uploadEndpoint,
+}: {
+  level?: ProgramLevel
+  onClose: () => void
+  onSave: (input: ProgramLevelInput) => Promise<void>
+  uploadEndpoint: string
+}) {
+  const [name, setName] = useState(level?.name ?? "")
+  const [criteria, setCriteria] = useState<LevelCriteria>(level?.criteria ?? "REFERRAL_COUNT")
+  const [requiredReferralCount, setRequiredReferralCount] = useState(level ? String(level.requiredReferralCount) : "10")
+  const [requiredRevenueAmount, setRequiredRevenueAmount] = useState(level?.requiredRevenueAmount ?? "")
+  const [measurementPreset, setMeasurementPreset] = useState<MeasurementPreset>(
+    level ? toMeasurementPreset(level.measurementUnit, level.periodMonths) : "ALL_TIME",
+  )
+  const [benefitType, setBenefitType] = useState<BenefitType>(level?.benefitType ?? "PERCENTAGE")
+  const [commissionPercentage, setCommissionPercentage] = useState(level?.commissionPercentage ?? "")
+  const [bonusFixedAmount, setBonusFixedAmount] = useState(level?.bonusFixedAmount ?? "")
+  const [bonusDescription, setBonusDescription] = useState(level?.bonusDescription ?? "")
+  const [badgeColorHex, setBadgeColorHex] = useState(level?.badgeColorHex ?? "#C0C0C0")
+  const [medalIcon, setMedalIcon] = useState<MedalIconKey>(level?.medalIcon ?? "GOLD")
+  const [imageUrl, setImageUrl] = useState<string | null>(level?.imageUrl ?? null)
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
-    if (measurementUnit !== "ALL_TIME" && !periodMonths) {
-      setError("Informe o período de mensuração em meses")
-      return
-    }
     setIsSubmitting(true)
     try {
-      await onCreate({
+      const { unit, value } = fromMeasurementPreset(measurementPreset)
+      await onSave({
         name,
         criteria,
         requiredReferralCount: criteria !== "REVENUE" ? Number(requiredReferralCount) : undefined,
         requiredRevenueAmount: criteria !== "REFERRAL_COUNT" ? Number(requiredRevenueAmount) : undefined,
-        measurementUnit,
-        periodMonths: measurementUnit !== "ALL_TIME" ? Number(periodMonths) : 0,
+        measurementUnit: unit,
+        periodMonths: value,
         benefitType,
         commissionPercentage: benefitType !== "FIXED" ? Number(commissionPercentage) : undefined,
         bonusFixedAmount: benefitType !== "PERCENTAGE" ? Number(bonusFixedAmount) : undefined,
         bonusDescription: bonusDescription || undefined,
         badgeColorHex,
+        medalIcon,
+        imageUrl,
       })
       onClose()
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao criar nível")
+      setError(e instanceof Error ? e.message : "Erro ao salvar nível")
     } finally {
       setIsSubmitting(false)
     }
@@ -167,7 +214,7 @@ function LevelDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (in
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Novo Nível de Crescimento</DialogTitle>
+          <DialogTitle>{level ? "Editar Nível de Crescimento" : "Novo Nível de Crescimento"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -208,20 +255,18 @@ function LevelDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (in
 
           <div className="space-y-2 pt-2 border-t border-gray-100">
             <Label>Período de mensuração (manutenção do nível)</Label>
-            <div className="grid grid-cols-2 gap-3">
-              <Select value={measurementUnit} onValueChange={(v) => setMeasurementUnit(v as MeasurementUnit)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL_TIME">Todo o período (nunca rebaixa)</SelectItem>
-                  <SelectItem value="MONTHS">XX meses</SelectItem>
-                </SelectContent>
-              </Select>
-              {measurementUnit !== "ALL_TIME" && (
-                <Input type="number" value={periodMonths} onChange={(e) => setPeriodMonths(e.target.value)} placeholder="ex: 12" required />
-              )}
-            </div>
+            <Select value={measurementPreset} onValueChange={(v) => setMeasurementPreset(v as MeasurementPreset)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(MEASUREMENT_PRESET_LABELS) as MeasurementPreset[]).map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {MEASUREMENT_PRESET_LABELS[p]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2 pt-2 border-t border-gray-100">
@@ -257,17 +302,28 @@ function LevelDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (in
             <Label>Bônus associado (descrição livre)</Label>
             <Input value={bonusDescription} onChange={(e) => setBonusDescription(e.target.value)} placeholder="Opcional" />
           </div>
-          <div className="space-y-2">
-            <Label>Cor do selo</Label>
+
+          <div className="space-y-2 pt-2 border-t border-gray-100">
+            <Label>Cor do nível (tema/badge do dashboard ao atingir este nível)</Label>
             <Input type="color" value={badgeColorHex} onChange={(e) => setBadgeColorHex(e.target.value)} className="h-10 w-20" />
           </div>
+
+          <MedalPicker
+            medalIcon={medalIcon}
+            imageUrl={imageUrl}
+            badgeColorHex={badgeColorHex}
+            onChange={setMedalIcon}
+            onImageUploaded={setImageUrl}
+            uploadEndpoint={uploadEndpoint}
+            uploadKind="program-level-image"
+          />
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
             <Button type="submit" variant="brand" disabled={isSubmitting}>
-              Criar
+              {level ? "Salvar" : "Criar"}
             </Button>
           </DialogFooter>
         </form>

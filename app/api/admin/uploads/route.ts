@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     if (file.size > 5 * 1024 * 1024) throw new ApiError(400, "Arquivo excede 5MB")
 
     let url: string
-    if (kind === "program-cover" || kind === "promotion-photo") {
+    if (kind === "program-cover" || kind === "promotion-photo" || kind === "program-level-image") {
       url = await uploadImage("programs", file)
     } else if (kind === "program-pdf") {
       url = await uploadPublicDocument("programs", file)

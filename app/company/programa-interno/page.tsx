@@ -30,12 +30,15 @@ type InternalProgram = {
   pdfUrl: string | null
   videoUrl: string | null
   termsContent: string | null
-  measurementPeriod: "MONTHLY" | "SEMIANNUAL" | "ANNUAL"
+  measurementPeriod: "MONTHLY" | "BIMONTHLY" | "SEMIANNUAL" | "ANNUAL"
   basePoints: number
-  pointsOnTimeCheckIn: number
+  pointsPunctualEntry: number
   pointsChecklistOnTime: number
-  pointsChecklistLateOrRejected: number
-  pointsOccurrencePenalty: number
+  pointsChecklistLate: number
+  pointsChecklistFail: number
+  pointsAbsenceJustified: number
+  pointsAbsenceUnjustified: number
+  pointsOccurrence: number
   minEfficiencyPercent: number
   efficiencyBonusAmount: string | null
   levels: InternalLevelRule[]
@@ -96,10 +99,13 @@ function ConfigTab() {
   const [termsContent, setTermsContent] = useState("")
   const [measurementPeriod, setMeasurementPeriod] = useState("MONTHLY")
   const [basePoints, setBasePoints] = useState("100")
-  const [pointsOnTimeCheckIn, setPointsOnTimeCheckIn] = useState("5")
+  const [pointsPunctualEntry, setPointsPunctualEntry] = useState("5")
   const [pointsChecklistOnTime, setPointsChecklistOnTime] = useState("5")
-  const [pointsChecklistLateOrRejected, setPointsChecklistLateOrRejected] = useState("-3")
-  const [pointsOccurrencePenalty, setPointsOccurrencePenalty] = useState("-10")
+  const [pointsChecklistLate, setPointsChecklistLate] = useState("-3")
+  const [pointsChecklistFail, setPointsChecklistFail] = useState("-5")
+  const [pointsAbsenceJustified, setPointsAbsenceJustified] = useState("0")
+  const [pointsAbsenceUnjustified, setPointsAbsenceUnjustified] = useState("-15")
+  const [pointsOccurrence, setPointsOccurrence] = useState("-10")
   const [minEfficiencyPercent, setMinEfficiencyPercent] = useState("90")
   const [efficiencyBonusAmount, setEfficiencyBonusAmount] = useState("")
   const [videoUrl, setVideoUrl] = useState("")
@@ -116,10 +122,13 @@ function ConfigTab() {
           setTermsContent(p.termsContent ?? "")
           setMeasurementPeriod(p.measurementPeriod)
           setBasePoints(String(p.basePoints))
-          setPointsOnTimeCheckIn(String(p.pointsOnTimeCheckIn))
+          setPointsPunctualEntry(String(p.pointsPunctualEntry))
           setPointsChecklistOnTime(String(p.pointsChecklistOnTime))
-          setPointsChecklistLateOrRejected(String(p.pointsChecklistLateOrRejected))
-          setPointsOccurrencePenalty(String(p.pointsOccurrencePenalty))
+          setPointsChecklistLate(String(p.pointsChecklistLate))
+          setPointsChecklistFail(String(p.pointsChecklistFail))
+          setPointsAbsenceJustified(String(p.pointsAbsenceJustified))
+          setPointsAbsenceUnjustified(String(p.pointsAbsenceUnjustified))
+          setPointsOccurrence(String(p.pointsOccurrence))
           setMinEfficiencyPercent(String(p.minEfficiencyPercent))
           setEfficiencyBonusAmount(p.efficiencyBonusAmount ?? "")
           setVideoUrl(p.videoUrl ?? "")
@@ -144,10 +153,13 @@ function ConfigTab() {
       body.append("termsContent", termsContent)
       body.append("measurementPeriod", measurementPeriod)
       body.append("basePoints", basePoints)
-      body.append("pointsOnTimeCheckIn", pointsOnTimeCheckIn)
+      body.append("pointsPunctualEntry", pointsPunctualEntry)
       body.append("pointsChecklistOnTime", pointsChecklistOnTime)
-      body.append("pointsChecklistLateOrRejected", pointsChecklistLateOrRejected)
-      body.append("pointsOccurrencePenalty", pointsOccurrencePenalty)
+      body.append("pointsChecklistLate", pointsChecklistLate)
+      body.append("pointsChecklistFail", pointsChecklistFail)
+      body.append("pointsAbsenceJustified", pointsAbsenceJustified)
+      body.append("pointsAbsenceUnjustified", pointsAbsenceUnjustified)
+      body.append("pointsOccurrence", pointsOccurrence)
       body.append("minEfficiencyPercent", minEfficiencyPercent)
       if (efficiencyBonusAmount) body.append("efficiencyBonusAmount", efficiencyBonusAmount)
       body.append("videoUrl", videoUrl)
@@ -229,6 +241,7 @@ function ConfigTab() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="MONTHLY">Mensal</SelectItem>
+              <SelectItem value="BIMONTHLY">Bimestral</SelectItem>
               <SelectItem value="SEMIANNUAL">Semestral</SelectItem>
               <SelectItem value="ANNUAL">Anual</SelectItem>
             </SelectContent>
@@ -236,23 +249,35 @@ function ConfigTab() {
         </div>
 
         <div className="pt-2 border-t border-gray-100">
-          <h4 className="font-semibold text-[#3E2415] text-sm mb-3">Regras de Pontuação (XP)</h4>
+          <h4 className="font-semibold text-[#3E2415] text-sm mb-3">Regras Padrão de Pontuação Automática</h4>
           <div className="grid sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Entrada pontual no GPS</Label>
-              <Input type="number" value={pointsOnTimeCheckIn} onChange={(e) => setPointsOnTimeCheckIn(e.target.value)} />
+              <Input type="number" value={pointsPunctualEntry} onChange={(e) => setPointsPunctualEntry(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Checklist cumprido no prazo</Label>
               <Input type="number" value={pointsChecklistOnTime} onChange={(e) => setPointsChecklistOnTime(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Checklist em atraso/reprovado</Label>
-              <Input type="number" value={pointsChecklistLateOrRejected} onChange={(e) => setPointsChecklistLateOrRejected(e.target.value)} />
+              <Label>Checklist atrasado</Label>
+              <Input type="number" value={pointsChecklistLate} onChange={(e) => setPointsChecklistLate(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Ocorrência/advertência</Label>
-              <Input type="number" value={pointsOccurrencePenalty} onChange={(e) => setPointsOccurrencePenalty(e.target.value)} />
+              <Label>Checklist incompleto/reprovado</Label>
+              <Input type="number" value={pointsChecklistFail} onChange={(e) => setPointsChecklistFail(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Falta com atestado</Label>
+              <Input type="number" value={pointsAbsenceJustified} onChange={(e) => setPointsAbsenceJustified(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Falta sem atestado</Label>
+              <Input type="number" value={pointsAbsenceUnjustified} onChange={(e) => setPointsAbsenceUnjustified(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Advertência/ocorrência</Label>
+              <Input type="number" value={pointsOccurrence} onChange={(e) => setPointsOccurrence(e.target.value)} />
             </div>
           </div>
         </div>
@@ -320,6 +345,11 @@ function LevelsSection() {
     reload()
   }
 
+  const handleUpdate = async (level: InternalLevelRule, input: InternalLevelRuleInput) => {
+    await adminFetch(`/api/company/gamification/levels/${level.id}`, { method: "PATCH", body: JSON.stringify(input) })
+    reload()
+  }
+
   const handleDelete = async (level: InternalLevelRule) => {
     if (!confirm(`Excluir o cargo "${level.name}"?`)) return
     await adminFetch(`/api/company/gamification/levels/${level.id}`, { method: "DELETE" }).catch((e) =>
@@ -333,6 +363,7 @@ function LevelsSection() {
       levels={levels}
       isLoading={isLoading}
       onCreate={handleCreate}
+      onUpdate={handleUpdate}
       onDelete={handleDelete}
       uploadEndpoint="/api/company/uploads"
     />
