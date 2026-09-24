@@ -22,6 +22,7 @@ import {
   Gift,
   MessagesSquare,
   UserCheck,
+  UserCircle2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Role } from "@prisma/client"
@@ -62,9 +63,9 @@ const NAV_ITEMS: NavItem[] = [
     show: (u) => canOperateFrontDesk(u.role),
     pulseWhenChecklistPending: true,
   },
-  { href: "/company/pdv", label: "Scanner PDV", shortLabel: "Scanner", icon: ScanLine, show: (u) => canOperateFrontDesk(u.role) },
+  { href: "/company/scanner", label: "Scanner PDV", shortLabel: "Scanner", icon: ScanLine, show: (u) => canOperateFrontDesk(u.role) },
   { href: "/company/avaliacoes", label: "Avaliação Diária", shortLabel: "Avaliação", icon: ClipboardCheck, show: () => true },
-  { href: "/company/crescimento", label: "Crescimento", icon: Trophy, show: () => true },
+  { href: "/company/crescimento", label: "Programa & Crescimento", shortLabel: "Crescimento", icon: Trophy, show: () => true },
   {
     href: "/company/ocorrencias",
     label: "Ocorrências",
@@ -73,13 +74,13 @@ const NAV_ITEMS: NavItem[] = [
   },
   { href: "/company/fechamento", label: "Fechamento", icon: FileClock, show: (u) => canManageDailyOperations(u.role) },
   { href: "/company/metas", label: "Metas", icon: Target, show: () => true },
-  { href: "/company/programa-interno", label: "Programa Interno", shortLabel: "Interno", icon: Award, show: (u) => canManageDailyOperations(u.role) },
   { href: "/company/setores", label: "Setores", icon: Users2, show: (u) => canManageDailyOperations(u.role) },
   { href: "/company/aprovacoes", label: "Aprovações Pendentes", shortLabel: "Aprovações", icon: UserCheck, show: (u) => u.role === "COMPANY_MASTER" },
   { href: "/company/programas", label: "Programa de Parceria", shortLabel: "Parceria", icon: Award, show: (u) => canConfigureCompany(u.role) },
   { href: "/company/promocoes", label: "Promoções", icon: Gift, show: (u) => canConfigureCompany(u.role) },
   { href: "/company/comunicacao", label: "Comunicação", icon: MessagesSquare, show: () => true },
   { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: (u) => canManageFinance(u.role) },
+  { href: "/company/perfil", label: "Meu Perfil", icon: UserCircle2, show: () => true },
 ]
 
 export function CompanyShell({
@@ -187,7 +188,7 @@ export function CompanyShell({
 
         {/* Mobile top bar + section tabs */}
         <div className="lg:hidden sticky top-0 z-40 bg-white border-b border-[#E8E3DC]">
-          <div className="flex items-center justify-between gap-3 px-4 py-2">
+          <div className="flex items-center justify-between gap-3 px-4 py-2 pt-[calc(0.5rem+var(--safe-top))]">
             <div className="flex items-center gap-2 min-w-0">
               <img src="/brand/tribuss-icone-app.png" alt="Tribuss" className="w-8 h-8 rounded-lg object-contain flex-shrink-0" />
               <span className="font-heading text-sm font-semibold text-[#3E2415] truncate">{user.companyName}</span>
