@@ -25,6 +25,15 @@ enum Status {
   INACTIVE
 }
 
+// Solicitação de exclusão/arquivamento de conta feita pelo próprio usuário
+// (botão obrigatório em /partner/perfil e /company/perfil — regra Apple App
+// Store Guideline 5.1.1(v) + LGPD). Fica pendente até um Admin revisar e
+// desativar a conta manualmente (ver notifyPlatformAdmins em lib/notifications.ts).
+enum AccountDeletionStatus {
+  NONE
+  ACCOUNT_DELETION_REQUESTED
+}
+
 enum CommissionType {
   FIXED
   VARIABLE
@@ -97,6 +106,20 @@ enum OccurrenceType {
   BANCO_HORAS // Lançamento no banco de horas
   DISPENSADO // Desligamento — exige attachmentUrl
   FIXADO // Efetivação/fixação do colaborador
+  CUSTOM // Tipo configurável pela empresa — ver Occurrence.customTypeId / OccurrenceTypeConfig
+}
+
+// Natureza do impacto de um tipo de ocorrência configurável pela empresa (ver OccurrenceTypeConfig).
+enum OccurrenceImpactKind {
+  POINTS // Ganho ou perda de Pontos (Pts) no Programa Interno
+  SALARY // Desconto ou bônus no Salário/Taxa de Serviço
+  HOURS_BANK // Abatimento ou crédito no Banco de Horas
+  INFORMATIONAL // Sem impacto financeiro ou de pontos — só registro
+}
+
+enum OccurrenceSalaryImpactType {
+  DISCOUNT
+  BONUS
 }
 
 enum OccurrencePaymentMethod {
@@ -219,6 +242,22 @@ enum PromotionOfferType {
   CASH_CREDIT // Crédito em dinheiro na comanda (ver Promotion.creditAmount)
 }
 
+// Público da promoção — EXTERNAL aparece para todos os Parceiros da plataforma
+// (comportamento histórico); INTERNAL fica reservada para o Colaborador
+// oferecer diretamente ao cliente no balcão (ex: Vale Retorno), sem depender
+// de indicação de Parceiro.
+enum PromotionAudience {
+  EXTERNAL
+  INTERNAL
+}
+
+enum PromotionVoucherStatus {
+  PENDING
+  REDEEMED
+  EXPIRED
+  CANCELED
+}
+
 enum AffiliatePayoutType {
   SIGNUP_BONUS // pago quando um parceiro indicado é aprovado
   MILESTONE_BONUS // pago quando o parceiro indicado atinge milestoneClientCount clientes convertidos (ou um AffiliateMilestone)
@@ -258,6 +297,9 @@ enum NotificationType {
   PROGRAM_RULES_CHANGED // regras/comissão do programa mudaram — ver ProgramChangeLog
   PROGRAM_MEMBERSHIP_ENDED // saída voluntária, desligamento por inatividade ou encerramento do programa
   PARTNER_PERFORMANCE_MONTHLY // resumo mensal consolidado + alerta de risco de inatividade (ver lib/partner-lifecycle.ts)
+  ACCOUNT_DELETION_REQUESTED // usuário pediu exclusão da conta — avisa todos os Admins para análise
+  TIMECLOCK_ADJUSTED // Master corrigiu uma batida de ponto — colaborador precisa dar ciência
+  PROMOTION_OFFERED // Master aplicou uma promoção de cargo — colaborador precisa aceitar
   GENERIC
 }
 
@@ -443,6 +485,9 @@ model Company {
   goals           Goal[]
   ratings         CompanyRating[]
 
+  occurrenceTypeConfigs OccurrenceTypeConfig[]
+  promotionVouchers     PromotionVoucher[]
+
   @@index([affiliateId])
   @@index([status])
 }
@@ -470,17 +515,20 @@ model License {
 }
 
 model User {
-  id           String    @id // == Supabase auth.users.id (uuid), sem @default
-  email        String    @unique
-  name         String
-  phone        String? // WhatsApp/telefone de contato — capturado no cadastro de staff (ex: Master da empresa)
-  role         Role
-  status       Status    @default(ACTIVE)
-  companyId    String? // null quando role = ADMIN ou PARTNER (parceiro não pertence a uma única empresa)
-  company      Company?  @relation(fields: [companyId], references: [id])
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  lastActiveAt DateTime?
+  id                         String                @id // == Supabase auth.users.id (uuid), sem @default
+  email                      String                @unique
+  name                       String
+  phone                      String? // WhatsApp/telefone de contato — capturado no cadastro de staff (ex: Master da empresa)
+  role                       Role
+  status                     Status                @default(ACTIVE)
+  accountDeletionStatus      AccountDeletionStatus @default(NONE)
+  accountDeletionRequestedAt DateTime?
+  accountDeletionReason      String?               @db.Text
+  companyId                  String? // null quando role = ADMIN ou PARTNER (parceiro não pertence a uma única empresa)
+  company                    Company?              @relation(fields: [companyId], references: [id])
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+  lastActiveAt               DateTime?
 
   partnerProfile  PartnerProfile?
   employeeProfile EmployeeProfile?
@@ -511,10 +559,13 @@ model User {
 
   postsAuthored              Post[]                   @relation("PostAuthor")
   postsReviewed              Post[]                   @relation("PostReviewedBy")
+  postsHidden                Post[]                   @relation("PostHiddenBy")
   postLikes                  PostLike[]               @relation("PostLikeUser")
   postComments               PostComment[]            @relation("PostCommentAuthor")
+  postReactions              PostReaction[]           @relation("PostReactionUser")
   occurrencesReceived        Occurrence[]             @relation("OccurrenceEmployee")
   occurrencesCreated         Occurrence[]             @relation("OccurrenceCreatedBy")
+  occurrenceTypeConfigsMade  OccurrenceTypeConfig[]   @relation("OccurrenceTypeConfigCreatedBy")
   dailyEvaluationsReceived   DailyEvaluation[]        @relation("DailyEvaluationEmployee")
   dailyEvaluationsGiven      DailyEvaluation[]        @relation("DailyEvaluationEvaluator")
   xpEntries                  XpEntry[]                @relation("XpEntryEmployee")
@@ -523,6 +574,9 @@ model User {
   timeJustifications         TimeEntryJustification[] @relation("TimeJustificationEmployee")
   timeJustificationsReviewed TimeEntryJustification[] @relation("TimeJustificationReviewedBy")
   shiftClosingsClosed        ShiftClosing[]           @relation("ShiftClosingClosedBy")
+  timeEntriesAdjusted        TimeEntry[]              @relation("TimeEntryAdjustedBy")
+  promotionVouchersIssued    PromotionVoucher[]       @relation("PromotionVoucherIssuedBy")
+  promotionVouchersRedeemed  PromotionVoucher[]       @relation("PromotionVoucherRedeemedBy")
 
   employeeTermAcceptances EmployeeTermAcceptance[] @relation("EmployeeTermAcceptanceUser")
   partnerTermAcceptances  PartnerTermAcceptance[]  @relation("PartnerTermAcceptanceUser")
@@ -600,7 +654,14 @@ model EmployeeProfile {
   // xpPoints, iniciando um novo ciclo de pontuação (ver lib/gamification.ts).
   currentInternalLevelId    String?
   currentInternalLevel      InternalLevelRule? @relation(fields: [currentInternalLevelId], references: [id])
-  currentInternalLevelSince DateTime? // desde quando está no cargo atual — base do período de mensuração/rebaixamento
+  currentInternalLevelSince DateTime? // desde quando está no cargo atual — base do período de mensuração/rebaixamento E do tempo mínimo de permanência (InternalLevelRule.minTenureMonths)
+
+  // Promoção aplicada pelo Master (botão "Aplicar Promoção") mas ainda não
+  // confirmada pelo Colaborador (botão "Aceitar Promoção") — ver
+  // app/api/company/employees/[id]/promote e .../promotion/accept.
+  pendingPromotionLevelId   String?
+  pendingPromotionLevel     InternalLevelRule? @relation("PendingPromotion", fields: [pendingPromotionLevelId], references: [id])
+  pendingPromotionOfferedAt DateTime?
 
   // Permite que este colaborador registre Ocorrências em modo CREATE_ONLY
   // (sem ver histórico, editar ou excluir) — concedido pelo Master/Gerente.
@@ -609,14 +670,15 @@ model EmployeeProfile {
 
   // Setor, turno e janela de trabalho — usados para calcular o Banco de Horas
   // a cada batida de ponto fora do horário previsto (ver app/api/company/timeclock).
-  sectorId           String?
-  sector             Sector?    @relation(fields: [sectorId], references: [id])
-  shiftType          ShiftType?
-  workStartTime      String? // "HH:mm"
-  workEndTime        String?
-  breakStartTime     String?
-  breakEndTime       String?
-  bankOfHoursMinutes Int        @default(0) // positivo = hora extra acumulada; negativo = déficit
+  sectorId                   String?
+  sector                     Sector?    @relation(fields: [sectorId], references: [id])
+  shiftType                  ShiftType?
+  workStartTime              String? // "HH:mm"
+  workEndTime                String?
+  breakStartTime             String?
+  breakEndTime               String?
+  bankOfHoursMinutes         Int        @default(0) // positivo = hora extra acumulada; negativo = déficit
+  dailyBreakAllowanceMinutes Int        @default(60) // Tempo Total de Pausa Diária Permitida — pode ser usado picado ou de uma vez (ver TimeEntry BREAK_START/BREAK_END)
 
   // Registro completo de RH — preenchimento opcional, feito por etapas.
   isProfileComplete Boolean @default(false)
@@ -858,6 +920,7 @@ model Promotion {
   description           String             @db.Text
   bannerUrl             String?
   offerType             PromotionOfferType @default(DISCOUNT)
+  audience              PromotionAudience  @default(EXTERNAL) // EXTERNAL = parceiros da plataforma; INTERNAL = só o Colaborador oferece no balcão (ex: Vale Retorno)
   originalPrice         Decimal?           @db.Decimal(10, 2) // "Valor Real" (de-para do desconto)
   discountedPrice       Decimal?           @db.Decimal(10, 2) // "Valor Promocional" — alternativa a discountPercentage
   discountPercentage    Decimal?           @db.Decimal(5, 2) // "% de Desconto" — alternativa a discountedPrice
@@ -874,6 +937,7 @@ model Promotion {
 
   units       PromotionUnit[] // sem linhas = todas as unidades
   commissions Commission[]
+  vouchers    PromotionVoucher[]
 
   @@index([companyId])
 }
@@ -885,6 +949,44 @@ model PromotionUnit {
   unit        Unit      @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
   @@id([promotionId, unitId])
+}
+
+// "Vale Retorno" — Colaborador emite um QR Code de uma Promotion (normalmente
+// audience=INTERNAL) para um cliente que já esteve na unidade voltar em outra
+// data, enviado via WhatsApp/E-mail (ver lib/promotion-share.ts). O `code` vai
+// dentro do QR e é o que o Scanner PDV lê para dar baixa (ver
+// app/api/company/scanner/redeem) — status muda para REDEEMED e fica ligado à
+// Commission gerada no resgate.
+model PromotionVoucher {
+  id          String                 @id @default(cuid())
+  companyId   String
+  company     Company                @relation(fields: [companyId], references: [id])
+  promotionId String
+  promotion   Promotion              @relation(fields: [promotionId], references: [id])
+  code        String                 @unique @default(cuid())
+  issuedById  String
+  issuedBy    User                   @relation("PromotionVoucherIssuedBy", fields: [issuedById], references: [id])
+  clientName  String?
+  clientPhone String?
+  clientEmail String?
+  channel     String? // "whatsapp" | "email" | "manual"
+  status      PromotionVoucherStatus @default(PENDING)
+  expiresAt   DateTime?
+
+  // Baixa do voucher — não gera Commission (não é indicação de Parceiro; o
+  // próprio Colaborador ofertou direto ao cliente), só registra o resgate.
+  redeemedById              String?
+  redeemedBy                User?     @relation("PromotionVoucherRedeemedBy", fields: [redeemedById], references: [id])
+  redeemedAmount            Decimal?  @db.Decimal(10, 2)
+  redeemedBillJustification String?
+  redeemedAttachmentUrl     String?
+  redeemedAt                DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+  @@index([promotionId])
+  @@index([status])
 }
 
 model Referral {
@@ -1040,6 +1142,15 @@ model TimeEntry {
   latitude  Decimal       @db.Decimal(9, 6)
   longitude Decimal       @db.Decimal(9, 6)
   createdAt DateTime      @default(now())
+
+  // Correção manual pelo Master (horário lançado errado) — o colaborador é
+  // notificado (NotificationType.TIMECLOCK_ADJUSTED) e precisa dar ciência
+  // clicando "Ciente" (ver Notification.readAt, reaproveitado como ciência).
+  isManagerAdjusted Boolean   @default(false)
+  adjustedById      String?
+  adjustedBy        User?     @relation("TimeEntryAdjustedBy", fields: [adjustedById], references: [id])
+  adjustmentNote    String?
+  adjustedAt        DateTime?
 
   @@index([userId])
   @@index([companyId])
@@ -1362,6 +1473,7 @@ model Post {
   title           String?
   content         String     @db.Text
   imageUrl        String?
+  videoUrl        String? // link externo (YouTube/Vimeo) — mutuamente exclusivo com imageUrl na prática, mas não travado no schema
   status          PostStatus @default(PENDING_APPROVAL)
   reviewedById    String?
   reviewedBy      User?      @relation("PostReviewedBy", fields: [reviewedById], references: [id])
@@ -1371,11 +1483,34 @@ model Post {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  likes    PostLike[]
-  comments PostComment[]
+  // Moderação — Master e o próprio Autor podem ocultar (reversível, some do
+  // mural mas fica no banco) ou excluir (hard delete, ver DELETE /api/company/posts/[id]).
+  isHidden   Boolean   @default(false)
+  hiddenById String?
+  hiddenBy   User?     @relation("PostHiddenBy", fields: [hiddenById], references: [id])
+  hiddenAt   DateTime?
+
+  likes     PostLike[]
+  comments  PostComment[]
+  reactions PostReaction[]
 
   @@index([companyId])
   @@index([status])
+}
+
+// Reação em emoji (distinta do Curtir/PostLike) — 1 emoji por usuário por
+// post; trocar a reação faz DELETE + POST (ver app/api/company/posts/[id]/reactions).
+model PostReaction {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation("PostReactionUser", fields: [userId], references: [id])
+  emoji     String
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([postId])
 }
 
 model PostLike {
@@ -1414,6 +1549,9 @@ model Occurrence {
   employee             User?                    @relation("OccurrenceEmployee", fields: [employeeId], references: [id])
   employeeNameFreeText String? // usado quando employeeId é nulo (temporário/diarista)
   type                 OccurrenceType
+  // Preenchido só quando type = CUSTOM — tipo configurável pela empresa (ver OccurrenceTypeConfig)
+  customTypeId         String?
+  customType           OccurrenceTypeConfig?    @relation(fields: [customTypeId], references: [id])
   date                 DateTime                 @default(now())
   value                Decimal?                 @db.Decimal(10, 2) // valor unitário (R$ ou equivalente em horas)
   quantity             Decimal                  @default(1) @db.Decimal(6, 2) // multiplicador (ex: dias, horas)
@@ -1431,6 +1569,38 @@ model Occurrence {
   @@index([employeeId])
   @@index([type])
   @@index([date])
+}
+
+// Tipo de ocorrência configurável pela empresa (Gerente/Master) — complementa
+// os tipos fixos do enum OccurrenceType. Registrado com type=CUSTOM e
+// customTypeId apontando para cá (ver app/api/company/occurrences). `kind`
+// decide qual campo de impacto é aplicado no lançamento:
+//   POINTS        -> pointsImpact (via awardXp, reason MANUAL_ADJUSTMENT)
+//   SALARY        -> salaryImpactType + salaryImpactValue (mesmo tratamento de value/quantity/total já usado nos tipos fixos)
+//   HOURS_BANK    -> hoursBankImpactMinutes * quantity, aplicado em EmployeeProfile.bankOfHoursMinutes
+//   INFORMATIONAL -> nenhum efeito, só fica no histórico
+model OccurrenceTypeConfig {
+  id        String               @id @default(cuid())
+  companyId String
+  company   Company              @relation(fields: [companyId], references: [id])
+  name      String
+  kind      OccurrenceImpactKind
+
+  pointsImpact           Int?
+  salaryImpactType       OccurrenceSalaryImpactType?
+  salaryImpactValue      Decimal?                    @db.Decimal(10, 2)
+  hoursBankImpactMinutes Int?
+
+  active      Boolean  @default(true)
+  createdById String
+  createdBy   User     @relation("OccurrenceTypeConfigCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  occurrences Occurrence[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
 }
 
 // Nota diária da Gerente para cada Colaborador — 1 por dia/pessoa. Justifica-
@@ -1484,6 +1654,12 @@ model InternalProgram {
   pointsAbsenceJustified   Int @default(0) // FALTA abonada por ATESTADO em até 24h
   pointsAbsenceUnjustified Int @default(-15) // FALTA sem ATESTADO
   pointsOccurrence         Int @default(-10) // ADVERTENCIA/demais ocorrências
+
+  // Tolerância do Ponto Digital — margem (min) antes/depois do horário
+  // previsto que NÃO gera hora extra nem penalidade de atraso; acima dela,
+  // desconta pointsLatePenalty automaticamente (ver app/api/company/timeclock).
+  lateToleranceMinutes Int @default(15)
+  pointsLatePenalty    Int @default(-5)
 
   // Bônus de eficiência: colaborador com % de checklist no prazo >= minEfficiencyPercent
   // no período de medição recebe efficiencyBonusAmount (calculado em lib/gamification.ts)
@@ -1547,10 +1723,17 @@ model InternalLevelRule {
   measurementUnit  MeasurementUnit @default(ALL_TIME)
   measurementValue Int? // combinado com measurementUnit (DAYS ou MONTHS)
 
+  // Tempo mínimo (meses) que o colaborador precisa permanecer neste cargo,
+  // contado a partir de EmployeeProfile.currentInternalLevelSince, antes de
+  // ficar elegível para a próxima promoção — combinado com pointsRequired do
+  // PRÓXIMO nível (ver app/api/company/gamification/promotion-eligible).
+  minTenureMonths Int @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  employees EmployeeProfile[]
+  employees           EmployeeProfile[]
+  pendingPromotionFor EmployeeProfile[] @relation("PendingPromotion")
 
   @@unique([internalProgramId, order])
   @@index([internalProgramId])
