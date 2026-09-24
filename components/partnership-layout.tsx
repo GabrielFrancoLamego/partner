@@ -150,8 +150,8 @@ export function PartnershipLayout() {
       />
 
       {/* Main Content */}
-      <div className="lg:ml-[260px] pb-20 lg:pb-0">
-        <div className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-gray-100 bg-white/90 px-4 py-2 backdrop-blur lg:px-8">
+      <div className="lg:ml-[260px] pb-[calc(5rem+var(--safe-bottom))] lg:pb-0">
+        <div className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-gray-100 bg-white/90 px-4 py-2 pt-[calc(0.5rem+var(--safe-top))] backdrop-blur lg:px-8">
           <p className="min-w-0 truncate text-xs text-gray-500">
             Logado como <span className="font-semibold text-[#3E2415]">{currentUser.name}</span>
           </p>

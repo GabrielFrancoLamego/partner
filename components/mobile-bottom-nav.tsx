@@ -48,7 +48,7 @@ export function MobileBottomNav({ activeMenu, setActiveMenu, isLoggedIn, userTyp
 
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 shadow-lg">
-      <div className="flex items-center gap-2 px-4 py-3 overflow-x-auto scrollbar-hide">
+      <div className="flex items-center gap-2 px-4 py-3 pb-[calc(0.75rem+var(--safe-bottom))] overflow-x-auto scrollbar-hide">
         {filteredMenuItems.map((item) => {
           const Icon = item.icon
           const isActive = activeMenu === item.id

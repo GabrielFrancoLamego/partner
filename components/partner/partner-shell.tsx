@@ -84,7 +84,7 @@ export function PartnerShell({ user, children }: { user: PartnerUser; children: 
         </aside>
 
         <div className="lg:hidden sticky top-0 z-40 bg-white border-b border-[#E8E3DC]">
-          <div className="flex items-center justify-between gap-3 px-4 py-2">
+          <div className="flex items-center justify-between gap-3 px-4 py-2 pt-[calc(0.5rem+var(--safe-top))]">
             <div className="flex items-center gap-2">
               <img src="/brand/tribuss-icone-app.png" alt="Tribuss" className="w-8 h-8 rounded-lg object-contain" />
               <span className="font-heading text-sm font-semibold text-[#3E2415]">Portal do Parceiro</span>

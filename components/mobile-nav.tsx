@@ -31,7 +31,7 @@ export function MobileNav({ className }: MobileNavProps) {
         className
       )}
     >
-      <div className="flex gap-2 overflow-x-auto px-4 py-3 scrollbar-hide">
+      <div className="flex gap-2 overflow-x-auto px-4 py-3 pb-[calc(0.75rem+var(--safe-bottom))] scrollbar-hide">
         {navItems.map((item, index) => (
           <button
             key={item.label}

@@ -142,3 +142,69 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* ---------------------------------------------------------------------- */
+/* PWA / mobile-store readiness (Tribuss)                                  */
+/* ---------------------------------------------------------------------- */
+
+/* Safe area insets — mantém conteúdo fora do notch/Dynamic Island/barra de
+   gestos do iOS quando instalado como app standalone (viewport-fit=cover em
+   app/layout.tsx é o que habilita esses env() a valerem algo). Resolvem para
+   0px em qualquer device sem safe area, então são no-ops em desktop/Android
+   comum — seguro aplicar sempre. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+.safe-top {
+  padding-top: var(--safe-top);
+}
+.safe-bottom {
+  padding-bottom: var(--safe-bottom);
+}
+.safe-left {
+  padding-left: var(--safe-left);
+}
+.safe-right {
+  padding-right: var(--safe-right);
+}
+.safe-x {
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+/* Evita o double-tap-to-zoom acidental do iOS/Android em qualquer elemento
+   interativo, sem desabilitar o pinch-to-zoom (isso último prejudicaria
+   acessibilidade e vai contra a própria HIG da Apple). */
+a,
+button,
+input,
+select,
+textarea,
+[role='button'],
+[role='link'],
+[role='tab'],
+[role='menuitem'] {
+  touch-action: manipulation;
+}
+
+/* Alvo de toque mínimo de 44x44px (Apple HIG / Material Design) — só em
+   dispositivos de ponteiro grosso (touch). Em mouse/desktop (pointer: fine)
+   a UI compacta atual (botões de 32-36px em tabelas, toolbars do admin etc.)
+   fica exatamente como está: sem isso, forçar 44px em telas densas de
+   desktop quebraria vários layouts existentes sem necessidade, já que o
+   requisito de tap target é especificamente sobre toque. */
+@media (pointer: coarse) {
+  button,
+  a[role='button'],
+  input[type='checkbox'],
+  input[type='radio'],
+  [role='button'],
+  [role='tab'] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

@@ -10,7 +10,7 @@ interface HeaderProps {
 
 export function Header({ onMenuToggle }: HeaderProps) {
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-card/60 lg:px-8">
+    <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-border bg-card/80 px-4 pt-[var(--safe-top)] backdrop-blur supports-[backdrop-filter]:bg-card/60 lg:px-8">
       {/* Mobile Menu Button */}
       <Button variant="ghost" size="icon" onClick={onMenuToggle} className="lg:hidden">
         <Menu className="h-5 w-5" />
