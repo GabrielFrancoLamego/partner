@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, ExternalLink, ShieldAlert, Trash2, Pencil, Users, CheckCircle2 } from "lucide-react"
+import { Plus, ExternalLink, ShieldAlert, Trash2, Pencil, Users, CheckCircle2, Settings2, Filter } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -30,6 +30,7 @@ const TYPE_LABELS: Record<string, string> = {
   BANCO_HORAS: "Banco de horas",
   DISPENSADO: "Desligamento",
   FIXADO: "Efetivação",
+  CUSTOM: "Personalizado",
 }
 const REQUIRES_ATTACHMENT = new Set(["ADVERTENCIA", "ATESTADO", "DISPENSADO"])
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -38,11 +39,28 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   TRABALHO: "Trabalho",
   FOLGA_ADICIONAL: "Folga adicional",
 }
+const IMPACT_KIND_LABELS: Record<string, string> = {
+  POINTS: "Ganho/Perda de Pts",
+  SALARY: "Desconto/Bônus no Salário",
+  HOURS_BANK: "Banco de Horas",
+  INFORMATIONAL: "Informativo (sem impacto)",
+}
 
 type Employee = { id: string; name: string; email?: string; canRegisterOccurrences?: boolean; monthlySalary?: string | null }
+type CustomOccurrenceType = {
+  id: string
+  name: string
+  kind: "POINTS" | "SALARY" | "HOURS_BANK" | "INFORMATIONAL"
+  pointsImpact: number | null
+  salaryImpactType: "DISCOUNT" | "BONUS" | null
+  salaryImpactValue: string | null
+  hoursBankImpactMinutes: number | null
+  active: boolean
+}
 type Occurrence = {
   id: string
   type: string
+  customType: { id: string; name: string; kind: string } | null
   date: string
   value: string | null
   quantity: string
@@ -55,6 +73,11 @@ type Occurrence = {
   employee: { id: string; name: string } | null
   employeeNameFreeText: string | null
   createdBy: { id: string; name: string }
+}
+
+function occurrenceTypeLabel(o: Pick<Occurrence, "type" | "customType">) {
+  if (o.type === "CUSTOM") return o.customType?.name ?? "Personalizado"
+  return TYPE_LABELS[o.type] ?? o.type
 }
 
 const currency = (value: string | number | null) =>
@@ -85,10 +108,12 @@ export default function CompanyOcorrenciasPage() {
 /** Visão CREATE_ONLY: apenas o formulário de inclusão, sem histórico, edição ou exclusão. */
 function QuickInsertOnly() {
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [customTypes, setCustomTypes] = useState<CustomOccurrenceType[]>([])
   const [successCount, setSuccessCount] = useState(0)
 
   useEffect(() => {
     adminFetch<Employee[]>("/api/company/employees").then(setEmployees)
+    adminFetch<CustomOccurrenceType[]>("/api/company/occurrence-types").then(setCustomTypes)
   }, [])
 
   return (
@@ -99,32 +124,43 @@ function QuickInsertOnly() {
           {successCount} ocorrência(s) registrada(s) nesta sessão.
         </div>
       )}
-      <OccurrenceForm employees={employees} onCreated={() => setSuccessCount((c) => c + 1)} />
+      <OccurrenceForm employees={employees} customTypes={customTypes} onCreated={() => setSuccessCount((c) => c + 1)} />
     </div>
   )
 }
 
 function ManagerOccurrences() {
   const [month, setMonth] = useState(monthNow())
+  const [employeeFilter, setEmployeeFilter] = useState("")
+  const [typeFilter, setTypeFilter] = useState("")
   const [occurrences, setOccurrences] = useState<Occurrence[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [customTypes, setCustomTypes] = useState<CustomOccurrenceType[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editing, setEditing] = useState<Occurrence | null>(null)
 
   const reload = () => {
     setIsLoading(true)
-    adminFetch<Occurrence[]>(`/api/company/occurrences?month=${month}`)
+    const params = new URLSearchParams({ month })
+    if (employeeFilter) params.set("employeeId", employeeFilter)
+    if (typeFilter) params.set("type", typeFilter)
+    adminFetch<Occurrence[]>(`/api/company/occurrences?${params.toString()}`)
       .then(setOccurrences)
       .finally(() => setIsLoading(false))
   }
   const reloadEmployees = () => adminFetch<Employee[]>("/api/company/employees").then(setEmployees)
+  const reloadCustomTypes = () => adminFetch<CustomOccurrenceType[]>("/api/company/occurrence-types").then(setCustomTypes)
 
   useEffect(() => {
     reload()
-    reloadEmployees()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month])
+  }, [month, employeeFilter, typeFilter])
+
+  useEffect(() => {
+    reloadEmployees()
+    reloadCustomTypes()
+  }, [])
 
   const handleDelete = async (o: Occurrence) => {
     if (!confirm("Excluir esta ocorrência?")) return
@@ -143,21 +179,59 @@ function ManagerOccurrences() {
   }
 
   const totalByType = occurrences.reduce<Record<string, number>>((acc, o) => {
-    acc[o.type] = (acc[o.type] ?? 0) + 1
+    const label = occurrenceTypeLabel(o)
+    acc[label] = (acc[label] ?? 0) + 1
     return acc
   }, {})
   const totalCost = occurrences.reduce((sum, o) => (o.discountWaived ? sum : sum + Math.abs(Number(o.total ?? 0))), 0)
 
   return (
     <Tabs defaultValue="occurrences">
-      <TabsList>
+      <TabsList className="flex-wrap h-auto">
         <TabsTrigger value="occurrences">Ocorrências</TabsTrigger>
+        <TabsTrigger value="types">Tipos de Ocorrência</TabsTrigger>
         <TabsTrigger value="access">Colaboradores Autorizados</TabsTrigger>
       </TabsList>
 
       <TabsContent value="occurrences" className="space-y-6 mt-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-40 bg-white" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-40 bg-white" />
+            <Select value={employeeFilter || "ALL"} onValueChange={(v) => setEmployeeFilter(v === "ALL" ? "" : v)}>
+              <SelectTrigger className="w-44 bg-white">
+                <Filter className="h-3.5 w-3.5 mr-1 text-gray-400" />
+                <SelectValue placeholder="Colaborador" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos os colaboradores</SelectItem>
+                {employees.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>
+                    {e.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={typeFilter || "ALL"} onValueChange={(v) => setTypeFilter(v === "ALL" ? "" : v)}>
+              <SelectTrigger className="w-44 bg-white">
+                <SelectValue placeholder="Tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos os tipos</SelectItem>
+                {Object.entries(TYPE_LABELS)
+                  .filter(([v]) => v !== "CUSTOM")
+                  .map(([v, label]) => (
+                    <SelectItem key={v} value={v}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                {customTypes.map((t) => (
+                  <SelectItem key={t.id} value={`CUSTOM:${t.id}`}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Button
             onClick={() => setIsCreateOpen(true)}
             className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90"
@@ -173,10 +247,10 @@ function ManagerOccurrences() {
           ) : (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
-                {Object.entries(totalByType).map(([type, count]) => (
-                  <div key={type} className="text-center p-2 rounded-lg bg-gray-50">
+                {Object.entries(totalByType).map(([label, count]) => (
+                  <div key={label} className="text-center p-2 rounded-lg bg-gray-50">
                     <p className="text-lg font-bold text-[#3E2415]">{count}</p>
-                    <p className="text-xs text-gray-500">{TYPE_LABELS[type] ?? type}</p>
+                    <p className="text-xs text-gray-500">{label}</p>
                   </div>
                 ))}
               </div>
@@ -201,7 +275,7 @@ function ManagerOccurrences() {
                   subtitle={new Date(o.date).toLocaleDateString("pt-BR")}
                   badges={<StatusBadge status={o.paymentStatus} />}
                   fields={[
-                    { label: "Tipo", value: TYPE_LABELS[o.type] ?? o.type },
+                    { label: "Tipo", value: occurrenceTypeLabel(o) },
                     { label: "Total", value: currency(o.total) },
                     { label: "Pagamento", value: o.paymentMethod ? PAYMENT_METHOD_LABELS[o.paymentMethod] : "—" },
                   ]}
@@ -244,7 +318,7 @@ function ManagerOccurrences() {
                       {!o.employee && <span className="ml-1 text-xs text-gray-400">(temp.)</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-600">
-                      {TYPE_LABELS[o.type] ?? o.type}
+                      {occurrenceTypeLabel(o)}
                       {o.discountWaived && <span className="ml-1 text-xs text-green-600">(abonada)</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{new Date(o.date).toLocaleDateString("pt-BR")}</td>
@@ -292,6 +366,10 @@ function ManagerOccurrences() {
         )}
       </TabsContent>
 
+      <TabsContent value="types" className="mt-4">
+        <OccurrenceTypesTab customTypes={customTypes} onChanged={reloadCustomTypes} />
+      </TabsContent>
+
       <TabsContent value="access" className="mt-4">
         <AuthorizedEmployeesTab employees={employees} onChanged={reloadEmployees} />
       </TabsContent>
@@ -304,6 +382,7 @@ function ManagerOccurrences() {
             </DialogHeader>
             <OccurrenceForm
               employees={employees}
+              customTypes={customTypes}
               onCreated={() => {
                 setIsCreateOpen(false)
                 reload()
@@ -327,11 +406,20 @@ function ManagerOccurrences() {
   )
 }
 
-function OccurrenceForm({ employees, onCreated }: { employees: Employee[]; onCreated: () => void }) {
+function OccurrenceForm({
+  employees,
+  customTypes,
+  onCreated,
+}: {
+  employees: Employee[]
+  customTypes: CustomOccurrenceType[]
+  onCreated: () => void
+}) {
   const [mode, setMode] = useState<"registered" | "temp">("registered")
   const [employeeId, setEmployeeId] = useState("")
   const [employeeNameFreeText, setEmployeeNameFreeText] = useState("")
   const [type, setType] = useState("VALE")
+  const [customTypeId, setCustomTypeId] = useState("")
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [value, setValue] = useState("")
   const [quantity, setQuantity] = useState("1")
@@ -359,12 +447,17 @@ function OccurrenceForm({ employees, onCreated }: { employees: Employee[]; onCre
       setError("Anexo (foto/documento) é obrigatório para este tipo")
       return
     }
+    if (type === "CUSTOM" && !customTypeId) {
+      setError("Selecione o tipo de ocorrência personalizado")
+      return
+    }
     setIsSubmitting(true)
     try {
       const body = new FormData()
       if (mode === "registered") body.append("employeeId", employeeId)
       else body.append("employeeNameFreeText", employeeNameFreeText.trim())
       body.append("type", type)
+      if (type === "CUSTOM") body.append("customTypeId", customTypeId)
       body.append("date", date)
       if (value) body.append("value", value)
       body.append("quantity", quantity)
@@ -430,11 +523,14 @@ function OccurrenceForm({ employees, onCreated }: { employees: Employee[]; onCre
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {Object.entries(TYPE_LABELS).map(([v, label]) => (
-              <SelectItem key={v} value={v}>
-                {label}
-              </SelectItem>
-            ))}
+            {Object.entries(TYPE_LABELS)
+              .filter(([v]) => v !== "CUSTOM")
+              .map(([v, label]) => (
+                <SelectItem key={v} value={v}>
+                  {label}
+                </SelectItem>
+              ))}
+            {customTypes.length > 0 && <SelectItem value="CUSTOM">Personalizado…</SelectItem>}
           </SelectContent>
         </Select>
         {type === "FALTA" && (
@@ -444,6 +540,26 @@ function OccurrenceForm({ employees, onCreated }: { employees: Employee[]; onCre
           </p>
         )}
       </div>
+
+      {type === "CUSTOM" && (
+        <div className="space-y-2">
+          <Label>Qual tipo personalizado?</Label>
+          <Select value={customTypeId} onValueChange={setCustomTypeId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione" />
+            </SelectTrigger>
+            <SelectContent>
+              {customTypes
+                .filter((t) => t.active)
+                .map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name} · {IMPACT_KIND_LABELS[t.kind]}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-3">
         <div className="space-y-2">
@@ -574,6 +690,192 @@ function EditOccurrenceDialog({ occurrence, onClose, onSaved }: { occurrence: Oc
             </Button>
             <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
               Salvar
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function OccurrenceTypesTab({ customTypes, onChanged }: { customTypes: CustomOccurrenceType[]; onChanged: () => void }) {
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+
+  const handleToggleActive = async (t: CustomOccurrenceType) => {
+    await adminFetch(`/api/company/occurrence-types/${t.id}`, { method: "PATCH", body: JSON.stringify({ active: !t.active }) }).catch(
+      (e) => alert(e instanceof AdminApiError ? e.message : "Erro"),
+    )
+    onChanged()
+  }
+
+  const handleDelete = async (t: CustomOccurrenceType) => {
+    if (!confirm(`Excluir o tipo "${t.name}"?`)) return
+    await adminFetch(`/api/company/occurrence-types/${t.id}`, { method: "DELETE" }).catch((e) =>
+      alert(e instanceof AdminApiError ? e.message : "Erro ao excluir — pode haver ocorrências já lançadas com este tipo."),
+    )
+    onChanged()
+  }
+
+  const impactSummary = (t: CustomOccurrenceType) => {
+    if (t.kind === "POINTS") return `${(t.pointsImpact ?? 0) >= 0 ? "+" : ""}${t.pointsImpact ?? 0} Pts por ocorrência`
+    if (t.kind === "SALARY") return `${t.salaryImpactType === "BONUS" ? "Bônus" : "Desconto"} de R$ ${t.salaryImpactValue ?? 0} por ocorrência`
+    if (t.kind === "HOURS_BANK") return `${(t.hoursBankImpactMinutes ?? 0) >= 0 ? "+" : ""}${t.hoursBankImpactMinutes ?? 0} min de banco de horas por ocorrência`
+    return "Sem impacto financeiro ou de pontos"
+  }
+
+  return (
+    <AdminCard title="Tipos de Ocorrência Configuráveis" icon={Settings2}>
+      <div className="flex justify-end mb-4">
+        <Button size="sm" onClick={() => setIsCreateOpen(true)} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+          <Plus className="h-4 w-4 mr-1" /> Novo Tipo
+        </Button>
+      </div>
+      {customTypes.length === 0 ? (
+        <EmptyState message="Nenhum tipo personalizado cadastrado. Os tipos fixos (Falta, Advertência, Vale, etc) continuam disponíveis." />
+      ) : (
+        <div className="space-y-2">
+          {customTypes.map((t) => (
+            <div key={t.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100">
+              <div>
+                <p className="font-medium text-[#3E2415] text-sm">
+                  {t.name} {!t.active && <StatusBadge status="INACTIVE" />}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {IMPACT_KIND_LABELS[t.kind]} · {impactSummary(t)}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <Switch checked={t.active} onCheckedChange={() => handleToggleActive(t)} />
+                <Button variant="ghost" size="icon" onClick={() => handleDelete(t)} className="text-red-600">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {isCreateOpen && (
+        <OccurrenceTypeDialog
+          onClose={() => setIsCreateOpen(false)}
+          onCreated={() => {
+            setIsCreateOpen(false)
+            onChanged()
+          }}
+        />
+      )}
+    </AdminCard>
+  )
+}
+
+function OccurrenceTypeDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState("")
+  const [kind, setKind] = useState<CustomOccurrenceType["kind"]>("POINTS")
+  const [pointsImpact, setPointsImpact] = useState("")
+  const [salaryImpactType, setSalaryImpactType] = useState<"DISCOUNT" | "BONUS">("DISCOUNT")
+  const [salaryImpactValue, setSalaryImpactValue] = useState("")
+  const [hoursBankImpactMinutes, setHoursBankImpactMinutes] = useState("")
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    setIsSubmitting(true)
+    try {
+      await adminFetch("/api/company/occurrence-types", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          kind,
+          pointsImpact: kind === "POINTS" ? Number(pointsImpact) : undefined,
+          salaryImpactType: kind === "SALARY" ? salaryImpactType : undefined,
+          salaryImpactValue: kind === "SALARY" ? Number(salaryImpactValue) : undefined,
+          hoursBankImpactMinutes: kind === "HOURS_BANK" ? Number(hoursBankImpactMinutes) : undefined,
+        }),
+      })
+      onCreated()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao criar tipo")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Novo Tipo de Ocorrência</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="space-y-2">
+            <Label>Nome (ex: "Folga Extra Concedida", "Vale-combustível")</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} required />
+          </div>
+          <div className="space-y-2">
+            <Label>Natureza do impacto</Label>
+            <Select value={kind} onValueChange={(v) => setKind(v as CustomOccurrenceType["kind"])}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(IMPACT_KIND_LABELS).map(([v, label]) => (
+                  <SelectItem key={v} value={v}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {kind === "POINTS" && (
+            <div className="space-y-2">
+              <Label>Pts por ocorrência (negativo = perda, positivo = ganho)</Label>
+              <Input type="number" value={pointsImpact} onChange={(e) => setPointsImpact(e.target.value)} required />
+            </div>
+          )}
+
+          {kind === "SALARY" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <Select value={salaryImpactType} onValueChange={(v) => setSalaryImpactType(v as "DISCOUNT" | "BONUS")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DISCOUNT">Desconto</SelectItem>
+                    <SelectItem value="BONUS">Bônus</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Valor (R$)</Label>
+                <Input type="number" step="0.01" value={salaryImpactValue} onChange={(e) => setSalaryImpactValue(e.target.value)} required />
+              </div>
+            </div>
+          )}
+
+          {kind === "HOURS_BANK" && (
+            <div className="space-y-2">
+              <Label>Minutos por ocorrência (negativo = abate, positivo = credita)</Label>
+              <Input
+                type="number"
+                value={hoursBankImpactMinutes}
+                onChange={(e) => setHoursBankImpactMinutes(e.target.value)}
+                required
+                placeholder="Ex: -480 para abater 8h de folga extra concedida"
+              />
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+              Criar
             </Button>
           </DialogFooter>
         </form>

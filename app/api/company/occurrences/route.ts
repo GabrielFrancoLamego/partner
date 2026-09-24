@@ -22,6 +22,7 @@ const OCCURRENCE_TYPES: OccurrenceType[] = [
   "BANCO_HORAS",
   "DISPENSADO",
   "FIXADO",
+  "CUSTOM",
 ]
 const REQUIRES_ATTACHMENT: OccurrenceType[] = ["ADVERTENCIA", "ATESTADO", "DISPENSADO"]
 const PAYMENT_METHODS: OccurrencePaymentMethod[] = ["DINHEIRO", "PIX", "TRABALHO", "FOLGA_ADICIONAL"]
@@ -47,11 +48,23 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const month = searchParams.get("month") // "2026-09"
     const employeeId = searchParams.get("employeeId")
+    const type = searchParams.get("type") // OccurrenceType, ou "CUSTOM:<id>" para um tipo configurável específico
+    const from = searchParams.get("from") // YYYY-MM-DD — sobrepõe `month` quando presente
+    const to = searchParams.get("to")
 
     let dateWhere: { gte: Date; lt: Date } | undefined
-    if (month && /^\d{4}-\d{2}$/.test(month)) {
+    if (from && to) {
+      dateWhere = { gte: startOfDay(new Date(from)), lt: new Date(startOfDay(new Date(to)).getTime() + 24 * 60 * 60 * 1000) }
+    } else if (month && /^\d{4}-\d{2}$/.test(month)) {
       const [y, m] = month.split("-").map(Number)
       dateWhere = { gte: new Date(y, m - 1, 1), lt: new Date(y, m, 1) }
+    }
+
+    let typeWhere: Prisma.OccurrenceWhereInput = {}
+    if (type?.startsWith("CUSTOM:")) {
+      typeWhere = { type: "CUSTOM", customTypeId: type.slice("CUSTOM:".length) }
+    } else if (type && OCCURRENCE_TYPES.includes(type as OccurrenceType)) {
+      typeWhere = { type: type as OccurrenceType }
     }
 
     const occurrences = await prisma.occurrence.findMany({
@@ -59,10 +72,12 @@ export async function GET(request: Request) {
         companyId,
         ...(dateWhere ? { date: dateWhere } : {}),
         ...(employeeId ? { employeeId } : {}),
+        ...typeWhere,
       },
       include: {
         employee: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true } },
+        customType: { select: { id: true, name: true, kind: true } },
       },
       orderBy: { date: "desc" },
       take: 300,
@@ -92,6 +107,7 @@ export async function POST(request: Request) {
     const employeeId = formData.get("employeeId")
     const employeeNameFreeText = formData.get("employeeNameFreeText")
     const type = formData.get("type")
+    const customTypeIdRaw = formData.get("customTypeId")
     const dateRaw = formData.get("date")
     const value = formData.get("value")
     const quantityRaw = formData.get("quantity")
@@ -102,6 +118,13 @@ export async function POST(request: Request) {
 
     if (typeof type !== "string" || !OCCURRENCE_TYPES.includes(type as OccurrenceType)) {
       throw new ApiError(400, "Tipo de ocorrência inválido")
+    }
+
+    let customType: { id: string; kind: string; pointsImpact: number | null; salaryImpactType: string | null; salaryImpactValue: Prisma.Decimal | null; hoursBankImpactMinutes: number | null } | null = null
+    if (type === "CUSTOM") {
+      if (typeof customTypeIdRaw !== "string" || !customTypeIdRaw) throw new ApiError(400, "Selecione o tipo de ocorrência configurado")
+      customType = await prisma.occurrenceTypeConfig.findFirst({ where: { id: customTypeIdRaw, companyId, active: true } })
+      if (!customType) throw new ApiError(404, "Tipo de ocorrência configurado não encontrado")
     }
 
     const hasEmployeeId = typeof employeeId === "string" && employeeId.length > 0
@@ -141,6 +164,10 @@ export async function POST(request: Request) {
     if (type === "FALTA" && resolvedValue === null && employee?.monthlySalary) {
       resolvedValue = -(Number(employee.monthlySalary) / 30)
     }
+    if (type === "CUSTOM" && customType?.kind === "SALARY" && resolvedValue === null && customType.salaryImpactValue) {
+      const magnitude = Number(customType.salaryImpactValue)
+      resolvedValue = customType.salaryImpactType === "DISCOUNT" ? -Math.abs(magnitude) : Math.abs(magnitude)
+    }
     const total = resolvedValue !== null ? Math.round(resolvedValue * quantity * 100) / 100 : null
 
     const occurrence = await prisma.$transaction(async (tx) => {
@@ -150,6 +177,7 @@ export async function POST(request: Request) {
           employeeId: employee?.id ?? null,
           employeeNameFreeText: employee ? null : (employeeNameFreeText as string).trim(),
           type: type as OccurrenceType,
+          customTypeId: customType?.id ?? null,
           date,
           value: resolvedValue,
           quantity,
@@ -160,8 +188,21 @@ export async function POST(request: Request) {
           attachmentUrl,
           createdById: user.id,
         },
-        include: { employee: { select: { id: true, name: true } }, createdBy: { select: { id: true, name: true } } },
+        include: {
+          employee: { select: { id: true, name: true } },
+          createdBy: { select: { id: true, name: true } },
+          customType: { select: { id: true, name: true, kind: true } },
+        },
       })
+
+      // Tipo configurável com impacto em Banco de Horas — credita (positivo) ou
+      // debita (negativo) diretamente, ex: "Folga Extra Concedida" abate horas extras.
+      if (customType?.kind === "HOURS_BANK" && customType.hoursBankImpactMinutes && employee) {
+        await tx.employeeProfile.update({
+          where: { userId: employee.id },
+          data: { bankOfHoursMinutes: { increment: Math.round(customType.hoursBankImpactMinutes * quantity) } },
+        })
+      }
 
       // Abono automático: ATESTADO registrado em até 24h de uma FALTA do
       // mesmo colaborador no mesmo dia perdoa o abate daquela falta — e
@@ -233,6 +274,15 @@ export async function POST(request: Request) {
             })
           }
         }
+      } else if (type === "CUSTOM" && customType?.kind === "POINTS" && customType.pointsImpact) {
+        await awardXp({
+          companyId,
+          employeeId: employee.id,
+          reason: "MANUAL_ADJUSTMENT",
+          points: Math.round(customType.pointsImpact * quantity),
+          sourceId: occurrence.created.id,
+          note: occurrence.created.customType?.name ?? "Ocorrência configurável",
+        })
       }
     }
 
