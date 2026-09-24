@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, AdminCard } from "@/components/admin/admin-ui"
 import { formatPhone, isValidPhone } from "@/lib/validators"
+import { AccountDeletionRequest } from "@/components/account-deletion-request"
 
 type PartnerProfile = {
   fullName: string | null
@@ -140,6 +141,8 @@ export default function PartnerProfilePage() {
           </Button>
         </form>
       </AdminCard>
+
+      <AccountDeletionRequest />
     </div>
   )
 }
