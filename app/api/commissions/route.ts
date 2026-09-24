@@ -38,7 +38,11 @@ export async function POST(request: Request) {
     if (typeof clientName !== "string" || !clientName.trim()) throw new ApiError(400, "Nome do cliente é obrigatório")
     if (typeof customerPhone !== "string" || !customerPhone.trim())
       throw new ApiError(400, "Telefone do cliente é obrigatório")
-    if (!(file instanceof File)) throw new ApiError(400, "Foto da comanda é obrigatória")
+    if (!(file instanceof File) || file.size === 0) throw new ApiError(400, "Foto da comanda é obrigatória")
+    if (file.size > 8 * 1024 * 1024) throw new ApiError(400, "Arquivo excede 8MB")
+    if (!["image/png", "image/jpeg", "image/jpg", "image/webp", "application/pdf"].includes(file.type)) {
+      throw new ApiError(400, "Formato não suportado — envie uma imagem (JPG/PNG/WEBP) ou PDF")
+    }
 
     if (amountRaw === null || amountRaw === "") throw new ApiError(400, "Informe o Valor Total da Conta do cliente")
     const amount = Number(amountRaw)
@@ -101,7 +105,12 @@ export async function POST(request: Request) {
       programId = program.id
     }
 
-    const billAttachmentUrl = await uploadImage("receipts", file)
+    let billAttachmentUrl: string
+    try {
+      billAttachmentUrl = await uploadImage("receipts", file)
+    } catch {
+      throw new ApiError(502, "Falha ao enviar a foto da comanda. Verifique sua conexão e tente novamente.")
+    }
 
     const employeeProfile = await prisma.employeeProfile.findUnique({
       where: { userId: user.id },
