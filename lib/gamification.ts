@@ -173,13 +173,30 @@ export function resolveCareerProgress(xpPoints: number, levels: LevelLike[], cur
 /**
  * Promove um colaborador para um novo nível do Programa Interno — zera
  * xpPoints (novo ciclo de pontuação começa do zero no cargo novo, regra
- * explícita do produto) e registra o motivo em AuditLog (chamador loga).
+ * explícita do produto), marca `currentInternalLevelSince` (base do tempo
+ * mínimo de permanência do PRÓXIMO ciclo) e limpa qualquer oferta de
+ * promoção pendente. Registra o motivo em AuditLog (chamador loga).
  */
 export async function promoteEmployee(employeeId: string, newLevelId: string, tx: Prisma.TransactionClient | typeof prisma = prisma) {
   return tx.employeeProfile.update({
     where: { userId: employeeId },
-    data: { currentInternalLevelId: newLevelId, xpPoints: 0 },
+    data: {
+      currentInternalLevelId: newLevelId,
+      xpPoints: 0,
+      currentInternalLevelSince: new Date(),
+      pendingPromotionLevelId: null,
+      pendingPromotionOfferedAt: null,
+    },
   })
+}
+
+/** Quantos meses inteiros se passaram desde `since` (arredondado para baixo). */
+export function monthsSince(since: Date, now = new Date()) {
+  return (
+    (now.getFullYear() - since.getFullYear()) * 12 +
+    (now.getMonth() - since.getMonth()) -
+    (now.getDate() < since.getDate() ? 1 : 0)
+  )
 }
 
 export type InternalProgramRules = {
@@ -191,6 +208,8 @@ export type InternalProgramRules = {
   pointsAbsenceJustified: number
   pointsAbsenceUnjustified: number
   pointsOccurrence: number
+  lateToleranceMinutes: number
+  pointsLatePenalty: number
   minEfficiencyPercent: number
   efficiencyBonusAmount: number | null
 }
@@ -204,6 +223,8 @@ const DEFAULT_INTERNAL_PROGRAM_RULES: InternalProgramRules = {
   pointsAbsenceJustified: 0,
   pointsAbsenceUnjustified: -15,
   pointsOccurrence: -10,
+  lateToleranceMinutes: 15,
+  pointsLatePenalty: -5,
   minEfficiencyPercent: 90,
   efficiencyBonusAmount: null,
 }
@@ -233,6 +254,8 @@ export async function getInternalProgramRules(companyId: string): Promise<Intern
     pointsAbsenceJustified: program.pointsAbsenceJustified,
     pointsAbsenceUnjustified: program.pointsAbsenceUnjustified,
     pointsOccurrence: program.pointsOccurrence,
+    lateToleranceMinutes: program.lateToleranceMinutes,
+    pointsLatePenalty: program.pointsLatePenalty,
     minEfficiencyPercent: program.minEfficiencyPercent,
     efficiencyBonusAmount: program.efficiencyBonusAmount ? Number(program.efficiencyBonusAmount) : null,
   }

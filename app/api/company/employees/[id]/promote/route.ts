@@ -3,6 +3,7 @@ import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from
 import { canManageDailyOperations } from "@/lib/permissions"
 import { promoteEmployee } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
+import { notifyUser } from "@/lib/notifications"
 
 /** Muda o cargo do colaborador no Programa Interno — zera a pontuação (regra de mudança de cargo). */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -31,6 +32,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       entity: "EmployeeProfile",
       entityId: updated.id,
       details: { promotedTo: level.name, levelId, xpReset: true },
+    })
+
+    await notifyUser({
+      userId: employee.id,
+      type: "GENERIC",
+      title: "Você foi promovido!",
+      message: `Seu cargo no Programa Interno foi atualizado para ${level.name}.`,
+      linkUrl: "/company/crescimento",
+      email: employee.email,
+      phone: employee.phone,
     })
 
     return Response.json({ id: employee.id, currentInternalLevelId: levelId, xpPoints: 0 })

@@ -41,6 +41,8 @@ export async function PATCH(request: Request) {
     const pointsAbsenceJustified = formData.get("pointsAbsenceJustified")
     const pointsAbsenceUnjustified = formData.get("pointsAbsenceUnjustified")
     const pointsOccurrence = formData.get("pointsOccurrence")
+    const lateToleranceMinutes = formData.get("lateToleranceMinutes")
+    const pointsLatePenalty = formData.get("pointsLatePenalty")
     const minEfficiencyPercent = formData.get("minEfficiencyPercent")
     const efficiencyBonusAmount = formData.get("efficiencyBonusAmount")
     const videoUrl = formData.get("videoUrl")
@@ -68,6 +70,8 @@ export async function PATCH(request: Request) {
       ...(pointsAbsenceJustified ? { pointsAbsenceJustified: Number(pointsAbsenceJustified) } : {}),
       ...(pointsAbsenceUnjustified ? { pointsAbsenceUnjustified: Number(pointsAbsenceUnjustified) } : {}),
       ...(pointsOccurrence ? { pointsOccurrence: Number(pointsOccurrence) } : {}),
+      ...(lateToleranceMinutes ? { lateToleranceMinutes: Number(lateToleranceMinutes) } : {}),
+      ...(pointsLatePenalty ? { pointsLatePenalty: Number(pointsLatePenalty) } : {}),
       ...(minEfficiencyPercent ? { minEfficiencyPercent: Number(minEfficiencyPercent) } : {}),
       ...(efficiencyBonusAmount ? { efficiencyBonusAmount: Number(efficiencyBonusAmount) } : {}),
       ...(typeof videoUrl === "string" ? { videoUrl: videoUrl || null } : {}),

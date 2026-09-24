@@ -30,6 +30,7 @@ export type InternalLevelRule = {
   benefitType: BenefitType
   measurementUnit: MeasurementUnit
   measurementValue: number | null
+  minTenureMonths: number
 }
 
 export type InternalLevelRuleInput = {
@@ -45,6 +46,7 @@ export type InternalLevelRuleInput = {
   badgeColorHex: string
   medalIcon: MedalIconKey
   imageUrl?: string | null
+  minTenureMonths?: number
 }
 
 const BENEFIT_TYPE_LABELS: Record<BenefitType, string> = {
@@ -105,6 +107,7 @@ export function InternalLevelRuleManager({
                   {l.bonusAmount && ` · +R$${l.bonusAmount}`}
                   {l.bonusDescription && ` · ${l.bonusDescription}`}
                   {l.measurementUnit !== "ALL_TIME" && ` · ${MEASUREMENT_PRESET_LABELS[toMeasurementPreset(l.measurementUnit, l.measurementValue)]}`}
+                  {l.minTenureMonths > 0 && ` · mín. ${l.minTenureMonths} ${l.minTenureMonths === 1 ? "mês" : "meses"} no cargo`}
                 </p>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
@@ -150,6 +153,7 @@ function LevelDialog({
   const [name, setName] = useState(level?.name ?? "")
   const [description, setDescription] = useState(level?.description ?? "")
   const [pointsRequired, setPointsRequired] = useState(level ? String(level.pointsRequired) : "100")
+  const [minTenureMonths, setMinTenureMonths] = useState(level ? String(level.minTenureMonths) : "0")
   const [benefitType, setBenefitType] = useState<BenefitType>(level?.benefitType ?? "PERCENTAGE")
   const [salaryIncreasePercent, setSalaryIncreasePercent] = useState(level?.salaryIncreasePercent ?? "")
   const [bonusAmount, setBonusAmount] = useState(level?.bonusAmount ?? "")
@@ -173,6 +177,7 @@ function LevelDialog({
         name,
         description: description || undefined,
         pointsRequired: Number(pointsRequired),
+        minTenureMonths: Number(minTenureMonths) || 0,
         benefitType,
         salaryIncreasePercent: benefitType !== "FIXED" ? Number(salaryIncreasePercent) : undefined,
         bonusAmount: benefitType !== "PERCENTAGE" ? Number(bonusAmount) : undefined,
@@ -210,6 +215,13 @@ function LevelDialog({
           <div className="space-y-2">
             <Label>Pontos exigidos para promover ao próximo</Label>
             <Input type="number" value={pointsRequired} onChange={(e) => setPointsRequired(e.target.value)} required />
+          </div>
+          <div className="space-y-2">
+            <Label>Tempo mínimo de permanência no cargo (meses)</Label>
+            <Input type="number" min="0" value={minTenureMonths} onChange={(e) => setMinTenureMonths(e.target.value)} />
+            <p className="text-xs text-gray-400">
+              Contado a partir da última promoção. 0 = sem exigência de tempo mínimo — só a pontuação decide.
+            </p>
           </div>
 
           <div className="space-y-2 pt-2 border-t border-gray-100">

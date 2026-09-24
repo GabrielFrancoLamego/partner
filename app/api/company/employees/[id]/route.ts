@@ -16,7 +16,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (!employee) throw new ApiError(404, "Colaborador não encontrado nesta empresa")
 
     const body = await request.json()
-    const { canRegisterOccurrences, monthlySalary, sectorId, shiftType, workStartTime, workEndTime, breakStartTime, breakEndTime } = body
+    const {
+      canRegisterOccurrences,
+      monthlySalary,
+      sectorId,
+      shiftType,
+      workStartTime,
+      workEndTime,
+      breakStartTime,
+      breakEndTime,
+      dailyBreakAllowanceMinutes,
+    } = body
 
     if (sectorId) {
       const sector = await prisma.sector.findFirst({ where: { id: sectorId, companyId } })
@@ -35,6 +45,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...(workEndTime !== undefined ? { workEndTime: workEndTime || null } : {}),
         ...(breakStartTime !== undefined ? { breakStartTime: breakStartTime || null } : {}),
         ...(breakEndTime !== undefined ? { breakEndTime: breakEndTime || null } : {}),
+        ...(dailyBreakAllowanceMinutes !== undefined ? { dailyBreakAllowanceMinutes: Number(dailyBreakAllowanceMinutes) || 0 } : {}),
       },
     })
 

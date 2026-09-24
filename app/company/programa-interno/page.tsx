@@ -39,6 +39,8 @@ type InternalProgram = {
   pointsAbsenceJustified: number
   pointsAbsenceUnjustified: number
   pointsOccurrence: number
+  lateToleranceMinutes: number
+  pointsLatePenalty: number
   minEfficiencyPercent: number
   efficiencyBonusAmount: string | null
   levels: InternalLevelRule[]
@@ -106,6 +108,8 @@ function ConfigTab() {
   const [pointsAbsenceJustified, setPointsAbsenceJustified] = useState("0")
   const [pointsAbsenceUnjustified, setPointsAbsenceUnjustified] = useState("-15")
   const [pointsOccurrence, setPointsOccurrence] = useState("-10")
+  const [lateToleranceMinutes, setLateToleranceMinutes] = useState("15")
+  const [pointsLatePenalty, setPointsLatePenalty] = useState("-5")
   const [minEfficiencyPercent, setMinEfficiencyPercent] = useState("90")
   const [efficiencyBonusAmount, setEfficiencyBonusAmount] = useState("")
   const [videoUrl, setVideoUrl] = useState("")
@@ -129,6 +133,8 @@ function ConfigTab() {
           setPointsAbsenceJustified(String(p.pointsAbsenceJustified))
           setPointsAbsenceUnjustified(String(p.pointsAbsenceUnjustified))
           setPointsOccurrence(String(p.pointsOccurrence))
+          setLateToleranceMinutes(String(p.lateToleranceMinutes))
+          setPointsLatePenalty(String(p.pointsLatePenalty))
           setMinEfficiencyPercent(String(p.minEfficiencyPercent))
           setEfficiencyBonusAmount(p.efficiencyBonusAmount ?? "")
           setVideoUrl(p.videoUrl ?? "")
@@ -160,6 +166,8 @@ function ConfigTab() {
       body.append("pointsAbsenceJustified", pointsAbsenceJustified)
       body.append("pointsAbsenceUnjustified", pointsAbsenceUnjustified)
       body.append("pointsOccurrence", pointsOccurrence)
+      body.append("lateToleranceMinutes", lateToleranceMinutes)
+      body.append("pointsLatePenalty", pointsLatePenalty)
       body.append("minEfficiencyPercent", minEfficiencyPercent)
       if (efficiencyBonusAmount) body.append("efficiencyBonusAmount", efficiencyBonusAmount)
       body.append("videoUrl", videoUrl)
@@ -283,6 +291,23 @@ function ConfigTab() {
         </div>
 
         <div className="pt-2 border-t border-gray-100">
+          <h4 className="font-semibold text-[#3E2415] text-sm mb-3">Tolerância do Ponto Digital</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Tolerância antes/depois do horário (minutos)</Label>
+              <Input type="number" min="0" value={lateToleranceMinutes} onChange={(e) => setLateToleranceMinutes(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Pts descontados por atraso além da tolerância</Label>
+              <Input type="number" value={pointsLatePenalty} onChange={(e) => setPointsLatePenalty(e.target.value)} />
+            </div>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">
+            Dentro da margem de tolerância, a batida não gera hora extra nem penalidade. Além dela, desconta Pts automaticamente e o excedente entra no Banco de Horas.
+          </p>
+        </div>
+
+        <div className="pt-2 border-t border-gray-100">
           <h4 className="font-semibold text-[#3E2415] text-sm mb-3">Bônus de Eficiência</h4>
           <div className="grid sm:grid-cols-2 gap-3">
             <div className="space-y-2">
@@ -392,12 +417,12 @@ function PromoteTab() {
 
   const handlePromote = async () => {
     if (!selectedEmployee || !targetLevelId) return
-    if (!confirm(`Promover ${selectedEmployee.name}? A pontuação de XP dele será zerada, iniciando um novo ciclo no novo cargo.`)) return
+    if (!confirm(`Promover ${selectedEmployee.name}? A pontuação de Pts dele será zerada, iniciando um novo ciclo no novo cargo.`)) return
     setIsSubmitting(true)
     setMessage("")
     try {
       await adminFetch(`/api/company/employees/${selectedEmployee.id}/promote`, { method: "POST", body: JSON.stringify({ levelId: targetLevelId }) })
-      setMessage(`${selectedEmployee.name} promovido(a) com sucesso — XP zerado no novo cargo.`)
+      setMessage(`${selectedEmployee.name} promovido(a) com sucesso — Pts zerado no novo cargo.`)
       setSelectedEmployee(null)
       setTargetLevelId("")
       reload()

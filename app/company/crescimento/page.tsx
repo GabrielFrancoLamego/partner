@@ -47,7 +47,7 @@ export default function CompanyCrescimentoPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Programa de Crescimento</h1>
-        <p className="text-gray-600 mt-1 text-sm">Trilha de cargos, XP e loja de prêmios</p>
+        <p className="text-gray-600 mt-1 text-sm">Trilha de cargos, Pts e loja de prêmios</p>
       </div>
       {isManager ? <ManagerGrowthView /> : <EmployeeGrowthView />}
     </div>
@@ -57,7 +57,13 @@ export default function CompanyCrescimentoPage() {
 type Summary = {
   levels: Level[]
   leaderboard: LeaderboardRow[]
-  me: { xpPoints: number; progressToNextPercent: number; currentLevel: Level | null; nextLevel: Level | null } | null
+  me: {
+    xpPoints: number
+    progressToNextPercent: number
+    currentLevel: Level | null
+    nextLevel: Level | null
+    pendingPromotionLevel: { id: string; name: string } | null
+  } | null
 }
 
 function useSummary() {
@@ -80,6 +86,12 @@ function levelBenefitLabel(level: Level | null | undefined): string | null {
   if (level.benefitType !== "FIXED" && level.salaryIncreasePercent) parts.push(`+${level.salaryIncreasePercent}% salário`)
   if (level.benefitType !== "PERCENTAGE" && level.bonusAmount) parts.push(`+R$ ${level.bonusAmount} bônus`)
   return parts.length > 0 ? parts.join(" · ") : null
+}
+
+const PODIUM_STYLES: Record<1 | 2 | 3, { medal: string; rowClass: string; textClass: string }> = {
+  1: { medal: "🥇", rowClass: "bg-gradient-to-r from-amber-50 to-amber-100/60 border border-amber-200", textClass: "text-amber-700" },
+  2: { medal: "🥈", rowClass: "bg-gradient-to-r from-gray-50 to-gray-100/60 border border-gray-200", textClass: "text-gray-600" },
+  3: { medal: "🥉", rowClass: "bg-gradient-to-r from-orange-50 to-orange-100/60 border border-orange-200", textClass: "text-orange-700" },
 }
 
 const XP_REASON_LABELS: Record<string, string> = {
@@ -142,17 +154,17 @@ function GrowthTips({ me }: { me: Summary["me"] }) {
   if (!me?.nextLevel) return null
   const missing = Math.max(0, me.nextLevel.pointsRequired - me.xpPoints)
   const tips = [
-    "Bata o ponto dentro do horário todos os dias — cada check-in em dia soma XP.",
+    "Bata o ponto dentro do horário todos os dias — cada check-in em dia soma Pts.",
     "Entregue os checklists antes do prazo, com foto quando exigido.",
     "Mantenha boas notas na Avaliação Diária da Gerência.",
-    "Evite ocorrências (faltas, advertências) — elas descontam XP.",
+    "Evite ocorrências (faltas, advertências) — elas descontam Pts.",
   ]
   return (
     <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
       <div className="flex items-center gap-2 mb-2">
         <Sparkles className="h-4 w-4 text-amber-600" />
         <p className="text-sm font-semibold text-[#3E2415]">
-          Faltam {missing} XP para {me.nextLevel.name}
+          Faltam {missing} Pts para {me.nextLevel.name}
         </p>
       </div>
       <ul className="space-y-1.5">
@@ -303,7 +315,7 @@ function AchievementsGallery({ levels, me }: { levels: Level[]; me: Summary["me"
   return (
     <AdminCard title="Galeria de Conquistas" icon={Award}>
       {unlockedLevels.length === 0 ? (
-        <p className="text-xs text-gray-400">Nenhuma medalha ainda — comece a acumular XP!</p>
+        <p className="text-xs text-gray-400">Nenhuma medalha ainda — comece a acumular Pts!</p>
       ) : (
         <div className="flex flex-wrap gap-3">
           {unlockedLevels.map((l) => (
@@ -336,7 +348,7 @@ function EmployeeGrowthView() {
   useEffect(reloadRewards, [])
 
   const handleRedeem = async (reward: Reward) => {
-    if (!confirm(`Resgatar "${reward.name}" por ${reward.costXp} XP?`)) return
+    if (!confirm(`Resgatar "${reward.name}" por ${reward.costXp} Pts?`)) return
     await adminFetch(`/api/company/gamification/rewards/${reward.id}/redeem`, { method: "POST" })
       .then(() => {
         reload()
@@ -345,11 +357,29 @@ function EmployeeGrowthView() {
       .catch((e) => alert(e instanceof AdminApiError ? e.message : "Erro ao resgatar"))
   }
 
+  const handleAcceptPromotion = async () => {
+    if (!confirm(`Aceitar a promoção para ${me?.pendingPromotionLevel?.name}?`)) return
+    await adminFetch("/api/company/gamification/promotion/accept", { method: "POST" })
+      .then(() => reload())
+      .catch((e) => alert(e instanceof AdminApiError ? e.message : "Erro ao aceitar promoção"))
+  }
+
   if (isLoading || !summary) return <LoadingState />
   const me = summary.me
 
   return (
     <div className="space-y-6">
+      {me?.pendingPromotionLevel && (
+        <div className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-2xl p-5 shadow-md text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <p className="font-bold">🎉 Você tem uma promoção disponível!</p>
+            <p className="text-sm opacity-90">Novo cargo: {me.pendingPromotionLevel.name}</p>
+          </div>
+          <Button onClick={handleAcceptPromotion} className="bg-white text-[#F2680C] hover:bg-white/90 flex-shrink-0">
+            Aceitar Promoção
+          </Button>
+        </div>
+      )}
       <div className="bg-white rounded-2xl p-5 shadow-md border border-gray-100">
         <div className="flex items-center gap-2 mb-4">
           <div className="w-8 h-8 bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-lg flex items-center justify-center">
@@ -358,7 +388,7 @@ function EmployeeGrowthView() {
           <h3 className="text-base font-bold text-[#3E2415]">Mapa de Evolução</h3>
         </div>
         <p className="text-2xl font-bold text-[#3E2415]">{me?.currentLevel?.name ?? "Sem nível ainda"}</p>
-        <p className="text-sm text-gray-500 mb-4">{me?.xpPoints ?? 0} XP acumulado</p>
+        <p className="text-sm text-gray-500 mb-4">{me?.xpPoints ?? 0} Pts acumulados</p>
 
         <GrowthTrail levels={summary.levels} me={me} />
 
@@ -398,7 +428,7 @@ function EmployeeGrowthView() {
               <div key={r.id} className="border border-gray-100 rounded-xl p-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-semibold text-[#3E2415] text-sm truncate">{r.name}</p>
-                  <p className="text-xs text-gray-500">{r.costXp} XP {r.stock !== null && `· ${r.stock} disponíveis`}</p>
+                  <p className="text-xs text-gray-500">{r.costXp} Pts {r.stock !== null && `· ${r.stock} disponíveis`}</p>
                 </div>
                 <Button
                   size="sm"
@@ -439,6 +469,7 @@ function ManagerGrowthView() {
     <Tabs defaultValue="ranking">
       <TabsList className="flex-wrap h-auto">
         <TabsTrigger value="ranking">Ranking</TabsTrigger>
+        <TabsTrigger value="promotions">Promoções</TabsTrigger>
         <TabsTrigger value="levels">Trilha de Cargos</TabsTrigger>
         <TabsTrigger value="rewards">Loja de Prêmios</TabsTrigger>
         <TabsTrigger value="redemptions">Resgates</TabsTrigger>
@@ -449,19 +480,34 @@ function ManagerGrowthView() {
           {isLoading || !summary ? (
             <LoadingState />
           ) : summary.leaderboard.length === 0 ? (
-            <EmptyState message="Nenhum colaborador com XP registrado ainda." />
+            <EmptyState message="Nenhum colaborador com Pts registrado ainda." />
           ) : (
             <div className="space-y-1">
-              {summary.leaderboard.map((r) => (
-                <div key={r.employeeId} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-                  <span className="text-sm font-medium text-[#3E2415]">
-                    #{r.rank} {r.name}
-                  </span>
-                  <span className="text-sm font-bold text-[#F58220]">{r.xpPoints} XP</span>
-                </div>
-              ))}
+              {summary.leaderboard.map((r) => {
+                const podium = PODIUM_STYLES[r.rank as 1 | 2 | 3]
+                return (
+                  <div
+                    key={r.employeeId}
+                    className={`flex items-center justify-between py-2.5 px-3 rounded-xl border-b border-gray-50 last:border-0 ${podium ? podium.rowClass : ""}`}
+                  >
+                    <span className="text-sm font-medium text-[#3E2415] flex items-center gap-2">
+                      {podium ? (
+                        <span className={`text-lg leading-none ${podium.textClass}`}>{podium.medal}</span>
+                      ) : (
+                        <span className="text-xs text-gray-400 w-5 text-center">#{r.rank}</span>
+                      )}
+                      {r.name}
+                    </span>
+                    <span className={`text-sm font-bold ${podium ? podium.textClass : "text-[#F58220]"}`}>{r.xpPoints} Pts</span>
+                  </div>
+                )
+              })}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="promotions">
+          <PromotionsEligibleTab />
         </TabsContent>
 
         <TabsContent value="levels">
@@ -477,6 +523,58 @@ function ManagerGrowthView() {
         </TabsContent>
       </div>
     </Tabs>
+  )
+}
+
+type EligiblePromotion = {
+  employeeId: string
+  name: string
+  currentLevelName: string
+  xpPoints: number
+  monthsInRole: number
+  nextLevel: { id: string; name: string; pointsRequired: number }
+}
+
+function PromotionsEligibleTab() {
+  const [eligible, setEligible] = useState<EligiblePromotion[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [applyingId, setApplyingId] = useState<string | null>(null)
+
+  const reload = () => {
+    setIsLoading(true)
+    adminFetch<EligiblePromotion[]>("/api/company/gamification/promotion-eligible").then(setEligible).finally(() => setIsLoading(false))
+  }
+  useEffect(reload, [])
+
+  const handleApply = async (e: EligiblePromotion) => {
+    if (!confirm(`Aplicar a promoção de ${e.name} para ${e.nextLevel.name}? Ele(a) receberá uma notificação para aceitar.`)) return
+    setApplyingId(e.employeeId)
+    await adminFetch(`/api/company/gamification/promotion-eligible/${e.employeeId}/apply`, { method: "POST" })
+      .then(reload)
+      .catch((err) => alert(err instanceof AdminApiError ? err.message : "Erro ao aplicar promoção"))
+      .finally(() => setApplyingId(null))
+  }
+
+  if (isLoading) return <LoadingState />
+  if (eligible.length === 0)
+    return <EmptyState message="Nenhum colaborador elegível para promoção no momento (pontuação e/ou tempo mínimo no cargo ainda não atingidos)." />
+
+  return (
+    <div className="grid gap-2">
+      {eligible.map((e) => (
+        <div key={e.employeeId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl border border-gray-100">
+          <div>
+            <p className="font-medium text-[#3E2415] text-sm">{e.name}</p>
+            <p className="text-xs text-gray-500">
+              {e.currentLevelName} → {e.nextLevel.name} · {e.xpPoints}/{e.nextLevel.pointsRequired} pts · {e.monthsInRole} meses no cargo
+            </p>
+          </div>
+          <Button size="sm" variant="brand" disabled={applyingId === e.employeeId} onClick={() => handleApply(e)} className="flex-shrink-0">
+            Aplicar Promoção
+          </Button>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -560,7 +658,7 @@ function RewardsTab() {
                 <p className="font-medium text-[#3E2415] text-sm">
                   {r.name} <StatusBadge status={r.active ? "ACTIVE" : "INACTIVE"} />
                 </p>
-                <p className="text-xs text-gray-500">{r.costXp} XP {r.stock !== null && `· estoque ${r.stock}`}</p>
+                <p className="text-xs text-gray-500">{r.costXp} Pts {r.stock !== null && `· estoque ${r.stock}`}</p>
               </div>
               <div className="flex items-center gap-1">
                 <Button variant="ghost" size="icon" onClick={() => handleToggleActive(r)}>
@@ -632,7 +730,7 @@ function RewardDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label>Custo em XP</Label>
+              <Label>Custo em Pts</Label>
               <Input type="number" value={costXp} onChange={(e) => setCostXp(e.target.value)} required />
             </div>
             <div className="space-y-2">
@@ -683,7 +781,7 @@ function RedemptionsTab() {
             <p className="font-medium text-[#3E2415] text-sm">
               {r.employee.name} → {r.item.name}
             </p>
-            <p className="text-xs text-gray-500">{r.costXp} XP · {new Date(r.createdAt).toLocaleDateString("pt-BR")}</p>
+            <p className="text-xs text-gray-500">{r.costXp} Pts · {new Date(r.createdAt).toLocaleDateString("pt-BR")}</p>
           </div>
           <div className="flex items-center gap-2">
             <StatusBadge status={r.status} />

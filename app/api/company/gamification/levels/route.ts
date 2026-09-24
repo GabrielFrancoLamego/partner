@@ -36,6 +36,7 @@ export async function POST(request: Request) {
       benefitType,
       measurementUnit,
       measurementValue,
+      minTenureMonths,
     } = body
     if (!name || pointsRequired === undefined) throw new ApiError(400, "Nome e pontuação exigida são obrigatórios")
 
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
         benefitType: benefitType || "PERCENTAGE",
         measurementUnit: measurementUnit || "ALL_TIME",
         measurementValue: measurementValue ? Number(measurementValue) : null,
+        minTenureMonths: minTenureMonths ? Number(minTenureMonths) : 0,
       },
     })
 

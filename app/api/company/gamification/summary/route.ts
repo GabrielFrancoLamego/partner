@@ -27,13 +27,16 @@ export async function GET() {
       levelName: r.currentInternalLevel?.name ?? levels[0]?.name ?? null,
     }))
 
-    let me: ReturnType<typeof resolveCareerProgress> | null = null
+    let me: (ReturnType<typeof resolveCareerProgress> & { pendingPromotionLevel: { id: string; name: string } | null }) | null = null
     if (user.role === "EMPLOYEE") {
       const profile = await prisma.employeeProfile.findUnique({
         where: { userId: user.id },
-        select: { xpPoints: true, currentInternalLevelId: true },
+        select: { xpPoints: true, currentInternalLevelId: true, pendingPromotionLevel: { select: { id: true, name: true } } },
       })
-      me = resolveCareerProgress(profile?.xpPoints ?? 0, levels, profile?.currentInternalLevelId ?? null)
+      me = {
+        ...resolveCareerProgress(profile?.xpPoints ?? 0, levels, profile?.currentInternalLevelId ?? null),
+        pendingPromotionLevel: profile?.pendingPromotionLevel ?? null,
+      }
     }
 
     return Response.json({ levels, leaderboard, me })

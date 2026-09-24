@@ -31,6 +31,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       benefitType,
       measurementUnit,
       measurementValue,
+      minTenureMonths,
     } = body
 
     const level = await prisma.internalLevelRule.update({
@@ -49,6 +50,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...(benefitType !== undefined ? { benefitType } : {}),
         ...(measurementUnit !== undefined ? { measurementUnit } : {}),
         ...(measurementValue !== undefined ? { measurementValue: measurementValue ? Number(measurementValue) : null } : {}),
+        ...(minTenureMonths !== undefined ? { minTenureMonths: Number(minTenureMonths) || 0 } : {}),
       },
     })
 
