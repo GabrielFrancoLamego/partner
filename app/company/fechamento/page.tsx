@@ -1,16 +1,20 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Clock, Camera, CheckCircle2, AlertTriangle, ExternalLink, Lock, ReceiptText } from "lucide-react"
+import { Clock, Camera, CheckCircle2, AlertTriangle, ExternalLink, Lock, ReceiptText, History, ChevronLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
-import { LoadingState, AdminCard, EmptyState } from "@/components/admin/admin-ui"
+import { LoadingState, AdminCard, EmptyState, StatusBadge } from "@/components/admin/admin-ui"
 import { useCompanyUser } from "@/lib/company-user-context"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canManageDailyOperations, isCompanyMasterOrAdmin } from "@/lib/permissions"
 import { ManagerEvaluationRoutine } from "@/components/company/manager-evaluation-routine"
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10)
+}
 
 type PendingCommission = { id: string; clientName: string; commissionValue: string | null; partner: { name: string } }
 type PendingEmployee = { id: string; name: string }
@@ -75,6 +79,9 @@ function StepBadge({ done, number }: { done: boolean; number: number }) {
 export default function CompanyFechamentoPage() {
   const user = useCompanyUser()
   const isManager = canManageDailyOperations(user.role)
+  const isMaster = isCompanyMasterOrAdmin(user.role)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
 
   if (!isManager) {
     return <EmptyState message="Acesso restrito à Gerente e ao Administrador da empresa." />
@@ -82,16 +89,94 @@ export default function CompanyFechamentoPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Fechamento de Expediente</h1>
-        <p className="text-gray-600 mt-1 text-sm">Sequência obrigatória para encerrar o dia — os 3 passos precisam estar completos.</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Fechamento de Expediente</h1>
+          <p className="text-gray-600 mt-1 text-sm">Sequência obrigatória para encerrar o dia — os 3 passos precisam estar completos.</p>
+        </div>
+        {isMaster && (
+          <Button variant="outline" size="sm" onClick={() => setShowHistory((v) => !v)}>
+            {showHistory ? <ChevronLeft className="h-4 w-4 mr-1" /> : <History className="h-4 w-4 mr-1" />}
+            {showHistory ? "Voltar" : "Histórico de Fechamentos"}
+          </Button>
+        )}
       </div>
-      <ShiftClosingPanel />
+
+      {showHistory ? (
+        <ShiftClosingHistory
+          onSelect={(date) => {
+            setSelectedDate(date)
+            setShowHistory(false)
+          }}
+        />
+      ) : (
+        <>
+          {selectedDate && selectedDate !== todayStr() && (
+            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              Revisando o fechamento de {new Date(selectedDate + "T00:00:00").toLocaleDateString("pt-BR")}.
+              <button className="underline font-medium" onClick={() => setSelectedDate(null)}>
+                Voltar para hoje
+              </button>
+            </div>
+          )}
+          <ShiftClosingPanel date={selectedDate ?? todayStr()} isMaster={isMaster} />
+        </>
+      )}
     </div>
   )
 }
 
-function ShiftClosingPanel() {
+type ClosingHistoryRow = {
+  id: string
+  date: string
+  status: string
+  revenueAmount: string | null
+  isMasterOverride: boolean
+  closedBy: { name: string } | null
+  closedAt: string | null
+}
+
+function ShiftClosingHistory({ onSelect }: { onSelect: (date: string) => void }) {
+  const [rows, setRows] = useState<ClosingHistoryRow[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    adminFetch<ClosingHistoryRow[]>("/api/company/shift-closing/history")
+      .then(setRows)
+      .finally(() => setIsLoading(false))
+  }, [])
+
+  if (isLoading) return <LoadingState />
+  if (rows.length === 0) return <EmptyState message="Nenhum fechamento registrado nos últimos 60 dias." />
+
+  return (
+    <div className="space-y-2">
+      {rows.map((r) => (
+        <button
+          key={r.id}
+          onClick={() => onSelect(r.date.slice(0, 10))}
+          className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-white hover:border-[#F58220] transition-colors text-left"
+        >
+          <div>
+            <p className="font-medium text-[#3E2415] text-sm">{new Date(r.date).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" })}</p>
+            <p className="text-xs text-gray-500">
+              {r.closedBy?.name ?? "—"} {r.isMasterOverride && "· assumido pelo Master"}
+            </p>
+          </div>
+          <div className="text-right flex items-center gap-2">
+            <span className="text-sm font-semibold text-[#3E2415]">
+              {r.revenueAmount ? Number(r.revenueAmount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+            </span>
+            <StatusBadge status={r.status} />
+          </div>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean }) {
   const user = useCompanyUser()
   const [status, setStatus] = useState<ShiftClosingStatus | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -104,7 +189,7 @@ function ShiftClosingPanel() {
 
   const reload = () => {
     setIsLoading(true)
-    adminFetch<ShiftClosingStatus>("/api/company/shift-closing")
+    adminFetch<ShiftClosingStatus>(`/api/company/shift-closing?date=${date}`)
       .then((data) => {
         setStatus(data)
         setRevenueAmount(data.closing?.revenueAmount ?? "")
@@ -112,11 +197,13 @@ function ShiftClosingPanel() {
       })
       .finally(() => setIsLoading(false))
   }
-  useEffect(reload, [])
+  useEffect(reload, [date])
 
   const countdown = useCountdown(status?.deadline)
   const isCompleted = status?.closing?.status === "COMPLETED"
   const isMasterOnlyOverride = status?.overdue && user.role === "COMPANY_GERENTE"
+  // Fechamento já concluído só pode ser corrigido pelo Master — a Gerente vê um resumo somente-leitura.
+  const isLockedForGerente = isCompleted && !isMaster
 
   const step1Done = isCompleted || Boolean(status?.checklist.step1Complete)
   const step2Done = isCompleted || Boolean(status?.checklist.step2Complete)
@@ -133,6 +220,7 @@ function ShiftClosingPanel() {
     setIsSubmitting(true)
     try {
       const body = new FormData()
+      body.append("date", date)
       if (revenueAmount) body.append("revenueAmount", revenueAmount)
       if (summary) body.append("summary", summary)
       if (file) body.append("file", file)
@@ -147,6 +235,30 @@ function ShiftClosingPanel() {
   }
 
   if (isLoading || !status) return <LoadingState />
+
+  if (isLockedForGerente) {
+    return (
+      <div className="bg-white rounded-2xl p-5 shadow-md border border-gray-100 space-y-3">
+        <div className="flex items-center gap-2 text-green-700 font-bold text-sm">
+          <CheckCircle2 className="h-4 w-4" /> Fechamento concluído
+          {status.closing?.isMasterOverride && " (corrigido pelo Master)"}
+        </div>
+        <p className="text-sm text-gray-600">
+          Faturamento: <strong>{status.closing?.revenueAmount ? Number(status.closing.revenueAmount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}</strong>
+        </p>
+        {status.closing?.summary && <p className="text-sm text-gray-600">{status.closing.summary}</p>}
+        {status.closing?.receiptUrl && (
+          <a href={status.closing.receiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-[#F58220] hover:underline w-fit">
+            <Camera className="h-3 w-3" /> Ver comprovante <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
+        <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs text-gray-500">
+          <Lock className="h-3.5 w-3.5 flex-shrink-0" />
+          Este fechamento já foi submetido. Somente o Master pode corrigi-lo.
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">

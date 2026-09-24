@@ -25,6 +25,7 @@ type Employee = {
   breakStartTime: string | null
   breakEndTime: string | null
   bankOfHoursMinutes: number
+  dailyBreakAllowanceMinutes: number
 }
 
 const formatBank = (minutes: number) => {
@@ -272,6 +273,7 @@ function EmployeeScheduleDialog({
   const [workEndTime, setWorkEndTime] = useState(employee.workEndTime ?? "18:00")
   const [breakStartTime, setBreakStartTime] = useState(employee.breakStartTime ?? "12:00")
   const [breakEndTime, setBreakEndTime] = useState(employee.breakEndTime ?? "13:00")
+  const [dailyBreakAllowanceMinutes, setDailyBreakAllowanceMinutes] = useState(String(employee.dailyBreakAllowanceMinutes ?? 60))
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
 
@@ -289,6 +291,7 @@ function EmployeeScheduleDialog({
           workEndTime,
           breakStartTime,
           breakEndTime,
+          dailyBreakAllowanceMinutes: Number(dailyBreakAllowanceMinutes) || 0,
         }),
       })
       onSaved()
@@ -353,8 +356,18 @@ function EmployeeScheduleDialog({
               <Input type="time" value={breakEndTime} onChange={(e) => setBreakEndTime(e.target.value)} />
             </div>
           </div>
+          <div className="space-y-2">
+            <Label>Tempo total de pausa diária permitida (minutos)</Label>
+            <Input
+              type="number"
+              min="0"
+              value={dailyBreakAllowanceMinutes}
+              onChange={(e) => setDailyBreakAllowanceMinutes(e.target.value)}
+            />
+            <p className="text-xs text-gray-400">O colaborador pode usar esse tempo picado ou de uma vez, registrando início/fim da pausa no Ponto.</p>
+          </div>
           <p className="text-xs text-gray-400">
-            O Ponto Digital passa a comparar cada batida de Entrada/Saída contra este horário para calcular o Banco de Horas automaticamente.
+            O Ponto Digital passa a comparar cada batida de Entrada/Saída contra este horário para calcular o Banco de Horas automaticamente. Uma margem de tolerância (configurável em Programa Interno) não gera hora extra nem penalidade.
           </p>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canManageDailyOperations, canReviewCompletedShiftClosings } from "@/lib/permissions"
 import { uploadImage } from "@/lib/storage"
 import { logAudit } from "@/lib/audit"
 import { awardXp, getInternalProgramRules } from "@/lib/gamification"
@@ -136,6 +136,13 @@ export async function POST(request: Request) {
     }
 
     const existing = await prisma.shiftClosing.findUnique({ where: { companyId_date: { companyId, date } } })
+
+    // Fechamento já submetido (COMPLETED) só pode ser corrigido pelo Master —
+    // a Gerente perde a permissão de edição assim que o expediente é finalizado.
+    if (existing?.status === "COMPLETED" && !canReviewCompletedShiftClosings(user.role)) {
+      throw new ApiError(403, "Este fechamento já foi submetido. Apenas o Master pode corrigi-lo.")
+    }
+
     if (!(file instanceof File) || file.size === 0) {
       if (!existing?.receiptUrl) throw new ApiError(400, "Foto do comprovante de fechamento do caixa é obrigatória")
     }
@@ -143,7 +150,9 @@ export async function POST(request: Request) {
     const receiptUrl = file instanceof File && file.size > 0 ? await uploadImage("closings", file) : existing?.receiptUrl ?? null
 
     const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { shiftClosingDeadline: true } })
-    const isMasterOverride = user.role === "COMPANY_MASTER" && isPastDeadline(date, company.shiftClosingDeadline, now)
+    // Override do Master = fechou depois do prazo OU está corrigindo um fechamento já COMPLETED (a Gerente não pode mais mexer nele).
+    const isMasterOverride =
+      user.role === "COMPANY_MASTER" && (isPastDeadline(date, company.shiftClosingDeadline, now) || existing?.status === "COMPLETED")
 
     const closing = await prisma.shiftClosing.upsert({
       where: { companyId_date: { companyId, date } },
@@ -189,7 +198,7 @@ export async function POST(request: Request) {
     await logAudit({
       userId: user.id,
       companyId,
-      action: isMasterOverride ? "MASTER_OVERRIDE" : "CREATE",
+      action: isMasterOverride ? "MASTER_OVERRIDE" : existing ? "UPDATE" : "CREATE",
       entity: "ShiftClosing",
       entityId: closing.id,
       details: { date, revenueAmount },

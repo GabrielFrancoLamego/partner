@@ -1,17 +1,20 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { LogIn, Coffee, LogOut as LogOutIcon, RotateCcw, MapPin, Loader2, FileText, Check, X } from "lucide-react"
+import Link from "next/link"
+import { LogIn, Coffee, LogOut as LogOutIcon, RotateCcw, MapPin, Loader2, FileText, Check, X, AlertTriangle, Pencil, FileDown, Timer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, StatusBadge, AdminCard } from "@/components/admin/admin-ui"
 import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
-import { canManageDailyOperations, canOperateFrontDesk } from "@/lib/permissions"
+import { canManageDailyOperations, isCompanyMasterOrAdmin } from "@/lib/permissions"
 
 type EntryType = "CHECK_IN" | "BREAK_START" | "BREAK_END" | "CHECK_OUT"
 
@@ -35,20 +38,41 @@ const TYPE_ICONS: Record<EntryType, typeof LogIn> = {
   CHECK_OUT: LogOutIcon,
 }
 
-type TimeEntry = { id: string; type: EntryType; createdAt: string; latitude: string; longitude: string; user: { id: string; name: string } }
+type TimeEntry = {
+  id: string
+  type: EntryType
+  createdAt: string
+  latitude: string
+  longitude: string
+  user: { id: string; name: string }
+  isManagerAdjusted?: boolean
+}
 
 export default function CompanyPontoPage() {
   const user = useCompanyUser()
   const isManager = canManageDailyOperations(user.role)
+  const isMaster = isCompanyMasterOrAdmin(user.role)
+  const isEmployee = user.role === "EMPLOYEE"
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Ponto Digital</h1>
-        <p className="text-gray-600 mt-1 text-sm">Batida por GPS com validação de raio da unidade</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Ponto Digital</h1>
+          <p className="text-gray-600 mt-1 text-sm">Batida por GPS com validação de raio da unidade</p>
+        </div>
+        {isManager && (
+          <Link href="/company/ponto/relatorio">
+            <Button variant="outline" size="sm">
+              <FileDown className="h-4 w-4 mr-1.5" /> Exportar Relatório em PDF
+            </Button>
+          </Link>
+        )}
       </div>
 
-      {canOperateFrontDesk(user.role) && <ClockWidget />}
+      {isManager && <OvertimeAlerts />}
+
+      {isEmployee && <ClockWidget />}
 
       {isManager ? (
         <Tabs defaultValue="mirror">
@@ -58,7 +82,7 @@ export default function CompanyPontoPage() {
           </TabsList>
           <div className="bg-white rounded-2xl p-4 md:p-6 shadow-md border border-gray-100 mt-4">
             <TabsContent value="mirror">
-              <Mirror scope="team" />
+              <Mirror scope="team" canAdjust={isMaster} />
             </TabsContent>
             <TabsContent value="justifications">
               <JustificationsPanel isManager />
@@ -67,11 +91,50 @@ export default function CompanyPontoPage() {
         </Tabs>
       ) : (
         <AdminCard title="Meu Espelho de Ponto">
-          <Mirror scope="me" />
+          <Mirror scope="me" canAdjust={false} />
         </AdminCard>
       )}
 
-      {!isManager && canOperateFrontDesk(user.role) && <JustificationRequestForm />}
+      {isEmployee && <JustificationRequestForm />}
+    </div>
+  )
+}
+
+type OvertimeAlert = { employeeId: string; name: string; workEndTime: string; minutesToEnd: number; status: "approaching" | "overtime" }
+
+function OvertimeAlerts() {
+  const [alerts, setAlerts] = useState<OvertimeAlert[]>([])
+
+  useEffect(() => {
+    const load = () => adminFetch<OvertimeAlert[]>("/api/company/timeclock/alerts").then(setAlerts).catch(() => {})
+    load()
+    const interval = setInterval(load, 60000)
+    return () => clearInterval(interval)
+  }, [])
+
+  if (alerts.length === 0) return null
+
+  return (
+    <div className="space-y-2">
+      {alerts.map((a) => (
+        <div
+          key={a.employeeId}
+          className={`flex items-center gap-2 p-3 rounded-xl border text-sm ${
+            a.status === "overtime" ? "bg-red-50 border-red-200 text-red-800" : "bg-amber-50 border-amber-200 text-amber-800"
+          }`}
+        >
+          <Timer className="h-4 w-4 flex-shrink-0" />
+          {a.status === "overtime" ? (
+            <span>
+              <strong>{a.name}</strong> já ultrapassou o horário previsto ({a.workEndTime}) — está gerando hora extra.
+            </span>
+          ) : (
+            <span>
+              <strong>{a.name}</strong> está a {a.minutesToEnd}min de estourar a jornada ({a.workEndTime}).
+            </span>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
@@ -142,21 +205,29 @@ function ClockWidget() {
         {isSubmitting ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <MapPin className="h-5 w-5 mr-2" />}
         Bater Ponto
       </Button>
-      {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+      {error && (
+        <div className="flex items-start gap-2 mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-left">
+          <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-red-700 font-medium">{error}</p>
+        </div>
+      )}
       {success && <p className="text-sm text-green-600 mt-3">{success}</p>}
     </div>
   )
 }
 
-function Mirror({ scope }: { scope: "me" | "team" }) {
+function Mirror({ scope, canAdjust }: { scope: "me" | "team"; canAdjust: boolean }) {
   const [entries, setEntries] = useState<TimeEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [adjusting, setAdjusting] = useState<TimeEntry | null>(null)
 
-  useEffect(() => {
+  const reload = () => {
+    setIsLoading(true)
     adminFetch<TimeEntry[]>(`/api/company/timeclock?scope=${scope}&days=15`)
       .then(setEntries)
       .finally(() => setIsLoading(false))
-  }, [scope])
+  }
+  useEffect(reload, [scope])
 
   if (isLoading) return <LoadingState />
   if (entries.length === 0) return <EmptyState message="Nenhuma batida registrada nos últimos 15 dias." />
@@ -170,14 +241,25 @@ function Mirror({ scope }: { scope: "me" | "team" }) {
               {scope === "team" && <th className="px-4 py-3 font-medium">Colaborador</th>}
               <th className="px-4 py-3 font-medium">Tipo</th>
               <th className="px-4 py-3 font-medium">Data/Hora</th>
+              {canAdjust && <th className="px-4 py-3 font-medium text-right">Ações</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {entries.map((e) => (
               <tr key={e.id} className="hover:bg-gray-50">
                 {scope === "team" && <td className="px-4 py-3 font-medium text-[#3E2415]">{e.user.name}</td>}
-                <td className="px-4 py-3 text-gray-600">{TYPE_LABELS[e.type]}</td>
+                <td className="px-4 py-3 text-gray-600">
+                  {TYPE_LABELS[e.type]}
+                  {e.isManagerAdjusted && <span className="ml-1 text-xs text-[#F58220]">(corrigido)</span>}
+                </td>
                 <td className="px-4 py-3 text-gray-600">{new Date(e.createdAt).toLocaleString("pt-BR")}</td>
+                {canAdjust && (
+                  <td className="px-4 py-3 text-right">
+                    <Button variant="ghost" size="icon" onClick={() => setAdjusting(e)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -197,10 +279,95 @@ function Mirror({ scope }: { scope: "me" | "team" }) {
                 </span>
               ) : undefined
             }
+            actions={
+              canAdjust ? (
+                <button onClick={() => setAdjusting(e)} className="text-xs text-[#F58220] underline">
+                  Corrigir
+                </button>
+              ) : undefined
+            }
           />
         ))}
       </MobileCardList>
+
+      {adjusting && (
+        <AdjustEntryDialog entry={adjusting} onClose={() => setAdjusting(null)} onSaved={() => { setAdjusting(null); reload() }} />
+      )}
     </>
+  )
+}
+
+function AdjustEntryDialog({ entry, onClose, onSaved }: { entry: TimeEntry; onClose: () => void; onSaved: () => void }) {
+  const [type, setType] = useState<EntryType>(entry.type)
+  const [createdAt, setCreatedAt] = useState(() => {
+    const d = new Date(entry.createdAt)
+    const pad = (n: number) => String(n).padStart(2, "0")
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  })
+  const [note, setNote] = useState("")
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    setIsSubmitting(true)
+    try {
+      await adminFetch(`/api/company/timeclock/${entry.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ type, createdAt: new Date(createdAt).toISOString(), note }),
+      })
+      onSaved()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao corrigir batida")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Corrigir batida — {entry.user.name}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="space-y-2">
+            <Label>Tipo</Label>
+            <Select value={type} onValueChange={(v) => setType(v as EntryType)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(TYPE_LABELS) as EntryType[]).map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {TYPE_LABELS[t]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Data/Hora</Label>
+            <Input type="datetime-local" value={createdAt} onChange={(e) => setCreatedAt(e.target.value)} required />
+          </div>
+          <div className="space-y-2">
+            <Label>Motivo da correção</Label>
+            <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ex: esqueceu de bater a saída" />
+          </div>
+          <p className="text-xs text-gray-400">O colaborador será notificado da correção e precisará dar ciência.</p>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+              Salvar Correção
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 

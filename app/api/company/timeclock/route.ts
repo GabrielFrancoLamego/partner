@@ -1,12 +1,10 @@
 import type { TimeEntryType } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
-import { canOperateFrontDesk, canManageDailyOperations } from "@/lib/permissions"
+import { canPunchTimeclock, canManageDailyOperations } from "@/lib/permissions"
 import { checkGeofence } from "@/lib/geofence"
 import { awardXp, getInternalProgramRules } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
-
-const PUNCTUALITY_GRACE_MINUTES = 5
 
 /** "HH:mm" -> minutos desde 00:00, para comparar com a hora local da batida. */
 function parseTimeToMinutes(hhmm: string) {
@@ -74,7 +72,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const user = await requireCompanyStaff()
-    requireCapability(user, canOperateFrontDesk)
+    requireCapability(user, canPunchTimeclock)
     const companyId = user.companyId
 
     const body = await request.json()
@@ -106,27 +104,46 @@ export async function POST(request: Request) {
       data: { userId: user.id, companyId, type, latitude, longitude },
     })
 
-    // Banco de horas: só quando o colaborador tem turno configurado — a
-    // diferença entre a batida real e o horário previsto vira minutos
-    // (positivo = extra, negativo = déficit), somados ao saldo corrente.
-    const schedule = await prisma.employeeProfile.findUnique({
-      where: { userId: user.id },
-      select: { workStartTime: true, workEndTime: true },
-    })
+    // Banco de horas + tolerância: uma margem de `lateToleranceMinutes` (padrão
+    // 15min) antes/depois do horário previsto NÃO gera hora extra nem déficit —
+    // só o que exceder a tolerância entra no saldo (ver InternalProgram.lateToleranceMinutes).
+    const [schedule, rules] = await Promise.all([
+      prisma.employeeProfile.findUnique({ where: { userId: user.id }, select: { workStartTime: true, workEndTime: true } }),
+      getInternalProgramRules(companyId),
+    ])
+    const tolerance = rules.lateToleranceMinutes
+
     let bankMinutesDelta = 0
+    let lateMinutes = 0
     if (type === "CHECK_IN" && schedule?.workStartTime) {
-      bankMinutesDelta = parseTimeToMinutes(schedule.workStartTime) - minutesSinceMidnight(entry.createdAt)
+      const diff = minutesSinceMidnight(entry.createdAt) - parseTimeToMinutes(schedule.workStartTime) // positivo = atrasado
+      if (diff > tolerance) {
+        lateMinutes = diff - tolerance
+        bankMinutesDelta = -lateMinutes
+      }
     } else if (type === "CHECK_OUT" && schedule?.workEndTime) {
-      bankMinutesDelta = minutesSinceMidnight(entry.createdAt) - parseTimeToMinutes(schedule.workEndTime)
+      const diff = minutesSinceMidnight(entry.createdAt) - parseTimeToMinutes(schedule.workEndTime) // positivo = ficou a mais
+      if (Math.abs(diff) > tolerance) {
+        bankMinutesDelta = diff > 0 ? diff - tolerance : diff + tolerance
+      }
     }
     if (bankMinutesDelta !== 0) {
       await prisma.employeeProfile.update({ where: { userId: user.id }, data: { bankOfHoursMinutes: { increment: bankMinutesDelta } } })
     }
 
     if (type === "CHECK_IN") {
-      const rules = await getInternalProgramRules(companyId)
-      const isPunctual = !schedule?.workStartTime || minutesSinceMidnight(entry.createdAt) <= parseTimeToMinutes(schedule.workStartTime) + PUNCTUALITY_GRACE_MINUTES
-      if (isPunctual) {
+      if (lateMinutes > 0) {
+        if (rules.pointsLatePenalty !== 0) {
+          await awardXp({
+            companyId,
+            employeeId: user.id,
+            reason: "ATTENDANCE",
+            points: rules.pointsLatePenalty,
+            sourceId: entry.id,
+            note: `Atraso de ${lateMinutes}min além da tolerância de ${tolerance}min`,
+          })
+        }
+      } else {
         await awardXp({
           companyId,
           employeeId: user.id,
@@ -138,9 +155,16 @@ export async function POST(request: Request) {
       }
     }
 
-    await logAudit({ userId: user.id, companyId, action: "CREATE", entity: "TimeEntry", entityId: entry.id, details: { type, latitude, longitude, distanceMeters: geofence.distanceMeters, bankMinutesDelta } })
+    await logAudit({
+      userId: user.id,
+      companyId,
+      action: "CREATE",
+      entity: "TimeEntry",
+      entityId: entry.id,
+      details: { type, latitude, longitude, distanceMeters: geofence.distanceMeters, bankMinutesDelta, lateMinutes },
+    })
 
-    return Response.json({ ...entry, distanceMeters: geofence.distanceMeters, bankMinutesDelta }, { status: 201 })
+    return Response.json({ ...entry, distanceMeters: geofence.distanceMeters, bankMinutesDelta, lateMinutes }, { status: 201 })
   } catch (error) {
     return handleApiError(error)
   }
