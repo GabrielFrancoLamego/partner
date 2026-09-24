@@ -6,6 +6,11 @@ export async function generatePromotionQrDataUrl(promotionId: string) {
   return QRCode.toDataURL(`tribuss:promotion:${promotionId}`, { width: 480, margin: 2 })
 }
 
+/** QR genérico a partir de um payload de texto já pronto (ex: "tribuss:voucher:<code>") — ver PromotionVoucher. */
+export async function generateQrDataUrl(payload: string) {
+  return QRCode.toDataURL(payload, { width: 480, margin: 2 })
+}
+
 export function buildWhatsAppShareUrl(phone: string, message: string) {
   const digits = phone.replace(/\D/g, "")
   return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`

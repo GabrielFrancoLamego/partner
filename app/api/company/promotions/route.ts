@@ -36,6 +36,7 @@ export async function POST(request: Request) {
       discountedPrice,
       discountPercentage,
       creditAmount,
+      audience,
     } = body
 
     if (!title || !validFrom || !validUntil || cost === undefined) {
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
         stock: stock ?? null,
         bannerUrl: bannerUrl || null,
         offerType: offerType ?? "DISCOUNT",
+        audience: audience === "INTERNAL" ? "INTERNAL" : "EXTERNAL",
         originalPrice: originalPrice ?? null,
         discountedPrice: discountedPrice ?? null,
         discountPercentage: discountPercentage ?? null,

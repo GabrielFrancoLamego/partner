@@ -13,12 +13,15 @@ import { LoadingState, EmptyState, StatusBadge } from "@/components/admin/admin-
 
 type OfferType = "DISCOUNT" | "FREE_GIFT" | "DOUBLE_BENEFIT" | "CASH_CREDIT"
 
+type Audience = "EXTERNAL" | "INTERNAL"
+
 type Promotion = {
   id: string
   title: string
   description: string
   bannerUrl: string | null
   offerType: OfferType
+  audience: Audience
   originalPrice: string | null
   discountedPrice: string | null
   discountPercentage: string | null
@@ -147,6 +150,7 @@ function PromotionDialog({ promotion, onClose, onSaved }: { promotion: Promotion
   const [description, setDescription] = useState(promotion?.description ?? "")
   const [bannerUrl, setBannerUrl] = useState(promotion?.bannerUrl ?? "")
   const [offerType, setOfferType] = useState<OfferType>(promotion?.offerType ?? "DISCOUNT")
+  const [audience, setAudience] = useState<Audience>(promotion?.audience ?? "EXTERNAL")
   const [originalPrice, setOriginalPrice] = useState(promotion?.originalPrice ?? "")
   const [discountedPrice, setDiscountedPrice] = useState(promotion?.discountedPrice ?? "")
   const [discountPercentage, setDiscountPercentage] = useState(promotion?.discountPercentage ?? "")
@@ -222,6 +226,7 @@ function PromotionDialog({ promotion, onClose, onSaved }: { promotion: Promotion
         description,
         bannerUrl: bannerUrl || null,
         offerType,
+        audience,
         originalPrice: offerType === "DISCOUNT" && originalPrice ? Number(originalPrice) : null,
         discountedPrice: offerType === "DISCOUNT" && discountedPrice ? Number(discountedPrice) : null,
         discountPercentage: offerType === "DISCOUNT" && discountPercentage ? Number(discountPercentage) : null,
@@ -293,6 +298,19 @@ function PromotionDialog({ promotion, onClose, onSaved }: { promotion: Promotion
                     {OFFER_LABELS[key]}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Público</Label>
+            <Select value={audience} onValueChange={(v) => setAudience(v as Audience)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="EXTERNAL">Externa — visível para todos os Parceiros da plataforma</SelectItem>
+                <SelectItem value="INTERNAL">Interna — só o Colaborador oferece no Scanner (ex: Vale Retorno)</SelectItem>
               </SelectContent>
             </Select>
           </div>

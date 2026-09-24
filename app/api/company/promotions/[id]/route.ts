@@ -28,6 +28,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       discountedPrice,
       discountPercentage,
       creditAmount,
+      audience,
     } = body
 
     if (offerType === "CASH_CREDIT" && creditAmount === undefined && !existing.creditAmount) {
@@ -51,6 +52,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...(discountedPrice !== undefined ? { discountedPrice: discountedPrice ?? null } : {}),
         ...(discountPercentage !== undefined ? { discountPercentage: discountPercentage ?? null } : {}),
         ...(creditAmount !== undefined ? { creditAmount: creditAmount ?? null } : {}),
+        ...(audience !== undefined ? { audience: audience === "INTERNAL" ? "INTERNAL" : "EXTERNAL" } : {}),
       },
     })
 

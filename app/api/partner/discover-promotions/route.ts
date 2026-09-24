@@ -20,6 +20,7 @@ export async function GET(request: Request) {
     const promotions = await prisma.promotion.findMany({
       where: {
         active: true,
+        audience: "EXTERNAL",
         validFrom: { lte: now },
         validUntil: { gte: now },
         ...(offerType ? { offerType: offerType as "DISCOUNT" | "FREE_GIFT" | "DOUBLE_BENEFIT" | "CASH_CREDIT" } : {}),

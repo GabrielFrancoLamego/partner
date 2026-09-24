@@ -23,6 +23,7 @@ export async function GET() {
         description: true,
         bannerUrl: true,
         offerType: true,
+        audience: true,
         creditAmount: true,
         cost: true,
         stock: true,

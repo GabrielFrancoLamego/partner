@@ -20,7 +20,7 @@ export async function GET() {
     if (companyIds.length === 0) return Response.json([])
 
     const promotions = await prisma.promotion.findMany({
-      where: { companyId: { in: companyIds }, active: true, validFrom: { lte: now }, validUntil: { gte: now } },
+      where: { companyId: { in: companyIds }, active: true, audience: "EXTERNAL", validFrom: { lte: now }, validUntil: { gte: now } },
       include: { company: { select: { id: true, name: true, profilePictureUrl: true } } },
       orderBy: { createdAt: "desc" },
     })
