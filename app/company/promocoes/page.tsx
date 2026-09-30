@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, StatusBadge } from "@/components/admin/admin-ui"
 
@@ -60,6 +61,7 @@ export function promotionOfferSummary(p: {
 export default function CompanyPromotionsPage() {
   const [promotions, setPromotions] = useState<Promotion[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [tab, setTab] = useState<Audience>("EXTERNAL")
   const [editing, setEditing] = useState<Promotion | "new" | null>(null)
 
   const reload = () => {
@@ -84,12 +86,55 @@ export default function CompanyPromotionsPage() {
     reload()
   }
 
+  const filtered = promotions.filter((p) => p.audience === tab)
+
+  const renderList = () =>
+    isLoading ? (
+      <LoadingState />
+    ) : filtered.length === 0 ? (
+      <EmptyState
+        message={
+          tab === "EXTERNAL"
+            ? "Nenhuma promoção externa cadastrada ainda."
+            : "Nenhuma promoção interna (Vale Retorno) cadastrada ainda."
+        }
+      />
+    ) : (
+      <div className="grid gap-3 sm:grid-cols-2">
+        {filtered.map((p) => (
+          <div key={p.id} className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm">
+            {p.bannerUrl && <img src={p.bannerUrl} alt={p.title} className="w-full h-32 object-cover" />}
+            <div className="p-4 space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-semibold text-[#3E2415]">{p.title}</p>
+                <StatusBadge status={p.active ? "ACTIVE" : "INACTIVE"} />
+              </div>
+              <p className="text-xs text-gray-500">
+                {new Date(p.validFrom).toLocaleDateString("pt-BR")} – {new Date(p.validUntil).toLocaleDateString("pt-BR")}
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Button variant="outline" size="sm" onClick={() => setEditing(p)}>
+                  <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleToggleActive(p)}>
+                  <Power className="h-3.5 w-3.5 mr-1" /> {p.active ? "Desativar" : "Ativar"}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleDelete(p)} className="text-red-600 border-red-200">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Central de Promoções</h1>
-          <p className="text-gray-600 mt-1 text-sm">Ofertas atraentes para o parceiro apresentar ao cliente indicado.</p>
+          <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Promoções</h1>
+          <p className="text-gray-600 mt-1 text-sm">Ofertas externas para Parceiros indicarem e ofertas internas para o Colaborador usar no balcão.</p>
         </div>
         <Button onClick={() => setEditing("new")} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white self-start sm:self-auto">
           <Plus className="h-4 w-4 mr-2" />
@@ -97,43 +142,26 @@ export default function CompanyPromotionsPage() {
         </Button>
       </div>
 
-      {isLoading ? (
-        <LoadingState />
-      ) : promotions.length === 0 ? (
-        <EmptyState message="Nenhuma promoção cadastrada ainda." />
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {promotions.map((p) => (
-            <div key={p.id} className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm">
-              {p.bannerUrl && <img src={p.bannerUrl} alt={p.title} className="w-full h-32 object-cover" />}
-              <div className="p-4 space-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-semibold text-[#3E2415]">{p.title}</p>
-                  <StatusBadge status={p.active ? "ACTIVE" : "INACTIVE"} />
-                </div>
-                <p className="text-xs text-gray-500">
-                  {new Date(p.validFrom).toLocaleDateString("pt-BR")} – {new Date(p.validUntil).toLocaleDateString("pt-BR")}
-                </p>
-                <div className="flex items-center gap-2 pt-1">
-                  <Button variant="outline" size="sm" onClick={() => setEditing(p)}>
-                    <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => handleToggleActive(p)}>
-                    <Power className="h-3.5 w-3.5 mr-1" /> {p.active ? "Desativar" : "Ativar"}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => handleDelete(p)} className="text-red-600 border-red-200">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Audience)}>
+        <TabsList>
+          <TabsTrigger value="EXTERNAL">Promoções Externas</TabsTrigger>
+          <TabsTrigger value="INTERNAL">Promoções Internas</TabsTrigger>
+        </TabsList>
+        <p className="text-xs text-gray-500 mt-2">
+          {tab === "EXTERNAL"
+            ? "Visíveis para todos os Parceiros da plataforma indicarem clientes."
+            : "Só o Colaborador oferece direto ao cliente no balcão (Scanner PDV → Vale Retorno)."}
+        </p>
+        <div className="mt-4">
+          <TabsContent value="EXTERNAL">{renderList()}</TabsContent>
+          <TabsContent value="INTERNAL">{renderList()}</TabsContent>
         </div>
-      )}
+      </Tabs>
 
       {editing && (
         <PromotionDialog
           promotion={editing === "new" ? null : editing}
+          defaultAudience={tab}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)
@@ -145,12 +173,22 @@ export default function CompanyPromotionsPage() {
   )
 }
 
-function PromotionDialog({ promotion, onClose, onSaved }: { promotion: Promotion | null; onClose: () => void; onSaved: () => void }) {
+function PromotionDialog({
+  promotion,
+  defaultAudience,
+  onClose,
+  onSaved,
+}: {
+  promotion: Promotion | null
+  defaultAudience: Audience
+  onClose: () => void
+  onSaved: () => void
+}) {
   const [title, setTitle] = useState(promotion?.title ?? "")
   const [description, setDescription] = useState(promotion?.description ?? "")
   const [bannerUrl, setBannerUrl] = useState(promotion?.bannerUrl ?? "")
   const [offerType, setOfferType] = useState<OfferType>(promotion?.offerType ?? "DISCOUNT")
-  const [audience, setAudience] = useState<Audience>(promotion?.audience ?? "EXTERNAL")
+  const [audience, setAudience] = useState<Audience>(promotion?.audience ?? defaultAudience)
   const [originalPrice, setOriginalPrice] = useState(promotion?.originalPrice ?? "")
   const [discountedPrice, setDiscountedPrice] = useState(promotion?.discountedPrice ?? "")
   const [discountPercentage, setDiscountPercentage] = useState(promotion?.discountPercentage ?? "")
@@ -289,7 +327,7 @@ function PromotionDialog({ promotion, onClose, onSaved }: { promotion: Promotion
           <div className="space-y-2">
             <Label>Tipo de oferta</Label>
             <Select value={offerType} onValueChange={(v) => setOfferType(v as OfferType)}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -305,7 +343,7 @@ function PromotionDialog({ promotion, onClose, onSaved }: { promotion: Promotion
           <div className="space-y-2">
             <Label>Público</Label>
             <Select value={audience} onValueChange={(v) => setAudience(v as Audience)}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

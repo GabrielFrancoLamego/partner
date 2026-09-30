@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Bell, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -12,9 +12,11 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
+import { playEarningsSound } from "@/lib/earnings-sound"
 
 type Notification = {
   id: string
+  type: string
   title: string
   message: string
   linkUrl: string | null
@@ -22,6 +24,8 @@ type Notification = {
   readAt: string | null
   createdAt: string
 }
+
+const EARNINGS_NOTIFICATION_TYPES = new Set(["COMMISSION_EARNED", "BONUS_AWARDED"])
 
 function timeAgo(dateStr: string) {
   const diffMs = Date.now() - new Date(dateStr).getTime()
@@ -39,22 +43,40 @@ export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [isOpen, setIsOpen] = useState(false)
+  const seenIds = useRef<Set<string> | null>(null)
+  const soundEnabled = useRef(true)
 
   const reload = () => {
     fetch("/api/notifications")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data) return
-        setNotifications(data.notifications)
+        const list = data.notifications as Notification[]
+
+        if (seenIds.current) {
+          const newEarnings = list.some((n) => !seenIds.current!.has(n.id) && EARNINGS_NOTIFICATION_TYPES.has(n.type))
+          if (newEarnings && soundEnabled.current) playEarningsSound()
+        }
+        seenIds.current = new Set(list.map((n) => n.id))
+
+        setNotifications(list)
         setUnreadCount(data.unreadCount)
       })
       .catch(() => {})
   }
 
   useEffect(() => {
+    fetch("/api/account/notification-preferences")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) soundEnabled.current = Boolean(data.soundOnEarnings)
+      })
+      .catch(() => {})
+
     reload()
     const interval = setInterval(reload, 60000)
     return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleOpenChange = (open: boolean) => {

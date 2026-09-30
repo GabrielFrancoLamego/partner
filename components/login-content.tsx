@@ -17,7 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { User, Lock, ShieldCheck, Building2, Users, Eye, EyeOff, Check, Zap } from "lucide-react"
+import Link from "next/link"
+import { User, Lock, ShieldCheck, Building2, Users, Eye, EyeOff, Check, Zap, UserPlus } from "lucide-react"
 import type { AuthUser } from "@/lib/role-bucket"
 import { createClient } from "@/lib/supabase/client"
 
@@ -261,6 +262,14 @@ export function LoginContent({ onLogin }: LoginContentProps) {
               )
             })}
           </div>
+
+          <Link
+            href="/join/partner"
+            className="flex items-center justify-center gap-2 w-full h-11 mb-4 rounded-xl border-2 border-dashed border-[#15803D]/40 text-[#15803D] font-medium text-sm hover:bg-[#15803D]/5 transition-colors"
+          >
+            <UserPlus className="h-4 w-4" />
+            Cadastrar como Parceiro / Indicador
+          </Link>
 
           <p className="text-xs text-gray-400 mb-3 text-center">
             Ambiente local de testes — senha para todas as contas: <strong className="text-gray-600">{DEMO_PASSWORD}</strong>

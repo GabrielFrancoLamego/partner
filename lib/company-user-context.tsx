@@ -11,6 +11,8 @@ export type CompanyUser = {
   companyName: string
   /** EMPLOYEE autorizado pelo Master/Gerente a registrar Ocorrências em modo CREATE_ONLY (sem ver histórico). */
   canRegisterOccurrences: boolean
+  /** EMPLOYEE marcado como Responsável pelo Financeiro — acesso ao módulo mesmo sem o Role COMPANY_FINANCE. */
+  isFinanceResponsible: boolean
 }
 
 const CompanyUserContext = createContext<CompanyUser | null>(null)

@@ -27,7 +27,7 @@ export default async function CompanyLayout({ children }: { children: React.Reac
 
   const employeeProfile = await prisma.employeeProfile.findUnique({
     where: { userId: user.id },
-    select: { canRegisterOccurrences: true },
+    select: { canRegisterOccurrences: true, isFinanceResponsible: true },
   })
 
   return (
@@ -39,6 +39,7 @@ export default async function CompanyLayout({ children }: { children: React.Reac
         companyId: user.companyId,
         companyName: company.name,
         canRegisterOccurrences: employeeProfile?.canRegisterOccurrences ?? false,
+        isFinanceResponsible: employeeProfile?.isFinanceResponsible ?? false,
       }}
       billingWarning={
         accessState.kind === "OK_WITH_WARNING"

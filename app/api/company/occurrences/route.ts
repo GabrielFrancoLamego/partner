@@ -5,6 +5,7 @@ import { canManageDailyOperations } from "@/lib/permissions"
 import { uploadImage } from "@/lib/storage"
 import { awardXp, getInternalProgramRules } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
+import { notifyUser } from "@/lib/notifications"
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
 
@@ -24,9 +25,29 @@ const OCCURRENCE_TYPES: OccurrenceType[] = [
   "FIXADO",
   "CUSTOM",
 ]
-const REQUIRES_ATTACHMENT: OccurrenceType[] = ["ADVERTENCIA", "ATESTADO", "DISPENSADO"]
-const PAYMENT_METHODS: OccurrencePaymentMethod[] = ["DINHEIRO", "PIX", "TRABALHO", "FOLGA_ADICIONAL"]
+// CONSUMO exige a foto da comanda assinada (ver Conta de Consumo abaixo).
+const REQUIRES_ATTACHMENT: OccurrenceType[] = ["ADVERTENCIA", "ATESTADO", "DISPENSADO", "CONSUMO"]
+const PAYMENT_METHODS: OccurrencePaymentMethod[] = ["DINHEIRO", "PIX", "TRABALHO", "FOLGA_ADICIONAL", "CONSUMO"]
 const PAYMENT_STATUSES: OccurrencePaymentStatus[] = ["PENDING", "PAID"]
+
+// Rótulos em português — mesmo texto usado em app/company/ocorrencias/page.tsx,
+// reaproveitado aqui para a notificação de clareza enviada ao colaborador.
+const TYPE_LABELS: Record<OccurrenceType, string> = {
+  FOLGA_FERIADO: "Folga/Feriado",
+  VALE: "Vale/Adiantamento",
+  CONSUMO: "Consumo/Quebra de caixa",
+  META: "Bonificação de meta",
+  FALTA: "Falta",
+  ATESTADO: "Atestado",
+  ADVERTENCIA: "Advertência",
+  SUSPENSAO: "Suspensão",
+  DIARIA: "Diária (temporário)",
+  HORA_EXTRA: "Hora extra",
+  BANCO_HORAS: "Banco de horas",
+  DISPENSADO: "Desligamento",
+  FIXADO: "Efetivação",
+  CUSTOM: "Personalizado",
+}
 
 function startOfDay(date: Date) {
   const d = new Date(date)
@@ -204,6 +225,36 @@ export async function POST(request: Request) {
         })
       }
 
+      // Uso de Banco de Horas — Gerente concede folga/saída antecipada usando o
+      // saldo do colaborador: `quantity` = horas concedidas, sempre debitadas
+      // (pode ficar negativo = o colaborador "deve" horas à empresa).
+      if (type === "BANCO_HORAS" && employee) {
+        await tx.employeeProfile.update({
+          where: { userId: employee.id },
+          data: { bankOfHoursMinutes: { decrement: Math.round(quantity * 60) } },
+        })
+      }
+
+      // Pagamento de Horas Extras — pagar a hora extra "gasta" o banco de horas
+      // correspondente (mesmo se isso deixar o saldo negativo — vira dívida de
+      // horas do colaborador, a Gerente decide se paga mesmo assim).
+      if (type === "HORA_EXTRA" && employee) {
+        await tx.employeeProfile.update({
+          where: { userId: employee.id },
+          data: { bankOfHoursMinutes: { decrement: Math.round(quantity * 60) } },
+        })
+      }
+
+      // Conta de Consumo — a comanda assinada vira dívida do colaborador (ou
+      // Gerente) com a empresa, descontada do salário; pagar QUALQUER outra
+      // ocorrência de valor positivo com a forma "Consumo" abate essa dívida
+      // em vez de sair dinheiro novo (ver User.consumptionDebt).
+      if (type === "CONSUMO" && employee && total !== null) {
+        await tx.user.update({ where: { id: employee.id }, data: { consumptionDebt: { increment: Math.abs(total) } } })
+      } else if (paymentMethod === "CONSUMO" && employee && total !== null && total > 0) {
+        await tx.user.update({ where: { id: employee.id }, data: { consumptionDebt: { decrement: total } } })
+      }
+
       // Abono automático: ATESTADO registrado em até 24h de uma FALTA do
       // mesmo colaborador no mesmo dia perdoa o abate daquela falta — e
       // reverte a penalidade de XP de falta sem atestado já creditada (ver
@@ -231,18 +282,25 @@ export async function POST(request: Request) {
     })
 
     const rules = await getInternalProgramRules(companyId)
+    let appliedPoints = 0
 
     if (employee) {
-      if (type === "ADVERTENCIA") {
+      // ADVERTENCIA e SUSPENSAO são as duas ocorrências disciplinares fixas —
+      // InternalProgram.pointsOccurrence já é documentado no schema como
+      // "ADVERTENCIA/demais ocorrências", então a Suspensão deve aplicar a
+      // mesma penalidade (antes só Advertência aplicava, na prática).
+      if (type === "ADVERTENCIA" || type === "SUSPENSAO") {
+        appliedPoints = rules.pointsOccurrence
         await awardXp({
           companyId,
           employeeId: employee.id,
           reason: "OCCURRENCE_PENALTY",
           points: rules.pointsOccurrence,
           sourceId: occurrence.created.id,
-          note: "Advertência registrada",
+          note: type === "ADVERTENCIA" ? "Advertência registrada" : "Suspensão registrada",
         })
       } else if (type === "FALTA") {
+        appliedPoints = rules.pointsAbsenceUnjustified
         await awardXp({
           companyId,
           employeeId: employee.id,
@@ -252,6 +310,7 @@ export async function POST(request: Request) {
           note: "Falta sem atestado",
         })
       } else if (type === "ATESTADO") {
+        appliedPoints = rules.pointsAbsenceJustified
         await awardXp({
           companyId,
           employeeId: employee.id,
@@ -275,15 +334,48 @@ export async function POST(request: Request) {
           }
         }
       } else if (type === "CUSTOM" && customType?.kind === "POINTS" && customType.pointsImpact) {
+        appliedPoints = Math.round(customType.pointsImpact * quantity)
         await awardXp({
           companyId,
           employeeId: employee.id,
           reason: "MANUAL_ADJUSTMENT",
-          points: Math.round(customType.pointsImpact * quantity),
+          points: appliedPoints,
           sourceId: occurrence.created.id,
           note: occurrence.created.customType?.name ?? "Ocorrência configurável",
         })
       }
+
+      // Clareza para o colaborador: dados e motivo de toda ocorrência lançada
+      // contra ele — pontos, valor financeiro (crédito ou desconto) e/ou banco
+      // de horas (quando um tipo configurável tiver esse impacto), tudo num só
+      // lugar, sem ele precisar ir caçar no extrato.
+      const typeLabel = type === "CUSTOM" ? occurrence.created.customType?.name ?? "Ocorrência" : TYPE_LABELS[type as OccurrenceType]
+      const parts: string[] = []
+      if (total !== null) {
+        const formatted = Math.abs(total).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+        parts.push(total < 0 ? `desconto de ${formatted}` : `crédito de ${formatted}`)
+      }
+      if (appliedPoints !== 0) parts.push(`${appliedPoints > 0 ? "+" : ""}${appliedPoints} pontos`)
+      if (customType?.kind === "HOURS_BANK" && customType.hoursBankImpactMinutes) {
+        const mins = Math.round(customType.hoursBankImpactMinutes * quantity)
+        parts.push(`${mins > 0 ? "+" : ""}${mins}min no banco de horas`)
+      }
+      if (type === "BANCO_HORAS") parts.push(`-${Math.round(quantity * 60)}min no banco de horas (folga concedida)`)
+      if (type === "HORA_EXTRA") parts.push(`-${Math.round(quantity * 60)}min no banco de horas (hora extra paga)`)
+      if (type === "CONSUMO" && total !== null) {
+        parts.push(`+${Math.abs(total).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} na Conta de Consumo`)
+      } else if (paymentMethod === "CONSUMO" && total !== null && total > 0) {
+        parts.push(`-${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} abatidos da Conta de Consumo`)
+      }
+      await notifyUser({
+        userId: employee.id,
+        type: "GENERIC",
+        title: `Ocorrência registrada: ${typeLabel}`,
+        message:
+          (parts.length > 0 ? `${parts.join(" · ")}. ` : "") +
+          (typeof description === "string" && description.trim() ? `Motivo: ${description.trim()}` : "Sem motivo detalhado informado."),
+        linkUrl: "/company/crescimento",
+      }).catch(() => {})
     }
 
     await logAudit({

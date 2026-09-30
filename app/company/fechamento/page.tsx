@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Clock, Camera, CheckCircle2, AlertTriangle, ExternalLink, Lock, ReceiptText, History, ChevronLeft } from "lucide-react"
+import { Clock, Camera, CheckCircle2, AlertTriangle, ExternalLink, Lock, ReceiptText, History, ChevronLeft, Check, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,6 +18,15 @@ function todayStr() {
 
 type PendingCommission = { id: string; clientName: string; commissionValue: string | null; partner: { name: string } }
 type PendingEmployee = { id: string; name: string }
+type PendingTimeclockAdjustment = {
+  employeeId: string
+  employeeName: string
+  kind: "LATE_CHECKIN" | "CHECKOUT_VARIANCE" | "BREAK_OVERAGE"
+  computedMinutes: number
+  computedPoints: number
+  isNegativeForEmployee: boolean
+  label: string
+}
 
 type ShiftClosingStatus = {
   date: string
@@ -35,8 +44,10 @@ type ShiftClosingStatus = {
     closedAt: string | null
   } | null
   checklist: {
+    pendingTimeclockAdjustments: PendingTimeclockAdjustment[]
     pendingCommissions: PendingCommission[]
     pendingEmployees: PendingEmployee[]
+    step0Complete: boolean
     step1Complete: boolean
     step2Complete: boolean
   }
@@ -92,7 +103,7 @@ export default function CompanyFechamentoPage() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Fechamento de Expediente</h1>
-          <p className="text-gray-600 mt-1 text-sm">Sequência obrigatória para encerrar o dia — os 3 passos precisam estar completos.</p>
+          <p className="text-gray-600 mt-1 text-sm">Sequência obrigatória para encerrar o dia — os 4 passos precisam estar completos.</p>
         </div>
         {isMaster && (
           <Button variant="outline" size="sm" onClick={() => setShowHistory((v) => !v)}>
@@ -205,16 +216,17 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
   // Fechamento já concluído só pode ser corrigido pelo Master — a Gerente vê um resumo somente-leitura.
   const isLockedForGerente = isCompleted && !isMaster
 
+  const step0Done = isCompleted || Boolean(status?.checklist.step0Complete)
   const step1Done = isCompleted || Boolean(status?.checklist.step1Complete)
   const step2Done = isCompleted || Boolean(status?.checklist.step2Complete)
   const step3Ready = Boolean((status?.closing?.receiptUrl || file) && revenueAmount)
-  const canFinish = step1Done && step2Done && step3Ready
+  const canFinish = step0Done && step1Done && step2Done && step3Ready
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
     if (!canFinish) {
-      setError("Complete os 3 passos da sequência antes de finalizar o expediente")
+      setError("Complete os 4 passos da sequência antes de finalizar o expediente")
       return
     }
     setIsSubmitting(true)
@@ -289,6 +301,24 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
         <EmptyState message="O prazo estourou — apenas o Master pode concluir o fechamento agora." />
       ) : (
         <>
+          <AdminCard title="Passo 0 — Confirmação de Ponto" icon={Clock}>
+            <div className="flex items-center gap-2 mb-3">
+              <StepBadge done={step0Done} number={0} />
+              <p className="text-sm text-gray-600">
+                {step0Done
+                  ? "Todas as variações de ponto de hoje já foram confirmadas."
+                  : `${status.checklist.pendingTimeclockAdjustments.length} variação(ões) de ponto ainda precisam da sua confirmação.`}
+              </p>
+            </div>
+            {!step0Done && (
+              <div className="space-y-2">
+                {status.checklist.pendingTimeclockAdjustments.map((adj) => (
+                  <TimeclockAdjustmentRow key={`${adj.employeeId}:${adj.kind}`} adjustment={adj} date={date} onSaved={reload} />
+                ))}
+              </div>
+            )}
+          </AdminCard>
+
           <AdminCard title="Passo 1 — Contas dos Clientes Indicados" icon={ReceiptText}>
             <div className="flex items-center gap-2 mb-3">
               <StepBadge done={step1Done} number={1} />
@@ -322,9 +352,9 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
           <AdminCard title={isCompleted ? "Passo 3 — Fechamento registrado" : "Passo 3 — Faturamento Total do Caixa"}>
             <div className="flex items-center gap-2 mb-3">
               <StepBadge done={isCompleted} number={3} />
-              {!step1Done || !step2Done ? (
+              {!step0Done || !step1Done || !step2Done ? (
                 <p className="text-sm text-amber-700 flex items-center gap-1.5">
-                  <Lock className="h-4 w-4" /> Conclua os passos 1 e 2 para liberar o fechamento.
+                  <Lock className="h-4 w-4" /> Conclua os passos 0, 1 e 2 para liberar o fechamento.
                 </p>
               ) : (
                 <p className="text-sm text-gray-600">Informe o faturamento total e anexe a foto do comprovante.</p>
@@ -340,7 +370,7 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
               {error && <p className="text-sm text-red-600">{error}</p>}
               <div className="space-y-2">
                 <Label>Faturamento total do dia (R$)</Label>
-                <Input type="number" step="0.01" value={revenueAmount} onChange={(e) => setRevenueAmount(e.target.value)} disabled={!step1Done || !step2Done} />
+                <Input type="number" step="0.01" value={revenueAmount} onChange={(e) => setRevenueAmount(e.target.value)} disabled={!step0Done || !step1Done || !step2Done} />
               </div>
               <div className="space-y-2">
                 <Label>Foto do comprovante de fechamento do caixa {!status.closing?.receiptUrl && "*"}</Label>
@@ -348,7 +378,7 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
                   type="file"
                   accept="image/png,image/jpeg,image/webp,application/pdf"
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                  disabled={!step1Done || !step2Done}
+                  disabled={!step0Done || !step1Done || !step2Done}
                 />
                 {status.closing?.receiptUrl && (
                   <a href={status.closing.receiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-[#F58220] hover:underline w-fit">
@@ -358,7 +388,7 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
               </div>
               <div className="space-y-2">
                 <Label>Resumo do dia</Label>
-                <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Relato breve das ocorrências do expediente..." disabled={!step1Done || !step2Done} />
+                <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Relato breve das ocorrências do expediente..." disabled={!step0Done || !step1Done || !step2Done} />
               </div>
               <Button type="submit" disabled={isSubmitting || !canFinish} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white disabled:opacity-40">
                 {isCompleted ? "Atualizar Fechamento" : "Finalizar Expediente"}
@@ -422,6 +452,79 @@ function PendingCommissionRow({ commission, onSaved }: { commission: PendingComm
           onChange={(e) => setJustification(e.target.value)}
           className="bg-white"
         />
+      )}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </div>
+  )
+}
+
+/**
+ * Uma variação de ponto por vez — Sim aplica (pede justificativa se o
+ * resultado for negativo pro colaborador), Não perdoa sem aplicar nada. Só
+ * depois de decidida some da lista (ver TimeclockAdjustmentReview, único por
+ * colaborador/dia/tipo).
+ */
+function TimeclockAdjustmentRow({ adjustment, date, onSaved }: { adjustment: PendingTimeclockAdjustment; date: string; onSaved: () => void }) {
+  const [justification, setJustification] = useState("")
+  const [asking, setAsking] = useState<"apply" | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState("")
+
+  const decide = async (apply: boolean) => {
+    setError("")
+    if (apply && adjustment.isNegativeForEmployee && !justification.trim()) {
+      setAsking("apply")
+      setError("Justifique o desconto antes de aplicar")
+      return
+    }
+    setIsSaving(true)
+    try {
+      await adminFetch("/api/company/shift-closing/timeclock-adjustments", {
+        method: "POST",
+        body: JSON.stringify({ employeeId: adjustment.employeeId, kind: adjustment.kind, apply, justification, date }),
+      })
+      onSaved()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao salvar")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <div className={`rounded-xl p-3 space-y-2 border ${adjustment.isNegativeForEmployee ? "bg-red-50 border-red-100" : "bg-green-50 border-green-100"}`}>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <p className="text-sm text-[#3E2415] flex-1">
+          <span className="font-semibold">{adjustment.employeeName}</span>
+          <span className="text-gray-600"> — {adjustment.label}</span>
+        </p>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Button type="button" size="sm" variant="outline" disabled={isSaving} onClick={() => decide(false)} className="text-gray-600">
+            <X className="h-3.5 w-3.5 mr-1" /> Não aplicar
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={isSaving}
+            onClick={() => (adjustment.isNegativeForEmployee ? setAsking("apply") : decide(true))}
+            className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white"
+          >
+            <Check className="h-3.5 w-3.5 mr-1" /> Aplicar
+          </Button>
+        </div>
+      </div>
+      {asking === "apply" && adjustment.isNegativeForEmployee && (
+        <div className="space-y-2">
+          <Textarea
+            placeholder="Justifique o desconto (obrigatório) — ex: colaborador esqueceu de bater o ponto"
+            value={justification}
+            onChange={(e) => setJustification(e.target.value)}
+            className="bg-white"
+          />
+          <Button type="button" size="sm" disabled={isSaving || !justification.trim()} onClick={() => decide(true)} className="bg-red-600 hover:bg-red-700 text-white">
+            Confirmar desconto
+          </Button>
+        </div>
       )}
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>

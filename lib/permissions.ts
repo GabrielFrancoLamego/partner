@@ -69,3 +69,14 @@ export const canReviewCompletedShiftClosings = isCompanyMasterOrAdmin
 export function isPartner(role: Role) {
   return role === "PARTNER"
 }
+
+/**
+ * Acesso ao Módulo Financeiro unificado (/company/financeiro) — Master/Admin/
+ * COMPANY_FINANCE por papel, OU qualquer Colaborador marcado como
+ * "Responsável pelo Financeiro" (EmployeeProfile.isFinanceResponsible).
+ * Diferente de canManageFinance (que é só por Role) porque o Financeiro pode
+ * ser delegado a um EMPLOYEE específico sem trocar seu papel na plataforma.
+ */
+export function canAccessFinanceModule(user: { role: Role; employeeProfile?: { isFinanceResponsible: boolean } | null }) {
+  return canManageFinance(user.role) || Boolean(user.employeeProfile?.isFinanceResponsible)
+}

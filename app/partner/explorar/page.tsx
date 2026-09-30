@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Search, X, MapPin, FileText, Youtube, History, LogOut as LeaveIcon } from "lucide-react"
+import Link from "next/link"
+import { Search, X, MapPin, FileText, Youtube, History, LogOut as LeaveIcon, Map } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, StatusBadge } from "@/components/admin/admin-ui"
 import { StarRatingDisplay } from "@/components/partner/star-rating"
+import { AdesaoGateDialog } from "@/components/partner/adesao-gate-dialog"
 
 type MembershipStatus = "ACTIVE" | "LEFT_BY_PARTNER" | "TERMINATED_INACTIVITY" | "PROGRAM_ENDED"
 
@@ -66,6 +68,7 @@ export default function PartnerExplorarPage() {
   const [minRating, setMinRating] = useState<string | null>(null)
   const [detail, setDetail] = useState<ProgramListing | null>(null)
   const [leaving, setLeaving] = useState<ProgramListing | null>(null)
+  const [adesaoGateFor, setAdesaoGateFor] = useState<ProgramListing | null>(null)
 
   const reload = () => {
     setIsLoading(true)
@@ -110,17 +113,30 @@ export default function PartnerExplorarPage() {
   }
 
   const handleJoin = async (program: ProgramListing) => {
-    await adminFetch(`/api/partner/programs/${program.programId}/join`, { method: "POST" }).catch((e) =>
-      alert(e instanceof AdminApiError ? e.message : "Erro ao participar"),
-    )
-    reload()
+    try {
+      await adminFetch(`/api/partner/programs/${program.programId}/join`, { method: "POST" })
+      reload()
+    } catch (e) {
+      if (e instanceof AdminApiError && e.status === 428) {
+        setAdesaoGateFor(program)
+        return
+      }
+      alert(e instanceof AdminApiError ? e.message : "Erro ao participar")
+    }
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Explorar Programas</h1>
-        <p className="text-gray-600 mt-1 text-sm">Encontre empresas parceiras e participe do programa de comissão delas.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Explorar Programas</h1>
+          <p className="text-gray-600 mt-1 text-sm">Encontre empresas parceiras e participe do programa de comissão delas.</p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="self-start sm:self-auto">
+          <Link href="/partner/mapa">
+            <Map className="h-4 w-4 mr-1.5" /> Ver no Mapa
+          </Link>
+        </Button>
       </div>
 
       <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100 space-y-3">
@@ -257,6 +273,16 @@ export default function PartnerExplorarPage() {
           onConfirmed={() => {
             setLeaving(null)
             reload()
+          }}
+        />
+      )}
+      {adesaoGateFor && (
+        <AdesaoGateDialog
+          onClose={() => setAdesaoGateFor(null)}
+          onCompleted={() => {
+            const program = adesaoGateFor
+            setAdesaoGateFor(null)
+            handleJoin(program)
           }}
         />
       )}

@@ -45,7 +45,7 @@ const ALLOWED_PUBLIC_DOC_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", 
  * o conteúdo é intencionalmente público (parceiros/clientes precisam abrir
  * sem login), então devolve a URL pública direta, não um path assinado.
  */
-export async function uploadPublicDocument(folder: "programs" | "internal-programs" | "promotions", file: File) {
+export async function uploadPublicDocument(folder: "programs" | "internal-programs" | "promotions" | "communications", file: File) {
   if (!ALLOWED_PUBLIC_DOC_MIME_TYPES.includes(file.type)) {
     throw new Error("Formato não suportado — envie uma imagem (JPG/PNG/WEBP) ou PDF.")
   }

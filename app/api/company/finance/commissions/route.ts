@@ -1,11 +1,10 @@
 import { prisma } from "@/lib/prisma"
-import { requireCompanyStaff, requireCapability, handleApiError } from "@/lib/api-auth"
-import { canManageFinance } from "@/lib/permissions"
+import { requireCompanyStaff, requireFinanceAccess, handleApiError } from "@/lib/api-auth"
 
 export async function GET(request: Request) {
   try {
     const user = await requireCompanyStaff()
-    requireCapability(user, canManageFinance)
+    requireFinanceAccess(user)
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")

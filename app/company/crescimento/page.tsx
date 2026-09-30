@@ -45,9 +45,18 @@ export default function CompanyCrescimentoPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Programa de Crescimento</h1>
-        <p className="text-gray-600 mt-1 text-sm">Trilha de cargos, Pts e loja de prêmios</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Programa de Crescimento</h1>
+          <p className="text-gray-600 mt-1 text-sm">Trilha de cargos, Pts e loja de prêmios</p>
+        </div>
+        {isManager && (
+          <Button asChild variant="outline" size="sm" className="self-start sm:self-auto">
+            <Link href="/company/programa-interno">
+              <Settings className="h-4 w-4 mr-1.5" /> Editar Programa
+            </Link>
+          </Button>
+        )}
       </div>
       {isManager ? <ManagerGrowthView /> : <EmployeeGrowthView />}
     </div>

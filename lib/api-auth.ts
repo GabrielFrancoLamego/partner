@@ -1,7 +1,10 @@
 import "server-only"
 import { Prisma, type Role } from "@prisma/client"
 import { getCurrentUser, type CurrentUser } from "./current-user"
-import { isPlatformAdmin, isCompanyStaff, isPartner } from "./permissions"
+import { isPlatformAdmin, isCompanyStaff, isPartner, canAccessFinanceModule } from "./permissions"
+import { prisma } from "./prisma"
+import { getCompanyAccessState } from "./company-access"
+import { isTwoFactorVerified } from "./two-factor-session"
 
 export class ApiError extends Error {
   status: number
@@ -35,18 +38,55 @@ export async function requirePlatformAdmin(): Promise<CurrentUser> {
  * empresa (Master, Gerente, Financeiro ou Colaborador) com companyId
  * vinculado. Diferente do admin, essas rotas NUNCA aceitam companyId vindo
  * do cliente — o escopo é sempre `user.companyId` da própria sessão.
+ *
+ * Também repete aqui o mesmo bloqueio de acesso que app/company/layout.tsx
+ * aplica na tela (empresa BLOCKED/ARCHIVED/INACTIVE ou OVERDUE além da
+ * carência) — sem isso, o bloqueio era só visual: uma chamada direta à API
+ * (curl/Postman) continuava funcionando normalmente para o staff de uma
+ * empresa suspensa (ver lib/company-access.ts).
  */
 export async function requireCompanyStaff(): Promise<CurrentUser & { companyId: string }> {
   const user = await requireUser()
   requireCapability(user, isCompanyStaff)
   if (!user.companyId) throw new ApiError(403, "Usuário sem empresa vinculada")
+
+  const company = await prisma.company.findUnique({
+    where: { id: user.companyId },
+    select: { status: true, overdueSince: true },
+  })
+  if (!company) throw new ApiError(403, "Empresa não encontrada")
+  if (getCompanyAccessState(company).kind === "BLOCKED") {
+    throw new ApiError(403, "Acesso da empresa suspenso — contate o suporte Tribuss")
+  }
+
   return user as CurrentUser & { companyId: string }
 }
 
-/** Uso: toda rota sob app/api/partner/* — exige sessão + role PARTNER. */
+/**
+ * Uso: rotas do Módulo Financeiro (/api/company/finance/**) — exige role de
+ * finanças (Master/Admin/COMPANY_FINANCE) OU um EMPLOYEE marcado como
+ * Responsável pelo Financeiro (ver lib/permissions.ts#canAccessFinanceModule).
+ */
+export function requireFinanceAccess(user: CurrentUser) {
+  if (!canAccessFinanceModule(user)) throw new ApiError(403, "Sem permissão para esta ação")
+}
+
+/**
+ * Uso: toda rota sob app/api/partner/* — exige sessão + role PARTNER.
+ *
+ * Quando o parceiro tem 2FA ativo (User.twoFactorEnabled), também exige o
+ * cookie de "2FA verificado nesta sessão" (ver lib/two-factor-session.ts) —
+ * antes, esse segundo fator só era checado em app/partner/layout.tsx (nível
+ * de tela), então uma chamada direta à API com a sessão Supabase válida (só
+ * senha) bypassava o 2FA inteiro, o que anula o propósito do segundo fator
+ * justamente no cenário que ele existe para proteger (credencial vazada).
+ */
 export async function requirePartner(): Promise<CurrentUser> {
   const user = await requireUser()
   requireCapability(user, isPartner)
+  if (user.twoFactorEnabled && !(await isTwoFactorVerified(user.id))) {
+    throw new ApiError(401, "Verificação em duas etapas pendente")
+  }
   return user
 }
 

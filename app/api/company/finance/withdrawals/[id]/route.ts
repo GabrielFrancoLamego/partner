@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageFinance } from "@/lib/permissions"
+import { requireCompanyStaff, requireFinanceAccess, handleApiError, ApiError } from "@/lib/api-auth"
 import { logAudit } from "@/lib/audit"
 
 const VALID_STATUSES = ["APPROVED", "REJECTED", "PAID"]
@@ -9,7 +8,7 @@ const VALID_STATUSES = ["APPROVED", "REJECTED", "PAID"]
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireCompanyStaff()
-    requireCapability(user, canManageFinance)
+    requireFinanceAccess(user)
     const { id } = await params
     const companyId = user.companyId
 

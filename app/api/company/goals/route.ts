@@ -52,7 +52,13 @@ export async function POST(request: Request) {
       employeeId?: string
       period: GoalPeriod
       name: string
-      tiers?: { targetAmount: number; bonusAmount: number }[]
+      tiers?: {
+        targetAmount: number
+        bonusAmount: number
+        rewardType?: "CASH" | "PHYSICAL_REWARD"
+        rewardCatalogItemId?: string | null
+        rewardLabel?: string | null
+      }[]
     }
 
     if (!SCOPES.includes(scope)) throw new ApiError(400, "Escopo inválido")
@@ -70,6 +76,12 @@ export async function POST(request: Request) {
       if (!employee) throw new ApiError(404, "Colaborador não encontrado nesta empresa")
     }
 
+    const rewardItemIds = [...new Set((tiers ?? []).map((t) => t.rewardCatalogItemId).filter((id): id is string => Boolean(id)))]
+    if (rewardItemIds.length > 0) {
+      const count = await prisma.rewardCatalogItem.count({ where: { id: { in: rewardItemIds }, companyId } })
+      if (count !== rewardItemIds.length) throw new ApiError(404, "Item da Loja de Prêmios não encontrado")
+    }
+
     const goal = await prisma.goal.create({
       data: {
         companyId,
@@ -80,10 +92,21 @@ export async function POST(request: Request) {
         name: name.trim(),
         createdById: user.id,
         tiers: {
-          create: (tiers ?? []).map((t, index) => ({ order: index, targetAmount: Number(t.targetAmount), bonusAmount: Number(t.bonusAmount) })),
+          create: (tiers ?? []).map((t, index) => ({
+            order: index,
+            targetAmount: Number(t.targetAmount),
+            bonusAmount: Number(t.bonusAmount) || 0,
+            rewardType: t.rewardType === "PHYSICAL_REWARD" ? "PHYSICAL_REWARD" : "CASH",
+            rewardCatalogItemId: t.rewardCatalogItemId || null,
+            rewardLabel: t.rewardLabel || null,
+          })),
         },
       },
-      include: { tiers: { orderBy: { order: "asc" } }, sector: { select: { id: true, name: true } }, employee: { select: { id: true, name: true } } },
+      include: {
+        tiers: { orderBy: { order: "asc" }, include: { rewardCatalogItem: { select: { id: true, name: true } } } },
+        sector: { select: { id: true, name: true } },
+        employee: { select: { id: true, name: true } },
+      },
     })
 
     await logAudit({ userId: user.id, companyId, action: "CREATE", entity: "Goal", entityId: goal.id, details: body })

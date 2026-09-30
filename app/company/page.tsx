@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Users, TrendingUp, Boxes, Trophy, Star, AlertTriangle, Clock, DollarSign, Target } from "lucide-react"
+import { Users, TrendingUp, Boxes, Trophy, Star, AlertTriangle, Clock, DollarSign, Target, ReceiptText } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { adminFetch } from "@/lib/admin-api-client"
 import { PeriodFilter } from "@/components/admin/admin-filters"
@@ -87,6 +87,7 @@ export default function CompanyDashboardPage() {
         <div className="space-y-6">
           {data.master && <MasterPanel master={data.master} />}
           {data.me && <EmployeeGamePanel me={data.me} />}
+          {(user.role === "EMPLOYEE" || user.role === "COMPANY_GERENTE") && <ConsumptionDebtCard />}
 
           <GoalProgressWidget />
 
@@ -374,6 +375,42 @@ type GoalProgress = {
   nextTier: GoalTier | null
   progressToNextPercent: number
   remainingToNext: number
+}
+
+type ConsumptionEntry = { id: string; type: string; total: string | null; paymentMethod: string | null; description: string | null; date: string }
+
+/** Saldo devedor da Conta de Consumo (comandas assinadas na casa) — ver Occurrence.type = CONSUMO. */
+function ConsumptionDebtCard() {
+  const [data, setData] = useState<{ debt: number; entries: ConsumptionEntry[] } | null>(null)
+
+  useEffect(() => {
+    adminFetch<{ debt: number; entries: ConsumptionEntry[] }>("/api/company/consumption-debt").then(setData)
+  }, [])
+
+  if (!data || data.debt === 0) return null
+
+  return (
+    <AdminCard title="Conta de Consumo" icon={ReceiptText}>
+      <p className="text-2xl font-bold text-red-600">{currency(data.debt)}</p>
+      <p className="text-xs text-gray-500 mt-1">Saldo devedor de comandas assinadas na casa — descontado do salário.</p>
+      {data.entries.length > 0 && (
+        <div className="divide-y divide-gray-100 mt-3">
+          {data.entries.slice(0, 5).map((e) => (
+            <div key={e.id} className="py-1.5 flex items-center justify-between gap-3 text-sm">
+              <span className="text-gray-600">
+                {new Date(e.date).toLocaleDateString("pt-BR")}
+                {e.description && ` · ${e.description}`}
+              </span>
+              <span className={e.type === "CONSUMO" ? "font-semibold text-red-600" : "font-semibold text-green-600"}>
+                {e.type === "CONSUMO" ? "+" : "-"}
+                {e.total ? currency(Math.abs(Number(e.total))) : "—"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </AdminCard>
+  )
 }
 
 /** Resumo somente-leitura das metas ativas visíveis ao usuário — gestão completa fica em /company/metas. */

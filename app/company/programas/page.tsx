@@ -272,7 +272,7 @@ export default function CompanyProgramsPage() {
               <div className="space-y-2 max-w-xs pt-2 border-t border-gray-100">
                 <label className="flex items-center gap-2 text-sm text-[#3E2415]">
                   <Checkbox checked={hasFixedExtra} onCheckedChange={(v) => setHasFixedExtra(v === true)} />
-                  Comissão combinada — somar um valor fixo (R$) além da %
+                  Ambas (% + R$ Fixo) — somar um valor fixo além da %
                 </label>
                 {hasFixedExtra && (
                   <>

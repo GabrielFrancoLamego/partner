@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { requirePartner, handleApiError, ApiError } from "@/lib/api-auth"
+import { isValidCpfOrCnpj } from "@/lib/validators"
 
 export async function GET() {
   try {
@@ -14,16 +15,26 @@ export async function GET() {
 }
 
 const UpdateSchema = z.object({
+  cpf: z.string().trim().refine(isValidCpfOrCnpj, "CPF/CNPJ inválido").optional(),
   pixKey: z.string().trim().min(1).optional(),
   bankName: z.string().trim().min(1).optional(),
   accountType: z.string().trim().min(1).optional(),
-  agency: z.string().trim().min(1).optional(),
-  accountNumber: z.string().trim().min(1).optional(),
+  agency: z
+    .string()
+    .trim()
+    .regex(/^\d+$/, "Agência deve conter apenas números")
+    .optional(),
+  accountNumber: z
+    .string()
+    .trim()
+    .regex(/^\d+-?\d?$/, "Conta deve conter apenas números (dígito verificador opcional)")
+    .optional(),
   fullName: z.string().trim().min(1).optional(),
   whatsapp: z.string().trim().min(1).optional(),
+  photoUrl: z.string().trim().min(1).optional(),
 })
 
-/** Auto-edição do próprio cadastro pelo Parceiro — Dados Bancários/PIX exigidos antes do 1º saque (ver app/api/partner/withdrawals). */
+/** Auto-edição do próprio cadastro pelo Parceiro — CPF/PIX/Bancários exigidos antes de aderir a um programa ou sacar (ver lib/partner-adesao.ts). */
 export async function PATCH(request: Request) {
   try {
     const user = await requirePartner()

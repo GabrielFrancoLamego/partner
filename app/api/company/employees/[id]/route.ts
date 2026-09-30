@@ -26,6 +26,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       breakStartTime,
       breakEndTime,
       dailyBreakAllowanceMinutes,
+      weeklySchedule,
+      weeklyDayOff,
+      hasExtraMonthlyDayOff,
+      isFinanceResponsible,
+      isSectorCommunicationResponsible,
     } = body
 
     if (sectorId) {
@@ -33,6 +38,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (!sector) throw new ApiError(404, "Setor não encontrado nesta empresa")
     }
     if (shiftType && shiftType !== "DAY" && shiftType !== "NIGHT") throw new ApiError(400, "Turno inválido")
+    if (weeklyDayOff !== undefined && weeklyDayOff !== null && (weeklyDayOff < 0 || weeklyDayOff > 6)) {
+      throw new ApiError(400, "Dia de folga semanal inválido")
+    }
 
     const updated = await prisma.employeeProfile.update({
       where: { userId: id },
@@ -46,6 +54,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...(breakStartTime !== undefined ? { breakStartTime: breakStartTime || null } : {}),
         ...(breakEndTime !== undefined ? { breakEndTime: breakEndTime || null } : {}),
         ...(dailyBreakAllowanceMinutes !== undefined ? { dailyBreakAllowanceMinutes: Number(dailyBreakAllowanceMinutes) || 0 } : {}),
+        ...(weeklySchedule !== undefined ? { weeklySchedule: weeklySchedule ?? undefined } : {}),
+        ...(weeklyDayOff !== undefined ? { weeklyDayOff: weeklyDayOff === null ? null : Number(weeklyDayOff) } : {}),
+        ...(hasExtraMonthlyDayOff !== undefined ? { hasExtraMonthlyDayOff: Boolean(hasExtraMonthlyDayOff) } : {}),
+        ...(isFinanceResponsible !== undefined ? { isFinanceResponsible: Boolean(isFinanceResponsible) } : {}),
+        ...(isSectorCommunicationResponsible !== undefined
+          ? { isSectorCommunicationResponsible: Boolean(isSectorCommunicationResponsible) }
+          : {}),
       },
     })
 

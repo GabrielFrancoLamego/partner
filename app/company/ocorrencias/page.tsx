@@ -38,6 +38,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   PIX: "PIX",
   TRABALHO: "Trabalho",
   FOLGA_ADICIONAL: "Folga adicional",
+  CONSUMO: "Consumo (abate a Conta de Consumo)",
 }
 const IMPACT_KIND_LABELS: Record<string, string> = {
   POINTS: "Ganho/Perda de Pts",
@@ -406,6 +407,47 @@ function ManagerOccurrences() {
   )
 }
 
+type OvertimePreview = { hourlyRate: number; hours: number; baseAmount: number; bonus50: number; totalAmount: number }
+
+/** Prévia do valor de Horas Extras — hora calculada pelo horário/salário DESTE colaborador × 1,5. */
+function OvertimePreviewHint({ employeeId, hours, onUseValue }: { employeeId: string; hours: string; onUseValue: (perHourValue: number) => void }) {
+  const [preview, setPreview] = useState<OvertimePreview | null>(null)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    setPreview(null)
+    setError("")
+    const hoursNum = Number(hours)
+    if (!hoursNum || hoursNum <= 0) return
+    const timer = setTimeout(() => {
+      adminFetch<OvertimePreview>(`/api/company/occurrences/overtime-preview?employeeId=${employeeId}&hours=${hoursNum}`)
+        .then(setPreview)
+        .catch((e) => setError(e instanceof AdminApiError ? e.message : "Não foi possível calcular"))
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [employeeId, hours])
+
+  if (error) return <p className="text-xs text-red-500">{error}</p>
+  if (!preview) return null
+
+  const perHourWithBonus = Math.round(preview.hourlyRate * 1.5 * 100) / 100
+  const currency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+
+  return (
+    <div className="text-xs bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1">
+      <p className="text-blue-900">
+        Hora do colaborador: <strong>{currency(preview.hourlyRate)}</strong> · +50%: <strong>{currency(perHourWithBonus)}</strong>/h
+      </p>
+      <p className="text-blue-900">
+        Total para {preview.hours}h: <strong>{currency(preview.totalAmount)}</strong>
+      </p>
+      <button type="button" onClick={() => onUseValue(perHourWithBonus)} className="text-blue-700 underline font-medium">
+        Usar este valor no campo "Valor" (R$/h)
+      </button>
+    </div>
+  )
+}
+
 function OccurrenceForm({
   employees,
   customTypes,
@@ -536,10 +578,21 @@ function OccurrenceForm({
         {type === "FALTA" && (
           <p className="text-xs text-gray-400">
             Sem valor informado, o sistema abate 1 dia com base no salário-base do colaborador. Um ATESTADO
-            registrado em até 24h abona o desconto.
+            registrado em até 24h abona o desconto. Colaborador com Falta hoje fica isento de penalidade de
+            checklist no fechamento do dia.
+          </p>
+        )}
+        {type === "BANCO_HORAS" && (
+          <p className="text-xs text-gray-400">
+            Quantidade = horas de folga concedidas usando o banco de horas do colaborador (será debitado — pode
+            ficar negativo). Ele também fica isento de penalidade de checklist no fechamento do dia.
           </p>
         )}
       </div>
+
+      {type === "HORA_EXTRA" && mode === "registered" && employeeId && (
+        <OvertimePreviewHint employeeId={employeeId} hours={quantity} onUseValue={(v) => setValue(String(v))} />
+      )}
 
       {type === "CUSTOM" && (
         <div className="space-y-2">

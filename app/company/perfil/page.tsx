@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { UserCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, AdminCard } from "@/components/admin/admin-ui"
 import { AccountDeletionRequest } from "@/components/account-deletion-request"
+import { formatCpfCnpj, formatCep, isValidCpf, isValidCep, onlyDigits } from "@/lib/validators"
 
 type EmployeeProfile = {
   fullName: string
@@ -27,6 +28,8 @@ type EmployeeProfile = {
   agency: string
   accountNumber: string
 }
+
+type CepLookupResponse = { address: string; neighborhood: string; city: string; state: string }
 
 const emptyForm: EmployeeProfile = {
   fullName: "",
@@ -51,7 +54,10 @@ export default function CompanyProfilePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
+  const [cepError, setCepError] = useState("")
+  const [cepLoading, setCepLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const cepDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     adminFetch<Record<string, unknown>>("/api/company/my-profile")
@@ -80,10 +86,57 @@ export default function CompanyProfilePage() {
   const set = (field: keyof EmployeeProfile) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [field]: e.target.value }))
 
+  const setDigitsOnly = (field: keyof EmployeeProfile) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, [field]: onlyDigits(e.target.value) }))
+
+  const handleCepChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatCep(e.target.value)
+    setForm((f) => ({ ...f, zipCode: formatted }))
+    setCepError("")
+    if (cepDebounce.current) clearTimeout(cepDebounce.current)
+
+    const digits = onlyDigits(formatted)
+    if (digits.length !== 8) return
+
+    cepDebounce.current = setTimeout(async () => {
+      setCepLoading(true)
+      try {
+        const result = await adminFetch<CepLookupResponse>(`/api/company/geo/cep?cep=${digits}`)
+        setForm((f) => ({
+          ...f,
+          street: result.address || f.street,
+          neighborhood: result.neighborhood || f.neighborhood,
+          city: result.city || f.city,
+          state: result.state || f.state,
+        }))
+      } catch {
+        setCepError("CEP não encontrado — verifique e tente novamente")
+      } finally {
+        setCepLoading(false)
+      }
+    }, 500)
+  }
+
+  const hasPix = form.pixKey.trim().length > 0
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
     setSuccess("")
+
+    if (!isValidCpf(form.cpf)) {
+      setError("CPF inválido — confira os números digitados")
+      return
+    }
+    if (!isValidCep(form.zipCode)) {
+      setError("CEP inválido — confira os números digitados")
+      return
+    }
+    if (!hasPix && (!form.bankName.trim() || !form.agency.trim() || !form.accountNumber.trim())) {
+      setError("Informe a Chave PIX, ou os dados bancários completos (Banco, Agência e Conta)")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       await adminFetch("/api/company/my-profile", { method: "PATCH", body: JSON.stringify(form) })
@@ -116,7 +169,14 @@ export default function CompanyProfilePage() {
           <div className="grid sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>CPF</Label>
-              <Input value={form.cpf} onChange={set("cpf")} required />
+              <Input
+                value={form.cpf}
+                onChange={(e) => setForm((f) => ({ ...f, cpf: formatCpfCnpj(e.target.value) }))}
+                inputMode="numeric"
+                maxLength={14}
+                required
+              />
+              {form.cpf.length >= 14 && !isValidCpf(form.cpf) && <p className="text-xs text-red-600">CPF inválido</p>}
             </div>
             <div className="space-y-2">
               <Label>Data de nascimento</Label>
@@ -130,6 +190,18 @@ export default function CompanyProfilePage() {
 
           <div className="pt-3 border-t border-gray-100 space-y-4">
             <h4 className="font-semibold text-[#3E2415] text-sm">Endereço</h4>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>CEP</Label>
+                <Input value={form.zipCode} onChange={handleCepChange} inputMode="numeric" maxLength={9} required />
+                {cepLoading && <p className="text-xs text-gray-400">Buscando endereço...</p>}
+                {cepError && <p className="text-xs text-red-600">{cepError}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label>UF</Label>
+                <Input value={form.state} onChange={set("state")} maxLength={2} required />
+              </div>
+            </div>
             <div className="grid sm:grid-cols-3 gap-3">
               <div className="space-y-2 sm:col-span-2">
                 <Label>Rua</Label>
@@ -150,28 +222,18 @@ export default function CompanyProfilePage() {
                 <Input value={form.city} onChange={set("city")} required />
               </div>
             </div>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>UF</Label>
-                <Input value={form.state} onChange={set("state")} maxLength={2} required />
-              </div>
-              <div className="space-y-2">
-                <Label>CEP</Label>
-                <Input value={form.zipCode} onChange={set("zipCode")} required />
-              </div>
-            </div>
           </div>
 
           <div className="pt-3 border-t border-gray-100 space-y-4">
             <h4 className="font-semibold text-[#3E2415] text-sm">Dados Bancários</h4>
             <div className="space-y-2">
-              <Label>Chave PIX</Label>
-              <Input value={form.pixKey} onChange={set("pixKey")} required />
+              <Label>Chave PIX {!hasPix && <span className="text-gray-400 font-normal">(ou preencha os dados bancários abaixo)</span>}</Label>
+              <Input value={form.pixKey} onChange={set("pixKey")} />
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Banco</Label>
-                <Input value={form.bankName} onChange={set("bankName")} required />
+                <Label>Banco {!hasPix && <span className="text-red-500">*</span>}</Label>
+                <Input value={form.bankName} onChange={set("bankName")} required={!hasPix} />
               </div>
               <div className="space-y-2">
                 <Label>Tipo de conta</Label>
@@ -186,12 +248,12 @@ export default function CompanyProfilePage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Agência</Label>
-                <Input value={form.agency} onChange={set("agency")} required />
+                <Label>Agência {!hasPix && <span className="text-red-500">*</span>}</Label>
+                <Input value={form.agency} onChange={setDigitsOnly("agency")} inputMode="numeric" required={!hasPix} />
               </div>
               <div className="space-y-2">
-                <Label>Conta</Label>
-                <Input value={form.accountNumber} onChange={set("accountNumber")} required />
+                <Label>Conta {!hasPix && <span className="text-red-500">*</span>}</Label>
+                <Input value={form.accountNumber} onChange={setDigitsOnly("accountNumber")} inputMode="numeric" required={!hasPix} />
               </div>
             </div>
           </div>

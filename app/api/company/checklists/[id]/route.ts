@@ -3,6 +3,7 @@ import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from
 import { canManageDailyOperations } from "@/lib/permissions"
 import { awardXp, getInternalProgramRules } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
+import { notifyUser } from "@/lib/notifications"
 
 /**
  * Double-check da Gerente/Master sobre uma tarefa SUBMITTED pelo colaborador:
@@ -46,6 +47,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const now = new Date()
     const onTime = !checklist.dueAt || now <= checklist.dueAt
     const rules = await getInternalProgramRules(companyId)
+    let appliedPoints = 0
 
     const updated = await prisma.$transaction(async (tx) => {
       if (status === "RETURNED") {
@@ -81,6 +83,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             ? rules.pointsChecklistOnTime
             : rules.pointsChecklistLate
           : rules.pointsChecklistFail
+      appliedPoints = points
       if (points !== 0) {
         const hasEmployeeProfile = await tx.employeeProfile.findUnique({ where: { userId: checklist.employeeId } })
         if (hasEmployeeProfile) {
@@ -108,6 +111,35 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     })
 
     await logAudit({ userId: user.id, companyId, action: status, entity: "Checklist", entityId: id, details: { onTime, note } })
+
+    // Clareza para o colaborador: por que a tarefa voltou, foi marcada como não
+    // entregue, ou foi aprovada com pontuação reduzida por atraso — sem isso ele
+    // só descobre passivamente ao abrir o extrato de pontos.
+    if (status === "RETURNED") {
+      await notifyUser({
+        userId: checklist.employeeId,
+        type: "GENERIC",
+        title: `Checklist devolvido: "${updated.title}"`,
+        message: `A gerência devolveu sua tarefa para refazer. Motivo: ${note!.trim()}`,
+        linkUrl: "/company/checklists",
+      }).catch(() => {})
+    } else if (status === "REJECTED") {
+      await notifyUser({
+        userId: checklist.employeeId,
+        type: "GENERIC",
+        title: `Checklist marcado como não entregue: "${updated.title}"`,
+        message: `Motivo: ${note!.trim()}${appliedPoints !== 0 ? ` — ${appliedPoints} pontos.` : ""}`,
+        linkUrl: "/company/checklists",
+      }).catch(() => {})
+    } else if (status === "APPROVED" && !onTime && !checklist.isExtraTask && appliedPoints !== 0) {
+      await notifyUser({
+        userId: checklist.employeeId,
+        type: "GENERIC",
+        title: `Checklist aprovado fora do prazo: "${updated.title}"`,
+        message: `Entregue depois do horário limite — ${appliedPoints} pontos (em vez do valor cheio por entrega no prazo).`,
+        linkUrl: "/company/checklists",
+      }).catch(() => {})
+    }
 
     return Response.json(updated)
   } catch (error) {

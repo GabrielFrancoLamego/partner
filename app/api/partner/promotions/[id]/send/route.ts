@@ -25,7 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const promotion = await prisma.promotion.findFirst({
       where: { id, active: true },
-      include: { company: { select: { id: true, name: true } } },
+      include: { company: { select: { id: true, name: true, address: true, neighborhood: true, city: true, state: true } } },
     })
     if (!promotion) throw new ApiError(404, "Promoção não encontrada")
 
@@ -37,29 +37,36 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!membership) throw new ApiError(403, "Você precisa aderir ao Programa de Parceria desta empresa antes de ofertar esta promoção")
 
     const body = await request.json()
-    const { clientEmail, clientPhone } = body as { clientEmail?: string; clientPhone?: string }
+    const { clientName, clientEmail, clientPhone } = body as { clientName?: string; clientEmail?: string; clientPhone?: string }
     if (!clientEmail && !clientPhone) throw new ApiError(400, "Informe email ou WhatsApp do cliente")
 
     const qrDataUrl = await generatePromotionQrDataUrl(promotion.id)
     const benefitDescription = describeBenefit(promotion)
+    const companyAddress = [promotion.company.address, promotion.company.neighborhood, promotion.company.city, promotion.company.state]
+      .filter(Boolean)
+      .join(", ")
 
     let emailResult: { sent: boolean; html: string } | null = null
     if (clientEmail) {
       emailResult = await sendPromotionEmail({
         to: clientEmail,
+        clientName,
         partnerName: user.name,
         companyName: promotion.company.name,
+        companyAddress: companyAddress || null,
         promotionTitle: promotion.title,
         benefitDescription,
         bannerUrl: promotion.bannerUrl,
         qrDataUrl,
+        validUntil: promotion.validUntil,
       })
     }
 
+    const greetingName = clientName ? `${clientName}, ` : ""
     const whatsappUrl = clientPhone
       ? buildWhatsAppShareUrl(
           clientPhone,
-          `${user.name} indicou você para ${promotion.title} na ${promotion.company.name}! Benefício: ${benefitDescription}. Apresente este link no caixa: ${process.env.NEXT_PUBLIC_APP_URL ?? ""}/beneficio/${promotion.id}`,
+          `${greetingName}${user.name} indicou você para "${promotion.title}" na ${promotion.company.name}! 🎁 Benefício: ${benefitDescription}.${companyAddress ? ` Endereço: ${companyAddress}.` : ""} Apresente o QR Code (em anexo/print) ou este link no caixa: ${process.env.NEXT_PUBLIC_APP_URL ?? ""}/beneficio/${promotion.id}`,
         )
       : null
 

@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Wallet, TrendingUp, Award, Clock } from "lucide-react"
+import Link from "next/link"
+import { Wallet, TrendingUp, Award, Clock, Gift, ChevronRight } from "lucide-react"
 import { adminFetch } from "@/lib/admin-api-client"
 import { AdminCard, LoadingState, StatusBadge } from "@/components/admin/admin-ui"
 import { usePartnerUser } from "@/lib/partner-user-context"
@@ -62,6 +63,22 @@ export default function PartnerDashboardPage() {
         </div>
         <p className="text-4xl font-bold">{currency(data.walletBalance)}</p>
       </div>
+
+      <Link
+        href="/partner/promocoes"
+        className="flex items-center justify-between gap-3 bg-white rounded-2xl p-5 shadow-md border-2 border-[#F58220]/20 hover:border-[#F58220]/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-xl flex items-center justify-center flex-shrink-0">
+            <Gift className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <p className="font-bold text-[#3E2415]">PROMOÇÕES</p>
+            <p className="text-xs text-gray-500">Veja as ofertas dos programas que você já participa</p>
+          </div>
+        </div>
+        <ChevronRight className="h-5 w-5 text-gray-300 flex-shrink-0" />
+      </Link>
 
       <div className="bg-white rounded-2xl p-5 shadow-md border border-gray-100">
         <div className="flex items-center gap-2 mb-4">

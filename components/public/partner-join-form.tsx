@@ -1,20 +1,26 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { CheckCircle2, Link2Off } from "lucide-react"
+import { Link2Off, Rocket } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { formatCpfCnpj, formatPhone, isValidCpfOrCnpj, isValidEmail, isValidPhone } from "@/lib/validators"
+import { formatPhone, isValidEmail, isValidPhone } from "@/lib/validators"
 
+/**
+ * Etapa 1 do cadastro de Parceiro — só Nome, Email e WhatsApp. Cria a conta
+ * na hora (ver app/api/public/partner-quick-signup) e redireciona o próprio
+ * navegador pro link de acesso do Supabase, que já libera a navegação. CPF,
+ * PIX e dados bancários (Etapa 2) só são pedidos depois, dentro do app, ao
+ * aderir a um programa ou pedir o 1º saque (ver components/partner/adesao-gate-dialog.tsx).
+ */
 export function PartnerJoinForm({ refCode, linkToken }: { refCode: string | null; linkToken?: string | null }) {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
-  const [document, setDocument] = useState("")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [done, setDone] = useState(false)
+  const [isRedirecting, setIsRedirecting] = useState(false)
   const [linkExpired, setLinkExpired] = useState(false)
   const [isCheckingLink, setIsCheckingLink] = useState(!!linkToken)
 
@@ -38,39 +44,32 @@ export function PartnerJoinForm({ refCode, linkToken }: { refCode: string | null
 
   const emailError = email && !isValidEmail(email) ? "Email inválido" : ""
   const phoneError = phone && !isValidPhone(phone) ? "Telefone inválido" : ""
-  const documentError = document && !isValidCpfOrCnpj(document) ? "CPF/CNPJ inválido" : ""
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
-    if (emailError || phoneError || documentError) {
-      setError(emailError || phoneError || documentError)
+    if (emailError || phoneError) {
+      setError(emailError || phoneError)
       return
     }
     setIsSubmitting(true)
     try {
-      const response = await fetch("/api/public/partner-join", {
+      const response = await fetch("/api/public/partner-quick-signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          email,
-          phone,
-          document,
-          ref: refCode ?? undefined,
-          token: linkToken ?? undefined,
-        }),
+        body: JSON.stringify({ name, email, phone, ref: refCode ?? undefined, token: linkToken ?? undefined }),
       })
       const data = await response.json().catch(() => null)
       if (response.status === 410) {
         setLinkExpired(true)
         return
       }
-      if (!response.ok) throw new Error(data?.error ?? "Erro ao enviar cadastro")
-      setDone(true)
+      if (!response.ok) throw new Error(data?.error ?? "Erro ao criar cadastro")
+
+      setIsRedirecting(true)
+      window.location.href = data.redirectUrl
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao enviar cadastro")
-    } finally {
+      setError(e instanceof Error ? e.message : "Erro ao criar cadastro")
       setIsSubmitting(false)
     }
   }
@@ -103,13 +102,10 @@ export function PartnerJoinForm({ refCode, linkToken }: { refCode: string | null
           )}
         </div>
 
-        {done ? (
+        {isRedirecting ? (
           <div className="text-center py-6">
-            <CheckCircle2 className="h-10 w-10 text-green-600 mx-auto mb-3" />
-            <p className="text-sm font-medium text-[#3E2415]">Cadastro enviado!</p>
-            <p className="text-xs text-gray-500 mt-1">
-              Sua solicitação está pendente de aprovação. Você será avisado assim que seu acesso for liberado.
-            </p>
+            <Rocket className="h-10 w-10 text-[#F58220] mx-auto mb-3 animate-pulse" />
+            <p className="text-sm font-medium text-[#3E2415]">Preparando seu acesso...</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -128,18 +124,16 @@ export function PartnerJoinForm({ refCode, linkToken }: { refCode: string | null
               <Input value={phone} onChange={(e) => setPhone(formatPhone(e.target.value))} placeholder="(00) 00000-0000" required />
               {phoneError && <p className="text-xs text-red-600">{phoneError}</p>}
             </div>
-            <div className="space-y-2">
-              <Label>CPF ou CNPJ</Label>
-              <Input value={document} onChange={(e) => setDocument(formatCpfCnpj(e.target.value))} required />
-              {documentError && <p className="text-xs text-red-600">{documentError}</p>}
-            </div>
             <Button
               type="submit"
               disabled={isSubmitting}
               className="w-full bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white hover:opacity-90"
             >
-              {isSubmitting ? "Enviando..." : "Enviar cadastro"}
+              {isSubmitting ? "Criando conta..." : "Começar a explorar"}
             </Button>
+            <p className="text-[11px] text-gray-400 text-center">
+              É rápido: você já entra navegando. CPF e dados de pagamento só são pedidos quando for aderir a um programa ou sacar.
+            </p>
           </form>
         )}
       </div>

@@ -1,11 +1,14 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Check, X, Banknote, Paperclip, ExternalLink, Loader2 } from "lucide-react"
+import { Check, X, Banknote, Paperclip, ExternalLink, Loader2, Wallet, ClipboardCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
-import { StatusBadge, LoadingState, EmptyState } from "@/components/admin/admin-ui"
+import { StatusBadge, LoadingState, EmptyState, AdminCard } from "@/components/admin/admin-ui"
 import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
 import { canManageFinance } from "@/lib/permissions"
@@ -36,30 +39,47 @@ const currency = (value: string | null) => (value === null ? "—" : Number(valu
 
 export default function CompanyFinanceiroPage() {
   const user = useCompanyUser()
-  const allowed = canManageFinance(user.role)
+  const allowed = canManageFinance(user.role) || user.isFinanceResponsible
 
   if (!allowed) {
-    return <EmptyState message="Acesso restrito ao Financeiro e ao Administrador da empresa." />
+    return <EmptyState message="Acesso restrito ao Master e ao Responsável pelo Financeiro." />
   }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Financeiro</h1>
-        <p className="text-gray-600 mt-1 text-sm">Comissões e saques PIX dos parceiros de {user.companyName}</p>
+        <p className="text-gray-600 mt-1 text-sm">Comissões, saques, recebíveis e quitações de {user.companyName}</p>
       </div>
 
       <Tabs defaultValue="commissions">
-        <TabsList>
-          <TabsTrigger value="commissions">Comissões</TabsTrigger>
-          <TabsTrigger value="withdrawals">Saques PIX</TabsTrigger>
+        <TabsList className="flex-wrap h-auto">
+          <TabsTrigger value="commissions">Comissões & Saques</TabsTrigger>
+          <TabsTrigger value="receivables">Recebíveis dos Colaboradores</TabsTrigger>
+          <TabsTrigger value="payouts">Registro de Quitação</TabsTrigger>
         </TabsList>
         <div className="mt-4">
           <TabsContent value="commissions">
-            <CommissionsList />
+            <Tabs defaultValue="commissions-sub">
+              <TabsList>
+                <TabsTrigger value="commissions-sub">Comissões</TabsTrigger>
+                <TabsTrigger value="withdrawals-sub">Saques PIX</TabsTrigger>
+              </TabsList>
+              <div className="mt-4">
+                <TabsContent value="commissions-sub">
+                  <CommissionsList />
+                </TabsContent>
+                <TabsContent value="withdrawals-sub">
+                  <WithdrawalsList />
+                </TabsContent>
+              </div>
+            </Tabs>
           </TabsContent>
-          <TabsContent value="withdrawals">
-            <WithdrawalsList />
+          <TabsContent value="receivables">
+            <ReceivablesList />
+          </TabsContent>
+          <TabsContent value="payouts">
+            <GoalPayoutsPanel />
           </TabsContent>
         </div>
       </Tabs>
@@ -339,5 +359,252 @@ function WithdrawalsList() {
         })}
       </MobileCardList>
     </>
+  )
+}
+
+type ReceivableRow = {
+  employeeId: string
+  employeeName: string
+  pendingAmount: number
+  paidAmount: number
+  occurrences: { type: string; total: number; status: string; date: string; description: string | null }[]
+  goalPayouts: { goalName: string; amount: number; status: string; rewardType: string; period: string; paidAt: string; note: string | null }[]
+  redemptions: { itemName: string; costXp: number; status: string; createdAt: string }[]
+}
+
+function ReceivablesList() {
+  const [rows, setRows] = useState<ReceivableRow[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  useEffect(() => {
+    adminFetch<ReceivableRow[]>("/api/company/finance/receivables")
+      .then(setRows)
+      .finally(() => setIsLoading(false))
+  }, [])
+
+  if (isLoading) return <LoadingState />
+  if (rows.length === 0) return <EmptyState message="Nenhum colaborador ativo nesta empresa." />
+
+  return (
+    <div className="grid gap-2">
+      {rows.map((r) => (
+        <div key={r.employeeId} className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+          <button
+            onClick={() => setExpanded(expanded === r.employeeId ? null : r.employeeId)}
+            className="w-full flex items-center justify-between gap-3 p-3 hover:bg-gray-50 transition-colors"
+          >
+            <p className="font-medium text-[#3E2415] text-sm">{r.employeeName}</p>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-amber-700">Pendente: {currency(String(r.pendingAmount))}</span>
+              <span className="text-green-700">Pago: {currency(String(r.paidAmount))}</span>
+            </div>
+          </button>
+          {expanded === r.employeeId && (
+            <div className="border-t border-gray-100 p-3 space-y-3 bg-gray-50/50">
+              {r.occurrences.length === 0 && r.goalPayouts.length === 0 && r.redemptions.length === 0 ? (
+                <p className="text-xs text-gray-400">Sem lançamentos financeiros registrados.</p>
+              ) : (
+                <>
+                  {r.occurrences.map((o, i) => (
+                    <div key={`occ-${i}`} className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600">
+                        {o.type} {o.description && `— ${o.description}`} · {new Date(o.date).toLocaleDateString("pt-BR")}
+                      </span>
+                      <span className={o.status === "PAID" ? "text-green-700 font-medium" : "text-amber-700 font-medium"}>
+                        {currency(String(o.total))} ({o.status === "PAID" ? "Pago" : "Pendente"})
+                      </span>
+                    </div>
+                  ))}
+                  {r.goalPayouts.map((p, i) => (
+                    <div key={`payout-${i}`} className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600">
+                        Meta "{p.goalName}" — {p.period}
+                        {p.note && ` — ${p.note}`}
+                      </span>
+                      <span className="text-green-700 font-medium">{currency(String(p.amount))} (Pago)</span>
+                    </div>
+                  ))}
+                  {r.redemptions.map((rd, i) => (
+                    <div key={`red-${i}`} className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600">
+                        Prêmio: {rd.itemName} · {new Date(rd.createdAt).toLocaleDateString("pt-BR")}
+                      </span>
+                      <span className="text-purple-700 font-medium">{rd.costXp} XP ({rd.status === "DELIVERED" ? "Entregue" : "Aprovado"})</span>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+type Goal = { id: string; name: string }
+type Employee = { id: string; name: string }
+type GoalPayout = {
+  id: string
+  amount: string
+  rewardType: "CASH" | "PHYSICAL_REWARD"
+  period: string
+  paidAt: string
+  note: string | null
+  goal: { id: string; name: string }
+  employee: { id: string; name: string }
+  paidBy: { id: string; name: string }
+}
+
+function GoalPayoutsPanel() {
+  const [payouts, setPayouts] = useState<GoalPayout[]>([])
+  const [goals, setGoals] = useState<Goal[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [goalId, setGoalId] = useState("")
+  const [employeeId, setEmployeeId] = useState("")
+  const [amount, setAmount] = useState("")
+  const [rewardType, setRewardType] = useState<"CASH" | "PHYSICAL_REWARD">("CASH")
+  const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7))
+  const [note, setNote] = useState("")
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const reload = () => {
+    setIsLoading(true)
+    Promise.all([
+      adminFetch<GoalPayout[]>("/api/company/finance/goal-payouts"),
+      adminFetch<Goal[]>("/api/company/goals"),
+      adminFetch<Employee[]>("/api/company/employees"),
+    ])
+      .then(([p, g, e]) => {
+        setPayouts(p)
+        setGoals(g)
+        setEmployees(e)
+      })
+      .finally(() => setIsLoading(false))
+  }
+  useEffect(reload, [])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    if (!goalId || !employeeId) {
+      setError("Selecione a meta e o colaborador")
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      await adminFetch("/api/company/finance/goal-payouts", {
+        method: "POST",
+        body: JSON.stringify({ goalId, employeeId, amount: Number(amount) || 0, rewardType, period, note }),
+      })
+      setGoalId("")
+      setEmployeeId("")
+      setAmount("")
+      setNote("")
+      reload()
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : "Erro ao registrar quitação")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <AdminCard title="Registrar Quitação de Meta" icon={ClipboardCheck}>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Meta</Label>
+              <Select value={goalId} onValueChange={setGoalId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione a meta" />
+                </SelectTrigger>
+                <SelectContent>
+                  {goals.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Colaborador</Label>
+              <Select value={employeeId} onValueChange={setEmployeeId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione o colaborador" />
+                </SelectTrigger>
+                <SelectContent>
+                  {employees.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <div className="space-y-2">
+              <Label>Tipo</Label>
+              <Select value={rewardType} onValueChange={(v) => setRewardType(v as "CASH" | "PHYSICAL_REWARD")}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CASH">Bônus em Dinheiro</SelectItem>
+                  <SelectItem value="PHYSICAL_REWARD">Prêmio Físico/Voucher</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Valor (R$)</Label>
+              <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label>Competência</Label>
+              <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} required />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Observação (opcional)</Label>
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ex: pago em dinheiro no caixa" />
+          </div>
+          <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+            <Wallet className="h-4 w-4 mr-1" /> Registrar como Pago
+          </Button>
+        </form>
+      </AdminCard>
+
+      {isLoading ? (
+        <LoadingState />
+      ) : payouts.length === 0 ? (
+        <EmptyState message="Nenhuma quitação registrada ainda." />
+      ) : (
+        <div className="grid gap-2">
+          {payouts.map((p) => (
+            <div key={p.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-white flex-wrap">
+              <div className="min-w-0">
+                <p className="font-medium text-[#3E2415] text-sm">
+                  {p.employee.name} — {p.goal.name}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {p.period} · registrado por {p.paidBy.name} em {new Date(p.paidAt).toLocaleDateString("pt-BR")}
+                  {p.note && ` · ${p.note}`}
+                </p>
+              </div>
+              <span className="text-sm font-semibold text-green-700 flex-shrink-0">
+                {p.rewardType === "CASH" ? currency(p.amount) : "Prêmio físico"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

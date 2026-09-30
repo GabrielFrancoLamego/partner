@@ -1,32 +1,43 @@
 "use client"
 
 import type React from "react"
+import { useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
-import { LayoutDashboard, Wallet, Banknote, LogOut, Gift, Map, MessagesSquare, Star, Rocket, UserCircle2, Compass, Search } from "lucide-react"
+import { LayoutDashboard, Wallet, LogOut, Gift, Map, MessagesSquare, Star, Rocket, Compass, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PartnerUserProvider, type PartnerUser } from "@/lib/partner-user-context"
 import { PartnerTermAcceptanceGate } from "./term-acceptance-gate"
 import { NotificationBell } from "@/components/notifications/notification-bell"
 import { RatingPromptModal } from "./rating-prompt-modal"
+import { MobileNavBar } from "@/components/shared/mobile-nav-bar"
+import { PartnerAvatarMenu } from "./partner-avatar-menu"
+import { FloatingHelpChat } from "./floating-help-chat"
 
-const NAV_ITEMS = [
+type NavItem = {
+  href: string
+  label: string
+  shortLabel?: string
+  icon: typeof LayoutDashboard
+  show?: (user: PartnerUser) => boolean
+}
+
+const NAV_ITEMS: NavItem[] = [
   { href: "/partner", label: "Dashboard", icon: LayoutDashboard },
   { href: "/partner/explorar", label: "Explorar Programas", shortLabel: "Explorar", icon: Compass },
   { href: "/partner/nivel", label: "Meu Nível", icon: Rocket },
-  { href: "/partner/comissoes", label: "Comissões", icon: Wallet },
-  { href: "/partner/saques", label: "Saques PIX", shortLabel: "Saques", icon: Banknote },
-  { href: "/partner/afiliado", label: "Afiliado", icon: Star },
+  { href: "/partner/comissoes", label: "Comissões & Saques", shortLabel: "Comissões", icon: Wallet },
+  { href: "/partner/afiliado", label: "Rede de Afiliados", shortLabel: "Afiliado", icon: Star, show: (u) => u.isAffiliate },
   { href: "/partner/promocoes", label: "Promoções", icon: Gift },
   { href: "/partner/descobrir", label: "Descobrir Promo", shortLabel: "Descobrir", icon: Search },
   { href: "/partner/mapa", label: "Mapa", icon: Map },
-  { href: "/partner/perfil", label: "Meu Perfil", icon: UserCircle2 },
   { href: "/partner/ajuda", label: "Ajuda", icon: MessagesSquare },
 ]
 
 export function PartnerShell({ user, children }: { user: PartnerUser; children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
+  const [photoUrl, setPhotoUrl] = useState(user.photoUrl)
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
@@ -35,6 +46,7 @@ export function PartnerShell({ user, children }: { user: PartnerUser; children: 
   }
 
   const isActive = (href: string) => (href === "/partner" ? pathname === href : pathname.startsWith(href))
+  const items = NAV_ITEMS.filter((item) => !item.show || item.show(user))
 
   return (
     <PartnerUserProvider user={user}>
@@ -51,7 +63,7 @@ export function PartnerShell({ user, children }: { user: PartnerUser; children: 
           </div>
 
           <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-            {NAV_ITEMS.map((item) => {
+            {items.map((item) => {
               const Icon = item.icon
               const active = isActive(item.href)
               return (
@@ -91,47 +103,29 @@ export function PartnerShell({ user, children }: { user: PartnerUser; children: 
             </div>
             <div className="flex items-center gap-1">
               <NotificationBell />
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#3E2415] hover:bg-red-50 hover:text-red-600 transition-colors"
-              >
-                <LogOut className="h-4 w-4" />
-                Sair
-              </button>
+              <PartnerAvatarMenu name={user.name} photoUrl={photoUrl} onPhotoUpdated={setPhotoUrl} />
             </div>
           </div>
-          <div className="flex gap-1.5 overflow-x-auto whitespace-nowrap px-3 pb-2 scrollbar-hide">
-            {NAV_ITEMS.map((item) => {
-              const Icon = item.icon
-              const active = isActive(item.href)
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex flex-shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2.5 py-2 min-w-[60px] text-center transition-colors",
-                    active ? "bg-[#3E2415] text-white" : "bg-[#F7F5F2] text-[#3E2415]",
-                  )}
-                >
-                  <Icon className="h-5 w-5" />
-                  <span className="text-[10px] font-medium leading-tight whitespace-nowrap">
-                    {item.shortLabel ?? item.label}
-                  </span>
-                </Link>
-              )
-            })}
-          </div>
+          <MobileNavBar
+            items={items.map((item) => ({
+              href: item.href,
+              label: item.label,
+              shortLabel: item.shortLabel,
+              icon: item.icon,
+              active: isActive(item.href),
+            }))}
+          />
         </div>
 
         <div className="lg:ml-[260px]">
           <div className="hidden lg:flex items-center justify-end gap-3 px-8 py-3 border-b border-[#E8E3DC] bg-white/60">
             <NotificationBell />
-            <p className="text-xs text-gray-500">
-              Logado como <span className="font-semibold text-[#3E2415]">{user.name}</span>
-            </p>
+            <PartnerAvatarMenu name={user.name} photoUrl={photoUrl} onPhotoUpdated={setPhotoUrl} />
           </div>
           <main className="p-4 md:p-6 lg:p-8">{children}</main>
         </div>
+
+        <FloatingHelpChat />
       </div>
     </PartnerUserProvider>
   )

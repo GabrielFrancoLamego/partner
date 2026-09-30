@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/prisma"
-import { requireUser, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
+import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
 import { canOperateFrontDesk } from "@/lib/permissions"
 import { uploadImage } from "@/lib/storage"
 import { logAudit } from "@/lib/audit"
 import { touchPartnerActivity } from "@/lib/program-lifecycle"
 import { computeReferralCommissionValue } from "@/lib/commission-format"
+import { notifyUser } from "@/lib/notifications"
 
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000
 
@@ -21,9 +22,8 @@ const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000
  */
 export async function POST(request: Request) {
   try {
-    const user = await requireUser()
+    const user = await requireCompanyStaff()
     requireCapability(user, canOperateFrontDesk)
-    if (!user.companyId) throw new ApiError(400, "Usuário sem empresa vinculada")
 
     const formData = await request.formData()
     const promotionId = formData.get("promotionId")
@@ -140,6 +140,7 @@ export async function POST(request: Request) {
         include: {
           partner: { select: { name: true } },
           promotion: { select: { title: true } },
+          company: { select: { name: true } },
         },
       }),
       ...(finalPromotionId ? [prisma.promotion.update({ where: { id: finalPromotionId }, data: { usedCount: { increment: 1 } } })] : []),
@@ -157,6 +158,16 @@ export async function POST(request: Request) {
     // Geração de QR/comissão é o sinal de atividade do parceiro nesta empresa
     // — reseta a contagem dos 90 dias de inatividade (ver lib/program-lifecycle.ts).
     await touchPartnerActivity(partnerId, user.companyId)
+
+    // Alerta motivacional em tempo real — o indicado acabou de chegar e ser
+    // escaneado no PDV, antes mesmo da aprovação da comissão pelo Financeiro.
+    await notifyUser({
+      userId: partnerId,
+      type: "REFERRAL_VISITED",
+      title: "🎉 Presença confirmada!",
+      message: `Seu indicado ${clientName.trim()} acabou de chegar na ${commission.company.name}! Sua comissão será creditada em breve.`,
+      linkUrl: "/partner",
+    }).catch(() => {})
 
     return Response.json(commission, { status: 201 })
   } catch (error) {

@@ -590,8 +590,11 @@ function ExecuteDialog({ template, onClose, onDone }: { template: Template | nul
 }
 
 function ManagerView() {
+  const [tab, setTab] = useState("master")
+  const [createSignal, setCreateSignal] = useState(0)
+
   return (
-    <Tabs defaultValue="master">
+    <Tabs value={tab} onValueChange={setTab}>
       <TabsList className="flex-wrap h-auto">
         <TabsTrigger value="master">Checklist Master</TabsTrigger>
         <TabsTrigger value="templates">Tarefas Recorrentes</TabsTrigger>
@@ -599,10 +602,15 @@ function ManagerView() {
       </TabsList>
       <div className="bg-white rounded-2xl p-4 md:p-6 shadow-md border border-gray-100 mt-4">
         <TabsContent value="master">
-          <MasterTab />
+          <MasterTab
+            onCreateTask={() => {
+              setTab("templates")
+              setCreateSignal((n) => n + 1)
+            }}
+          />
         </TabsContent>
         <TabsContent value="templates">
-          <TemplatesTab />
+          <TemplatesTab openCreateSignal={createSignal} />
         </TabsContent>
         <TabsContent value="review">
           <ReviewTab />
@@ -613,7 +621,7 @@ function ManagerView() {
 }
 
 /** Visão consolidada de TODAS as tarefas de hoje da empresa — quem é o responsável atual, prazo e status em tempo real. */
-function MasterTab() {
+function MasterTab({ onCreateTask }: { onCreateTask: () => void }) {
   const [instances, setInstances] = useState<ChecklistInstance[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -631,13 +639,26 @@ function MasterTab() {
   today.setHours(0, 0, 0, 0)
   const todays = instances.filter((i) => new Date(i.forDate).getTime() === today.getTime())
 
-  if (todays.length === 0) return <EmptyState message="Nenhuma tarefa atribuída para hoje." />
+  if (todays.length === 0)
+    return (
+      <div className="space-y-3">
+        <div className="flex justify-end">
+          <Button size="sm" onClick={onCreateTask} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+            <Plus className="h-4 w-4 mr-1" /> Criar Nova Tarefa
+          </Button>
+        </div>
+        <EmptyState message="Nenhuma tarefa atribuída para hoje." />
+      </div>
+    )
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
         <Button variant="outline" size="sm" onClick={reload}>
           <RefreshCcw className="h-3.5 w-3.5 mr-1" /> Atualizar
+        </Button>
+        <Button size="sm" onClick={onCreateTask} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+          <Plus className="h-4 w-4 mr-1" /> Criar Nova Tarefa
         </Button>
       </div>
       <div className="grid gap-2">
@@ -670,12 +691,17 @@ function MasterTab() {
   )
 }
 
-function TemplatesTab() {
+function TemplatesTab({ openCreateSignal }: { openCreateSignal?: number }) {
   const [templates, setTemplates] = useState<Template[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editing, setEditing] = useState<Template | null>(null)
+
+  useEffect(() => {
+    if (openCreateSignal) setIsCreateOpen(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openCreateSignal])
 
   const reload = () => {
     setIsLoading(true)
@@ -859,7 +885,7 @@ function TemplateDialog({
             <div className="space-y-2">
               <Label>Recorrência</Label>
               <Select value={recurrence} onValueChange={setRecurrence}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -874,7 +900,7 @@ function TemplateDialog({
             <div className="space-y-2">
               <Label>Prioridade</Label>
               <Select value={priority} onValueChange={setPriority}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -890,7 +916,7 @@ function TemplateDialog({
             <div className="space-y-2">
               <Label>Dia da semana</Label>
               <Select value={dayOfWeek} onValueChange={setDayOfWeek}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Qualquer dia" />
                 </SelectTrigger>
                 <SelectContent>
@@ -909,7 +935,7 @@ function TemplateDialog({
             <div className="space-y-2">
               <Label>Dia do mês</Label>
               <Select value={dayOfMonth} onValueChange={setDayOfMonth}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Qualquer dia" />
                 </SelectTrigger>
                 <SelectContent>
@@ -929,7 +955,7 @@ function TemplateDialog({
             <div className="space-y-2">
               <Label>Mês de início/âncora</Label>
               <Select value={anchorMonth} onValueChange={setAnchorMonth}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -962,7 +988,7 @@ function TemplateDialog({
               <div className="space-y-2">
                 <Label>Principal</Label>
                 <Select value={primaryEmployeeId} onValueChange={setPrimaryEmployeeId}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Livre (qualquer colaborador)" />
                   </SelectTrigger>
                   <SelectContent>
@@ -978,7 +1004,7 @@ function TemplateDialog({
               <div className="space-y-2">
                 <Label>Secundário</Label>
                 <Select value={secondaryEmployeeId} onValueChange={setSecondaryEmployeeId} disabled={primaryEmployeeId === "none"}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Nenhum" />
                   </SelectTrigger>
                   <SelectContent>

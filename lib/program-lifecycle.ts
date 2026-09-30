@@ -129,7 +129,7 @@ export async function archiveProgram(programId: string, notify = true) {
         type: "PROGRAM_MEMBERSHIP_ENDED",
         title: `${program.name} foi encerrado`,
         message: `O programa "${program.name}" foi encerrado. Seu saldo já aprovado continua disponível para saque normalmente.`,
-        linkUrl: "/partner/saques",
+        linkUrl: "/partner/comissoes",
       })
     }
   }

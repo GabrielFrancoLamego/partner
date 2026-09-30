@@ -72,6 +72,12 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     if (!existing) throw new ApiError(404, "Nível não encontrado")
 
     await prisma.programLevel.delete({ where: { id } })
+
+    const remaining = await prisma.programLevel.count({ where: { programId: existing.programId } })
+    if (remaining === 0) {
+      await prisma.program.update({ where: { id: existing.programId }, data: { hasLevels: false } })
+    }
+
     await logAudit({ userId: user.id, companyId: user.companyId, action: "DELETE", entity: "ProgramLevel", entityId: id })
 
     return Response.json({ ok: true })

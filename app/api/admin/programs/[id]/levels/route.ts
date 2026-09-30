@@ -62,6 +62,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       },
     })
 
+    if (!program.hasLevels) {
+      await prisma.program.update({ where: { id: programId }, data: { hasLevels: true } })
+    }
+
     await logAudit({
       userId: admin.id,
       companyId: program.companyId,

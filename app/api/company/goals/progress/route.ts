@@ -28,7 +28,7 @@ export async function GET() {
     const goals = await prisma.goal.findMany({
       where,
       include: {
-        tiers: { orderBy: { order: "asc" } },
+        tiers: { orderBy: { order: "asc" }, include: { rewardCatalogItem: { select: { id: true, name: true } } } },
         sector: { select: { id: true, name: true } },
         employee: { select: { id: true, name: true } },
       },

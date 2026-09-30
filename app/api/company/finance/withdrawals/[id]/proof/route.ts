@@ -1,13 +1,12 @@
 import { prisma } from "@/lib/prisma"
-import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageFinance } from "@/lib/permissions"
+import { requireCompanyStaff, requireFinanceAccess, handleApiError, ApiError } from "@/lib/api-auth"
 import { uploadImage } from "@/lib/storage"
 import { logAudit } from "@/lib/audit"
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireCompanyStaff()
-    requireCapability(user, canManageFinance)
+    requireFinanceAccess(user)
     const { id } = await params
 
     const formData = await request.formData()

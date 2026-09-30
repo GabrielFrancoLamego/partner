@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { requirePartner, handleApiError, ApiError } from "@/lib/api-auth"
+import { notifyCompanyManagement } from "@/lib/notifications"
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -18,6 +19,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       data: { status: "OPEN", updatedAt: new Date() },
       include: { messages: { orderBy: { createdAt: "asc" }, include: { author: { select: { name: true, role: true } } } } },
     })
+
+    if (ticket.companyId) {
+      await notifyCompanyManagement(ticket.companyId, {
+        type: "TICKET_MESSAGE_RECEIVED",
+        title: `Nova mensagem de ${user.name}`,
+        message: `"${ticket.subject}" — ${message.trim().slice(0, 120)}`,
+        linkUrl: "/company/comunicacao?tab=parceiros",
+      }).catch(() => {})
+    }
 
     return Response.json(updated)
   } catch (error) {

@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { NotificationBell } from "@/components/notifications/notification-bell"
+import { MobileNavBar } from "@/components/shared/mobile-nav-bar"
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -103,25 +104,14 @@ export function AdminShell({ userName, children }: { userName: string; children:
             </button>
           </div>
         </div>
-        <div className="flex gap-1.5 overflow-x-auto whitespace-nowrap px-3 pb-2 scrollbar-hide">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon
-            const active = isActive(item.href)
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex flex-shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2.5 py-2 min-w-[60px] text-center transition-colors",
-                  active ? "bg-[#3E2415] text-white" : "bg-[#F7F5F2] text-[#3E2415]",
-                )}
-              >
-                <Icon className="h-5 w-5" />
-                <span className="text-[10px] font-medium leading-tight whitespace-nowrap">{item.label}</span>
-              </Link>
-            )
-          })}
-        </div>
+        <MobileNavBar
+          items={NAV_ITEMS.map((item) => ({
+            href: item.href,
+            label: item.label,
+            icon: item.icon,
+            active: isActive(item.href),
+          }))}
+        />
       </div>
 
       <div className="lg:ml-[260px]">

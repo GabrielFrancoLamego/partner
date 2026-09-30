@@ -65,6 +65,12 @@ export async function POST(request: Request) {
       },
     })
 
+    // Mantém Program.hasLevels em sincronia — usado pela UI (components/programs-content.tsx)
+    // para decidir entre "Nível único" e "N níveis" sem precisar recontar a cada leitura.
+    if (!program.hasLevels) {
+      await prisma.program.update({ where: { id: program.id }, data: { hasLevels: true } })
+    }
+
     await logAudit({ userId: user.id, companyId, action: "CREATE", entity: "ProgramLevel", entityId: level.id, details: body })
 
     return Response.json(level, { status: 201 })

@@ -22,7 +22,7 @@ import {
   Gift,
   MessagesSquare,
   UserCheck,
-  UserCircle2,
+  Grid3x3,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Role } from "@prisma/client"
@@ -31,6 +31,9 @@ import { CompanyUserProvider, type CompanyUser } from "@/lib/company-user-contex
 import { TermAcceptanceGate } from "./term-acceptance-gate"
 import { ProfileCompletionGate } from "./profile-completion-gate"
 import { NotificationBell } from "@/components/notifications/notification-bell"
+import { UserAvatarMenu } from "./user-avatar-menu"
+import { MobileNavBar } from "@/components/shared/mobile-nav-bar"
+import { QuickActionBar } from "@/components/shared/quick-action-bar"
 
 const ROLE_LABELS: Record<Role, string> = {
   ADMIN: "Administrador da Plataforma",
@@ -49,12 +52,12 @@ type NavItem = {
   show: (user: CompanyUser) => boolean
   /** Item ganha um selo piscante (ver useChecklistPendingCount) quando há tarefas de checklist pendentes para o turno. */
   pulseWhenChecklistPending?: boolean
+  /** Ponto e Scanner ganham destaque próprio na barra fixa inferior (ver QuickActionBar) — não duplica na barra de navegação do topo no mobile. */
+  hideFromMobileNav?: boolean
 }
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/company", label: "Dashboard", icon: LayoutDashboard, show: () => true },
-  { href: "/company/mural", label: "Mural", icon: Newspaper, show: () => true },
-  { href: "/company/ponto", label: "Ponto Digital", shortLabel: "Ponto", icon: Clock, show: (u) => canOperateFrontDesk(u.role) },
   {
     href: "/company/checklists",
     label: "Checklists",
@@ -63,7 +66,23 @@ const NAV_ITEMS: NavItem[] = [
     show: (u) => canOperateFrontDesk(u.role),
     pulseWhenChecklistPending: true,
   },
-  { href: "/company/scanner", label: "Scanner PDV", shortLabel: "Scanner", icon: ScanLine, show: (u) => canOperateFrontDesk(u.role) },
+  { href: "/company/mural", label: "Mural", icon: Newspaper, show: () => true },
+  {
+    href: "/company/ponto",
+    label: "Ponto Digital",
+    shortLabel: "Ponto",
+    icon: Clock,
+    show: (u) => canOperateFrontDesk(u.role),
+    hideFromMobileNav: true,
+  },
+  {
+    href: "/company/scanner",
+    label: "Scanner PDV",
+    shortLabel: "Scanner",
+    icon: ScanLine,
+    show: (u) => canOperateFrontDesk(u.role),
+    hideFromMobileNav: true,
+  },
   { href: "/company/avaliacoes", label: "Avaliação Diária", shortLabel: "Avaliação", icon: ClipboardCheck, show: () => true },
   { href: "/company/crescimento", label: "Programa & Crescimento", shortLabel: "Crescimento", icon: Trophy, show: () => true },
   {
@@ -74,13 +93,19 @@ const NAV_ITEMS: NavItem[] = [
   },
   { href: "/company/fechamento", label: "Fechamento", icon: FileClock, show: (u) => canManageDailyOperations(u.role) },
   { href: "/company/metas", label: "Metas", icon: Target, show: () => true },
-  { href: "/company/setores", label: "Setores", icon: Users2, show: (u) => canManageDailyOperations(u.role) },
+  { href: "/company/colaboradores", label: "Colaboradores", icon: Users2, show: (u) => canManageDailyOperations(u.role) },
+  {
+    href: "/company/mapa-pontos",
+    label: "Mapa de Pontos",
+    shortLabel: "Mapa",
+    icon: Grid3x3,
+    show: (u) => canManageDailyOperations(u.role),
+  },
   { href: "/company/aprovacoes", label: "Aprovações Pendentes", shortLabel: "Aprovações", icon: UserCheck, show: (u) => u.role === "COMPANY_MASTER" },
   { href: "/company/programas", label: "Programa de Parceria", shortLabel: "Parceria", icon: Award, show: (u) => canConfigureCompany(u.role) },
   { href: "/company/promocoes", label: "Promoções", icon: Gift, show: (u) => canConfigureCompany(u.role) },
   { href: "/company/comunicacao", label: "Comunicação", icon: MessagesSquare, show: () => true },
-  { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: (u) => canManageFinance(u.role) },
-  { href: "/company/perfil", label: "Meu Perfil", icon: UserCircle2, show: () => true },
+  { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: (u) => canManageFinance(u.role) || u.isFinanceResponsible },
 ]
 
 export function CompanyShell({
@@ -195,58 +220,31 @@ export function CompanyShell({
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               <NotificationBell />
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#3E2415] hover:bg-red-50 hover:text-red-600 transition-colors"
-              >
-                <LogOut className="h-4 w-4" />
-                Sair
-              </button>
+              <UserAvatarMenu name={user.name} roleLabel={ROLE_LABELS[user.role]} />
             </div>
           </div>
-          <div className="flex gap-1.5 overflow-x-auto whitespace-nowrap px-3 pb-2 scrollbar-hide">
-            {items.map((item) => {
-              const Icon = item.icon
-              const active = isActive(item.href)
-              const pulsing = item.pulseWhenChecklistPending && hasPendingChecklists
-              // No mobile, o atalho do Checklist abre direto em modo fullscreen (ver app/company/checklists/page.tsx).
-              const href = item.pulseWhenChecklistPending ? `${item.href}?fullscreen=1` : item.href
-              return (
-                <Link
-                  key={item.href}
-                  href={href}
-                  className={cn(
-                    "relative flex flex-shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2.5 py-2 min-w-[60px] text-center transition-colors",
-                    active ? "bg-[#3E2415] text-white" : "bg-[#F7F5F2] text-[#3E2415]",
-                  )}
-                >
-                  <span className="relative">
-                    <Icon className="h-5 w-5" />
-                    {pulsing && (
-                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-[10px] font-medium leading-tight whitespace-nowrap">
-                    {item.shortLabel ?? item.label}
-                  </span>
-                </Link>
-              )
-            })}
-          </div>
+          <MobileNavBar
+            items={items
+              .filter((item) => !item.hideFromMobileNav)
+              .map((item) => ({
+                href: item.pulseWhenChecklistPending ? `${item.href}?fullscreen=1` : item.href,
+                label: item.label,
+                shortLabel: item.shortLabel,
+                icon: item.icon,
+                active: isActive(item.href),
+                pulsing: item.pulseWhenChecklistPending && hasPendingChecklists,
+              }))}
+          />
         </div>
+
+        {canOperateFrontDesk(user.role) && <QuickActionBar />}
 
         <div className="lg:ml-[260px]">
           <div className="hidden lg:flex items-center justify-end gap-3 px-8 py-3 border-b border-[#E8E3DC] bg-white/60">
             <NotificationBell />
-            <p className="text-xs text-gray-500">
-              Logado como <span className="font-semibold text-[#3E2415]">{user.name}</span> ·{" "}
-              {ROLE_LABELS[user.role]}
-            </p>
+            <UserAvatarMenu name={user.name} roleLabel={ROLE_LABELS[user.role]} />
           </div>
-          <main className="p-4 md:p-6 lg:p-8">{children}</main>
+          <main className={cn("p-4 md:p-6 lg:p-8", canOperateFrontDesk(user.role) && "pb-24 lg:pb-8")}>{children}</main>
         </div>
       </div>
     </CompanyUserProvider>

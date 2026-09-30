@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma"
-import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageFinance } from "@/lib/permissions"
+import { requireCompanyStaff, requireFinanceAccess, handleApiError, ApiError } from "@/lib/api-auth"
 import { logAudit } from "@/lib/audit"
+import { notifyUser } from "@/lib/notifications"
 import {
   checkAffiliateMilestone,
   checkAffiliateMilestones,
@@ -18,7 +18,7 @@ import {
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireCompanyStaff()
-    requireCapability(user, canManageFinance)
+    requireFinanceAccess(user)
     const { id } = await params
     const companyId = user.companyId
 
@@ -74,6 +74,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         select: { affiliateId: true },
       })
       if (partnerProfile?.affiliateId) await checkAffiliateMilestones(partnerProfile.affiliateId)
+
+      const formattedValue = finalValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+      await notifyUser({
+        userId: commission.partnerId,
+        type: "COMMISSION_EARNED",
+        title: "Comissão aprovada!",
+        message: `Sua comissão de ${formattedValue} (${commission.clientName}) foi aprovada e creditada na sua carteira.`,
+        linkUrl: "/partner",
+      }).catch(() => {})
     }
 
     return Response.json(updated)

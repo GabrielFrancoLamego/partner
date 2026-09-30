@@ -1,11 +1,13 @@
 import { prisma } from "@/lib/prisma"
 import { requirePartner, handleApiError, ApiError } from "@/lib/api-auth"
 import { ensureMembership } from "@/lib/program-lifecycle"
+import { requirePartnerAdesaoComplete } from "@/lib/partner-adesao"
 
 /** Botão "Participar" em /partner/explorar — só permitido enquanto o programa está aberto a novas adesões. */
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requirePartner()
+    await requirePartnerAdesaoComplete(user.id)
     const { id } = await params
 
     const program = await prisma.program.findUnique({ where: { id }, select: { id: true, companyId: true, status: true } })

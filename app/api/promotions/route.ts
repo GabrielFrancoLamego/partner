@@ -1,13 +1,12 @@
 import { prisma } from "@/lib/prisma"
-import { requireUser, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
+import { requireCompanyStaff, requireCapability, handleApiError } from "@/lib/api-auth"
 import { canOperateFrontDesk } from "@/lib/permissions"
 
 /** Lista promoções ativas e dentro da validade da própria empresa do operador — usado pelo Scanner PDV. */
 export async function GET() {
   try {
-    const user = await requireUser()
+    const user = await requireCompanyStaff()
     requireCapability(user, canOperateFrontDesk)
-    if (!user.companyId) throw new ApiError(400, "Usuário sem empresa vinculada")
 
     const now = new Date()
     const promotions = await prisma.promotion.findMany({

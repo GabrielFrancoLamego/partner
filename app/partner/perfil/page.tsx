@@ -8,12 +8,13 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, AdminCard } from "@/components/admin/admin-ui"
-import { formatPhone, isValidPhone } from "@/lib/validators"
+import { formatCpfCnpj, formatPhone, isValidCpfOrCnpj, isValidPhone, onlyDigits } from "@/lib/validators"
 import { AccountDeletionRequest } from "@/components/account-deletion-request"
 
 type PartnerProfile = {
   fullName: string | null
   whatsapp: string | null
+  cpf: string | null
   pixKey: string | null
   bankName: string | null
   accountType: string | null
@@ -30,6 +31,7 @@ export default function PartnerProfilePage() {
 
   const [fullName, setFullName] = useState("")
   const [whatsapp, setWhatsapp] = useState("")
+  const [cpf, setCpf] = useState("")
   const [pixKey, setPixKey] = useState("")
   const [bankName, setBankName] = useState("")
   const [accountType, setAccountType] = useState("CORRENTE")
@@ -42,6 +44,7 @@ export default function PartnerProfilePage() {
         setProfile(p)
         setFullName(p.fullName ?? "")
         setWhatsapp(p.whatsapp ?? "")
+        setCpf(p.cpf ?? "")
         setPixKey(p.pixKey ?? "")
         setBankName(p.bankName ?? "")
         setAccountType(p.accountType ?? "CORRENTE")
@@ -52,19 +55,20 @@ export default function PartnerProfilePage() {
   }, [])
 
   const whatsappError = whatsapp && !isValidPhone(whatsapp) ? "WhatsApp inválido" : ""
+  const cpfError = cpf && !isValidCpfOrCnpj(cpf) ? "CPF inválido" : ""
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
     setSuccess("")
-    if (whatsappError) {
-      setError(whatsappError)
+    if (whatsappError || cpfError) {
+      setError(whatsappError || cpfError)
       return
     }
     setIsSubmitting(true)
     try {
       const payload = Object.fromEntries(
-        Object.entries({ fullName, whatsapp, pixKey, bankName, accountType, agency, accountNumber }).filter(([, v]) => v),
+        Object.entries({ fullName, whatsapp, cpf, pixKey, bankName, accountType, agency, accountNumber }).filter(([, v]) => v),
       )
       await adminFetch("/api/partner/profile", { method: "PATCH", body: JSON.stringify(payload) })
       setSuccess("Perfil atualizado com sucesso.")
@@ -98,6 +102,11 @@ export default function PartnerProfilePage() {
             <Input value={whatsapp} onChange={(e) => setWhatsapp(formatPhone(e.target.value))} placeholder="(00) 00000-0000" />
             {whatsappError && <p className="text-xs text-red-600">{whatsappError}</p>}
           </div>
+          <div className="space-y-2">
+            <Label>CPF</Label>
+            <Input value={cpf} onChange={(e) => setCpf(formatCpfCnpj(e.target.value))} inputMode="numeric" maxLength={14} />
+            {cpfError && <p className="text-xs text-red-600">{cpfError}</p>}
+          </div>
 
           <div className="pt-3 border-t border-gray-100 space-y-4">
             <div>
@@ -127,11 +136,11 @@ export default function PartnerProfilePage() {
               </div>
               <div className="space-y-2">
                 <Label>Agência</Label>
-                <Input value={agency} onChange={(e) => setAgency(e.target.value)} />
+                <Input value={agency} onChange={(e) => setAgency(onlyDigits(e.target.value))} inputMode="numeric" />
               </div>
               <div className="space-y-2">
                 <Label>Conta</Label>
-                <Input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
+                <Input value={accountNumber} onChange={(e) => setAccountNumber(onlyDigits(e.target.value))} inputMode="numeric" />
               </div>
             </div>
           </div>

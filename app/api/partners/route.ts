@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { requireUser, requireCapability, handleApiError } from "@/lib/api-auth"
+import { requireCompanyStaff, requireCapability, handleApiError } from "@/lib/api-auth"
 import { canOperateFrontDesk } from "@/lib/permissions"
 
 /**
@@ -10,7 +10,7 @@ import { canOperateFrontDesk } from "@/lib/permissions"
  */
 export async function GET(request: Request) {
   try {
-    const user = await requireUser()
+    const user = await requireCompanyStaff()
     requireCapability(user, canOperateFrontDesk)
 
     const { searchParams } = new URL(request.url)

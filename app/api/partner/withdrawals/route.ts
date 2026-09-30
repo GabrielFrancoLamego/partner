@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { requirePartner, handleApiError, ApiError } from "@/lib/api-auth"
 import { logAudit } from "@/lib/audit"
+import { requirePartnerAdesaoComplete } from "@/lib/partner-adesao"
 
 export async function GET() {
   try {
@@ -29,6 +30,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const user = await requirePartner()
+    await requirePartnerAdesaoComplete(user.id)
 
     const body = await request.json()
     const { amount, companyId, pixKey } = body as { amount: number; companyId: string; pixKey?: string }
@@ -43,19 +45,11 @@ export async function POST(request: Request) {
     const profile = await prisma.partnerProfile.findUniqueOrThrow({ where: { userId: user.id } })
     if (amountNumber > Number(profile.walletBalance)) throw new ApiError(400, "Saldo em carteira insuficiente")
 
+    // Etapa 2 do cadastro (CPF + PIX ou dados bancários) já garantida por
+    // requirePartnerAdesaoComplete acima — aqui só falta ter uma chave PIX de
+    // fato pra rotear o pagamento (o parceiro pode digitar uma nova na hora).
     const finalPixKey = pixKey?.trim() || profile.pixKey
-    if (!finalPixKey) throw new ApiError(400, "Cadastre uma chave PIX para solicitar o saque")
-
-    // Regra do parceiro (front 1): cadastro básico é aceito para navegar a
-    // plataforma, mas a 1ª Solicitação de Saque exige Chave PIX + Dados
-    // Bancários completos — evita retrabalho do Financeiro com saque
-    // aprovado sem como pagar.
-    if (!profile.bankName?.trim() || !profile.agency?.trim() || !profile.accountNumber?.trim()) {
-      throw new ApiError(
-        400,
-        "Complete seus Dados Bancários (banco, agência e conta) no seu perfil antes de solicitar um saque",
-      )
-    }
+    if (!finalPixKey) throw new ApiError(400, "Informe a Chave PIX para receber este saque")
 
     const withdrawal = await prisma.$transaction(async (tx) => {
       const created = await tx.withdrawal.create({

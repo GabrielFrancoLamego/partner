@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
 import { canPunchTimeclock, canManageDailyOperations } from "@/lib/permissions"
 import { checkGeofence } from "@/lib/geofence"
-import { awardXp, getInternalProgramRules } from "@/lib/gamification"
+import { getInternalProgramRules } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
 
 /** "HH:mm" -> minutos desde 00:00, para comparar com a hora local da batida. */
@@ -69,6 +69,13 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * Registra a batida (GPS + sequência). NÃO aplica pontos nem banco de horas
+ * aqui — o relógio só calcula uma PRÉVIA (devolvida na resposta, pra UI poder
+ * avisar "você está Xmin atrasado"); a aplicação de verdade só acontece
+ * quando a Gerente/Master confirma cada variação no Fechamento do dia (ver
+ * lib/timeclock-adjustments.ts e app/api/company/shift-closing/timeclock-adjustments).
+ */
 export async function POST(request: Request) {
   try {
     const user = await requireCompanyStaff()
@@ -104,55 +111,46 @@ export async function POST(request: Request) {
       data: { userId: user.id, companyId, type, latitude, longitude },
     })
 
-    // Banco de horas + tolerância: uma margem de `lateToleranceMinutes` (padrão
-    // 15min) antes/depois do horário previsto NÃO gera hora extra nem déficit —
-    // só o que exceder a tolerância entra no saldo (ver InternalProgram.lateToleranceMinutes).
+    // Prévia (não aplicada) — mesma tolerância de `lateToleranceMinutes` usada
+    // depois pelo Fechamento (ver lib/timeclock-adjustments.ts, fonte da
+    // verdade do cálculo real que a Gerente confirma).
     const [schedule, rules] = await Promise.all([
-      prisma.employeeProfile.findUnique({ where: { userId: user.id }, select: { workStartTime: true, workEndTime: true } }),
+      prisma.employeeProfile.findUnique({
+        where: { userId: user.id },
+        select: { workStartTime: true, workEndTime: true, dailyBreakAllowanceMinutes: true },
+      }),
       getInternalProgramRules(companyId),
     ])
     const tolerance = rules.lateToleranceMinutes
 
     let bankMinutesDelta = 0
     let lateMinutes = 0
+    let breakOverageMinutes = 0
     if (type === "CHECK_IN" && schedule?.workStartTime) {
-      const diff = minutesSinceMidnight(entry.createdAt) - parseTimeToMinutes(schedule.workStartTime) // positivo = atrasado
+      const diff = minutesSinceMidnight(entry.createdAt) - parseTimeToMinutes(schedule.workStartTime)
       if (diff > tolerance) {
         lateMinutes = diff - tolerance
         bankMinutesDelta = -lateMinutes
       }
     } else if (type === "CHECK_OUT" && schedule?.workEndTime) {
-      const diff = minutesSinceMidnight(entry.createdAt) - parseTimeToMinutes(schedule.workEndTime) // positivo = ficou a mais
+      const diff = minutesSinceMidnight(entry.createdAt) - parseTimeToMinutes(schedule.workEndTime)
       if (Math.abs(diff) > tolerance) {
         bankMinutesDelta = diff > 0 ? diff - tolerance : diff + tolerance
       }
-    }
-    if (bankMinutesDelta !== 0) {
-      await prisma.employeeProfile.update({ where: { userId: user.id }, data: { bankOfHoursMinutes: { increment: bankMinutesDelta } } })
-    }
-
-    if (type === "CHECK_IN") {
-      if (lateMinutes > 0) {
-        if (rules.pointsLatePenalty !== 0) {
-          await awardXp({
-            companyId,
-            employeeId: user.id,
-            reason: "ATTENDANCE",
-            points: rules.pointsLatePenalty,
-            sourceId: entry.id,
-            note: `Atraso de ${lateMinutes}min além da tolerância de ${tolerance}min`,
-          })
+    } else if (type === "BREAK_END") {
+      const allowance = schedule?.dailyBreakAllowanceMinutes ?? 60
+      const allEntries = [...todayEntries, entry]
+      let cumulativeUsed = 0
+      let openStart: Date | null = null
+      for (const e of allEntries) {
+        if (e.type === "BREAK_START") openStart = e.createdAt
+        else if (e.type === "BREAK_END" && openStart) {
+          cumulativeUsed += (e.createdAt.getTime() - openStart.getTime()) / 60000
+          openStart = null
         }
-      } else {
-        await awardXp({
-          companyId,
-          employeeId: user.id,
-          reason: "ATTENDANCE",
-          points: rules.pointsPunctualEntry,
-          sourceId: entry.id,
-          note: "Entrada pontual",
-        })
       }
+      breakOverageMinutes = Math.round(Math.max(0, cumulativeUsed - allowance - tolerance))
+      if (breakOverageMinutes > 0) bankMinutesDelta = -breakOverageMinutes
     }
 
     await logAudit({
@@ -161,10 +159,13 @@ export async function POST(request: Request) {
       action: "CREATE",
       entity: "TimeEntry",
       entityId: entry.id,
-      details: { type, latitude, longitude, distanceMeters: geofence.distanceMeters, bankMinutesDelta, lateMinutes },
+      details: { type, latitude, longitude, distanceMeters: geofence.distanceMeters, previewBankMinutesDelta: bankMinutesDelta, previewLateMinutes: lateMinutes, previewBreakOverageMinutes: breakOverageMinutes },
     })
 
-    return Response.json({ ...entry, distanceMeters: geofence.distanceMeters, bankMinutesDelta, lateMinutes }, { status: 201 })
+    return Response.json(
+      { ...entry, distanceMeters: geofence.distanceMeters, bankMinutesDelta, lateMinutes, breakOverageMinutes },
+      { status: 201 },
+    )
   } catch (error) {
     return handleApiError(error)
   }

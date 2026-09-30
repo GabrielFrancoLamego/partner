@@ -4,6 +4,8 @@ import { canManageDailyOperations, canReviewCompletedShiftClosings } from "@/lib
 import { uploadImage } from "@/lib/storage"
 import { logAudit } from "@/lib/audit"
 import { awardXp, getInternalProgramRules } from "@/lib/gamification"
+import { notifyUser } from "@/lib/notifications"
+import { computePendingTimeclockAdjustments } from "@/lib/timeclock-adjustments"
 
 function startOfDay(date: Date) {
   const d = new Date(date)
@@ -20,9 +22,13 @@ function isPastDeadline(reference: Date, deadline: string, now: Date) {
 }
 
 /**
- * Sequência obrigatória de fechamento — os 3 passos que precisam estar
+ * Sequência obrigatória de fechamento — os passos que precisam estar
  * completos antes de liberar o botão "Finalizar Expediente" (ver POST abaixo,
  * que reforça a mesma regra no servidor):
+ *   0. Confirmar (ou perdoar, com justificativa) cada variação de ponto do
+ *      dia calculada pelo relógio — atraso, saída diferente, intervalo
+ *      excedido (ver lib/timeclock-adjustments.ts). Nada é aplicado sem essa
+ *      confirmação da Gerente/Master.
  *   1. Todas as Commission de hoje com Valor da Conta preenchido (amount).
  *   2. Nota diária de todos os colaboradores presentes hoje (com TimeEntry).
  *   3. Faturamento total + foto do comprovante (checado pelo `closing` já existente).
@@ -30,7 +36,7 @@ function isPastDeadline(reference: Date, deadline: string, now: Date) {
 async function getClosingChecklist(companyId: string, date: Date) {
   const end = new Date(date.getTime() + 24 * 60 * 60 * 1000)
 
-  const [pendingCommissions, presentEmployeeIds, evaluatedEmployeeIds] = await Promise.all([
+  const [pendingCommissions, presentEmployeeIds, evaluatedEmployeeIds, pendingTimeclockAdjustments] = await Promise.all([
     prisma.commission.findMany({
       where: { companyId, date: { gte: date, lt: end }, amount: null },
       select: { id: true, clientName: true, commissionValue: true, partner: { select: { name: true } } },
@@ -41,6 +47,7 @@ async function getClosingChecklist(companyId: string, date: Date) {
       distinct: ["userId"],
     }),
     prisma.dailyEvaluation.findMany({ where: { companyId, date }, select: { employeeId: true } }),
+    computePendingTimeclockAdjustments(companyId, date),
   ])
 
   const evaluatedSet = new Set(evaluatedEmployeeIds.map((e) => e.employeeId))
@@ -52,8 +59,10 @@ async function getClosingChecklist(companyId: string, date: Date) {
       : []
 
   return {
+    pendingTimeclockAdjustments,
     pendingCommissions,
     pendingEmployees,
+    step0Complete: pendingTimeclockAdjustments.length === 0,
     step1Complete: pendingCommissions.length === 0,
     step2Complete: pendingEmployees.length === 0,
   }
@@ -126,8 +135,11 @@ export async function POST(request: Request) {
     const now = new Date()
 
     // Sequência obrigatória — reforça no servidor o que a UI já bloqueia:
-    // passos 1 e 2 têm que estar 100% completos antes do passo 3 (faturamento + foto).
+    // passos 0, 1 e 2 têm que estar 100% completos antes do passo 3 (faturamento + foto).
     const checklist = await getClosingChecklist(companyId, date)
+    if (!checklist.step0Complete) {
+      throw new ApiError(400, "Confirme a variação de ponto de todos os colaboradores hoje antes de finalizar o expediente")
+    }
     if (!checklist.step1Complete) {
       throw new ApiError(400, "Confirme o valor da conta de todos os clientes indicados hoje antes de finalizar o expediente")
     }
@@ -207,9 +219,20 @@ export async function POST(request: Request) {
     // Fechar o dia varre os checklists que ficaram sem NENHUMA entrega (nunca
     // chegaram a SUBMITTED) e os marca como não executados, penalizando XP —
     // tarefas já entregues e aguardando double-check da Gerente não são afetadas.
-    const strandedChecklists = await prisma.checklist.findMany({
-      where: { companyId, forDate: date, status: "PENDING" },
+    // Colaborador com FALTA ou uso de BANCO_HORAS registrado hoje fica isento
+    // — não é penalizado por não cumprir checklist numa ausência já autorizada.
+    const dayEnd = new Date(date.getTime() + 24 * 60 * 60 * 1000)
+    const exemptOccurrences = await prisma.occurrence.findMany({
+      where: { companyId, date: { gte: date, lt: dayEnd }, type: { in: ["FALTA", "BANCO_HORAS"] }, employeeId: { not: null } },
+      select: { employeeId: true },
     })
+    const exemptEmployeeIds = new Set(exemptOccurrences.map((o) => o.employeeId!))
+
+    const strandedChecklists = (
+      await prisma.checklist.findMany({
+        where: { companyId, forDate: date, status: "PENDING" },
+      })
+    ).filter((c) => !exemptEmployeeIds.has(c.employeeId))
     if (strandedChecklists.length > 0) {
       const rules = await getInternalProgramRules(companyId)
       await prisma.$transaction(async (tx) => {
@@ -241,6 +264,22 @@ export async function POST(request: Request) {
           }
         }
       })
+
+      // Clareza para o colaborador: sem isso, uma tarefa que nunca foi
+      // entregue vira "não entregue" silenciosamente no fechamento do dia.
+      await Promise.all(
+        strandedChecklists.map((checklist) =>
+          notifyUser({
+            userId: checklist.employeeId,
+            type: "GENERIC",
+            title: `Checklist "${checklist.title}" marcado como não entregue`,
+            message: `O expediente foi fechado sem nenhuma entrega desta tarefa${
+              rules.pointsChecklistFail !== 0 ? ` — ${rules.pointsChecklistFail} pontos.` : "."
+            }`,
+            linkUrl: "/company/checklists",
+          }).catch(() => {}),
+        ),
+      )
     }
 
     return Response.json(closing, { status: 201 })

@@ -13,7 +13,9 @@
     "db:seed-partners": "tsx prisma/seed-partners.ts",
     "db:seed-demo": "tsx prisma/seed-demo-data.ts",
     "db:seed-simulation": "tsx prisma/seed-simulation.ts",
-    "db:seed-pending-approvals": "tsx prisma/seed-pending-approvals.ts"
+    "db:seed-pending-approvals": "tsx prisma/seed-pending-approvals.ts",
+    "db:seed-timeclock": "tsx prisma/seed-timeclock-simulation.ts",
+    "db:seed-coordinates": "tsx prisma/seed-company-coordinates.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

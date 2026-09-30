@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from "react"
 
-export type PartnerUser = { id: string; name: string }
+export type PartnerUser = { id: string; name: string; isAffiliate: boolean; photoUrl: string | null }
 
 const PartnerUserContext = createContext<PartnerUser | null>(null)
 

@@ -127,6 +127,7 @@ enum OccurrencePaymentMethod {
   PIX
   TRABALHO
   FOLGA_ADICIONAL
+  CONSUMO // abate diretamente da Conta de Consumo (User.consumptionDebt) do colaborador — não é dinheiro novo saindo
 }
 
 enum OccurrencePaymentStatus {
@@ -226,6 +227,39 @@ enum GoalPeriod {
   ANNUAL
 }
 
+// Tipo de recompensa de uma faixa de Meta (GoalTier) — CASH credita
+// bonusAmount na carteira; PHYSICAL_REWARD concede um item da Loja de
+// Prêmios (rewardCatalogItemId) ou um prêmio livre (rewardLabel), sem
+// impacto financeiro direto (ver app/company/metas e Financeiro).
+enum GoalRewardType {
+  CASH
+  PHYSICAL_REWARD
+}
+
+// Status de quitação de um bônus/prêmio de Meta atingida — registrado pela
+// Gerente/Master no Módulo Financeiro (ver model GoalPayout).
+enum GoalPayoutStatus {
+  PENDING
+  PAID
+}
+
+// Destinatário de uma Comunicação Interna — SECTOR usa recipientSectorId
+// (entregue aos responsáveis do setor, ver EmployeeProfile.
+// isSectorCommunicationResponsible), ROLE usa recipientRole, EMPLOYEE usa
+// recipientEmployeeId.
+enum InternalMessageRecipientType {
+  SECTOR
+  ROLE
+  EMPLOYEE
+}
+
+enum InternalMessageStatus {
+  SENT
+  PENDING_RESPONSE
+  RESPONDED
+  CONCLUDED
+}
+
 // Formato do valor de comissão de um Program — substitui o antigo campo
 // booleano `isPercentage`, que não conseguia representar bonificação em
 // unidade de produto (ex: "1 diária grátis").
@@ -300,6 +334,11 @@ enum NotificationType {
   ACCOUNT_DELETION_REQUESTED // usuário pediu exclusão da conta — avisa todos os Admins para análise
   TIMECLOCK_ADJUSTED // Master corrigiu uma batida de ponto — colaborador precisa dar ciência
   PROMOTION_OFFERED // Master aplicou uma promoção de cargo — colaborador precisa aceitar
+  COMMISSION_EARNED // parceiro recebeu/teve aprovada uma comissão — dispara efeito sonoro no app (ver components/pwa/earnings-sound.tsx)
+  BONUS_AWARDED // colaborador recebeu bônus de meta/premiação — dispara efeito sonoro no app
+  INTERNAL_MESSAGE_RECEIVED // nova Comunicação Interna destinada ao usuário/setor
+  REFERRAL_VISITED // indicado do parceiro compareceu à unidade (QR escaneado no PDV) — alerta motivacional antes da aprovação da comissão
+  TICKET_MESSAGE_RECEIVED // nova mensagem numa conversa de chamado (Suporte Tribuss ou chat com o Estabelecimento)
   GENERIC
 }
 
@@ -485,8 +524,12 @@ model Company {
   goals           Goal[]
   ratings         CompanyRating[]
 
-  occurrenceTypeConfigs OccurrenceTypeConfig[]
-  promotionVouchers     PromotionVoucher[]
+  occurrenceTypeConfigs      OccurrenceTypeConfig[]
+  promotionVouchers          PromotionVoucher[]
+  monthlyDayOffRecords       MonthlyDayOffRecord[]
+  internalMessages           InternalMessage[]
+  goalPayouts                GoalPayout[]
+  timeclockAdjustmentReviews TimeclockAdjustmentReview[]
 
   @@index([affiliateId])
   @@index([status])
@@ -524,11 +567,39 @@ model User {
   accountDeletionStatus      AccountDeletionStatus @default(NONE)
   accountDeletionRequestedAt DateTime?
   accountDeletionReason      String?               @db.Text
-  companyId                  String? // null quando role = ADMIN ou PARTNER (parceiro não pertence a uma única empresa)
-  company                    Company?              @relation(fields: [companyId], references: [id])
-  createdAt                  DateTime              @default(now())
-  updatedAt                  DateTime              @updatedAt
-  lastActiveAt               DateTime?
+
+  // Preferências de notificação (Header > Avatar > Preferências) — controlam
+  // os canais em lib/notifications.ts e o efeito sonoro de ganho financeiro
+  // (ver components/pwa/earnings-sound.tsx / NotificationType.COMMISSION_EARNED
+  // e BONUS_AWARDED).
+  notifyViaPush     Boolean @default(true)
+  notifyViaEmail    Boolean @default(true)
+  notifyViaWhatsapp Boolean @default(false)
+  soundOnEarnings   Boolean @default(true)
+
+  // Até 5 hrefs do menu marcados como favoritos pelo próprio usuário — exibidos
+  // em destaque na barra horizontal do mobile (ver components/shared/mobile-nav-bar.tsx).
+  // Vazio = usa os 5 primeiros itens visíveis por padrão.
+  pinnedMobileNavItems String[] @default([])
+
+  // Conta de Consumo — dívida acumulada de comandas assinadas na casa (ver
+  // Occurrence.type = CONSUMO), descontada do salário. Fica no User (não no
+  // EmployeeProfile) porque também se aplica à Gerente. Abatida quando uma
+  // ocorrência de valor positivo é paga com paymentMethod = CONSUMO.
+  consumptionDebt Decimal @default(0) @db.Decimal(10, 2)
+
+  // Autenticação em Duas Etapas (TOTP, RFC 6238 — ver lib/totp.ts). O secret
+  // fica gravado já durante o setup (antes de enabled=true) para permitir
+  // confirmar o primeiro código sem round-trip extra; só passa a ser exigido
+  // no login quando twoFactorEnabled vira true (ver /verificar-2fa).
+  twoFactorSecret  String?
+  twoFactorEnabled Boolean @default(false)
+
+  companyId    String? // null quando role = ADMIN ou PARTNER (parceiro não pertence a uma única empresa)
+  company      Company?  @relation(fields: [companyId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastActiveAt DateTime?
 
   partnerProfile  PartnerProfile?
   employeeProfile EmployeeProfile?
@@ -557,32 +628,40 @@ model User {
   ticketsAuthored              Ticket[]                    @relation("TicketAuthor")
   ticketMessagesAuthored       TicketMessage[]             @relation("TicketMessageAuthor")
 
-  postsAuthored              Post[]                   @relation("PostAuthor")
-  postsReviewed              Post[]                   @relation("PostReviewedBy")
-  postsHidden                Post[]                   @relation("PostHiddenBy")
-  postLikes                  PostLike[]               @relation("PostLikeUser")
-  postComments               PostComment[]            @relation("PostCommentAuthor")
-  postReactions              PostReaction[]           @relation("PostReactionUser")
-  occurrencesReceived        Occurrence[]             @relation("OccurrenceEmployee")
-  occurrencesCreated         Occurrence[]             @relation("OccurrenceCreatedBy")
-  occurrenceTypeConfigsMade  OccurrenceTypeConfig[]   @relation("OccurrenceTypeConfigCreatedBy")
-  dailyEvaluationsReceived   DailyEvaluation[]        @relation("DailyEvaluationEmployee")
-  dailyEvaluationsGiven      DailyEvaluation[]        @relation("DailyEvaluationEvaluator")
-  xpEntries                  XpEntry[]                @relation("XpEntryEmployee")
-  rewardRedemptions          RewardRedemption[]       @relation("RewardRedemptionEmployee")
-  rewardRedemptionsReviewed  RewardRedemption[]       @relation("RewardRedemptionReviewedBy")
-  timeJustifications         TimeEntryJustification[] @relation("TimeJustificationEmployee")
-  timeJustificationsReviewed TimeEntryJustification[] @relation("TimeJustificationReviewedBy")
-  shiftClosingsClosed        ShiftClosing[]           @relation("ShiftClosingClosedBy")
-  timeEntriesAdjusted        TimeEntry[]              @relation("TimeEntryAdjustedBy")
-  promotionVouchersIssued    PromotionVoucher[]       @relation("PromotionVoucherIssuedBy")
-  promotionVouchersRedeemed  PromotionVoucher[]       @relation("PromotionVoucherRedeemedBy")
+  postsAuthored                Post[]                      @relation("PostAuthor")
+  postsReviewed                Post[]                      @relation("PostReviewedBy")
+  postsHidden                  Post[]                      @relation("PostHiddenBy")
+  postLikes                    PostLike[]                  @relation("PostLikeUser")
+  postComments                 PostComment[]               @relation("PostCommentAuthor")
+  postReactions                PostReaction[]              @relation("PostReactionUser")
+  occurrencesReceived          Occurrence[]                @relation("OccurrenceEmployee")
+  occurrencesCreated           Occurrence[]                @relation("OccurrenceCreatedBy")
+  occurrenceTypeConfigsMade    OccurrenceTypeConfig[]      @relation("OccurrenceTypeConfigCreatedBy")
+  dailyEvaluationsReceived     DailyEvaluation[]           @relation("DailyEvaluationEmployee")
+  dailyEvaluationsGiven        DailyEvaluation[]           @relation("DailyEvaluationEvaluator")
+  xpEntries                    XpEntry[]                   @relation("XpEntryEmployee")
+  rewardRedemptions            RewardRedemption[]          @relation("RewardRedemptionEmployee")
+  rewardRedemptionsReviewed    RewardRedemption[]          @relation("RewardRedemptionReviewedBy")
+  timeJustifications           TimeEntryJustification[]    @relation("TimeJustificationEmployee")
+  timeJustificationsReviewed   TimeEntryJustification[]    @relation("TimeJustificationReviewedBy")
+  shiftClosingsClosed          ShiftClosing[]              @relation("ShiftClosingClosedBy")
+  timeEntriesAdjusted          TimeEntry[]                 @relation("TimeEntryAdjustedBy")
+  timeclockAdjustmentsReceived TimeclockAdjustmentReview[] @relation("TimeclockAdjustmentEmployee")
+  timeclockAdjustmentsReviewed TimeclockAdjustmentReview[] @relation("TimeclockAdjustmentReviewedBy")
+  promotionVouchersIssued      PromotionVoucher[]          @relation("PromotionVoucherIssuedBy")
+  promotionVouchersRedeemed    PromotionVoucher[]          @relation("PromotionVoucherRedeemedBy")
 
   employeeTermAcceptances EmployeeTermAcceptance[] @relation("EmployeeTermAcceptanceUser")
   partnerTermAcceptances  PartnerTermAcceptance[]  @relation("PartnerTermAcceptanceUser")
   goalsAsIndividual       Goal[]                   @relation("GoalEmployee")
   goalsCreated            Goal[]                   @relation("GoalCreatedBy")
   goalRecordsReported     GoalRecord[]             @relation("GoalRecordReportedBy")
+  goalPayoutsReceived     GoalPayout[]             @relation("GoalPayoutEmployee")
+  goalPayoutsRegistered   GoalPayout[]             @relation("GoalPayoutPaidBy")
+
+  internalMessagesSent   InternalMessage[]      @relation("InternalMessageSender")
+  internalMessagesToMe   InternalMessage[]      @relation("InternalMessageRecipientEmployee")
+  internalMessageReplies InternalMessageReply[] @relation("InternalMessageReplyAuthor")
 
   notifications Notification[]
 
@@ -679,6 +758,31 @@ model EmployeeProfile {
   breakEndTime               String?
   bankOfHoursMinutes         Int        @default(0) // positivo = hora extra acumulada; negativo = déficit
   dailyBreakAllowanceMinutes Int        @default(60) // Tempo Total de Pausa Diária Permitida — pode ser usado picado ou de uma vez (ver TimeEntry BREAK_START/BREAK_END)
+
+  // Horário por dia da semana — sobrepõe workStartTime/workEndTime/
+  // breakStartTime/breakEndTime quando presente. Formato:
+  // { "MON": {"start":"08:00","end":"18:00","breakStart":"12:00","breakEnd":"13:00"}, ... }
+  // chaves MON..SUN; dia ausente = usa os campos únicos acima como fallback.
+  weeklySchedule Json?
+
+  // Dia de folga semanal fixo (0=domingo..6=sábado) — informativo, usado no
+  // Mapa/Colaboradores e para não cobrar ponto nesse dia.
+  weeklyDayOff Int?
+
+  // Direito a 1 folga adicional por mês (ver model MonthlyDayOffRecord) — se
+  // não for gozada até o fim do mês, o sistema sinaliza o pagamento
+  // equivalente a 1 diária junto ao salário na folha (ver app/company/colaboradores).
+  hasExtraMonthlyDayOff Boolean @default(false)
+
+  // Responsável pelo Módulo Financeiro da empresa (além do Master) — ver
+  // lib/permissions.ts#canAccessFinanceModule.
+  isFinanceResponsible Boolean @default(false)
+
+  // Responsável por receber Comunicações Internas destinadas ao seu Setor
+  // (ver InternalMessage, recipientType = SECTOR).
+  isSectorCommunicationResponsible Boolean @default(false)
+
+  monthlyDayOffRecords MonthlyDayOffRecord[]
 
   // Registro completo de RH — preenchimento opcional, feito por etapas.
   isProfileComplete Boolean @default(false)
@@ -1780,6 +1884,7 @@ model Sector {
   goals                Goal[]
   registrationLinks    PublicRegistrationLink[]
   registrationRequests PublicRegistrationRequest[]
+  internalMessages     InternalMessage[]
 
   @@unique([companyId, name])
   @@index([companyId])
@@ -1808,6 +1913,7 @@ model Goal {
 
   tiers   GoalTier[]
   records GoalRecord[]
+  payouts GoalPayout[]
 
   @@index([companyId])
   @@index([sectorId])
@@ -1816,13 +1922,23 @@ model Goal {
 
 // Faixa de bônus escalonado de uma Goal (ex: R$5k -> R$30, R$7k -> R$50, R$10k -> R$70).
 model GoalTier {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   goalId       String
-  goal         Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  goal         Goal    @relation(fields: [goalId], references: [id], onDelete: Cascade)
   order        Int
-  targetAmount Decimal  @db.Decimal(10, 2)
-  bonusAmount  Decimal  @db.Decimal(10, 2)
-  createdAt    DateTime @default(now())
+  targetAmount Decimal @db.Decimal(10, 2)
+  bonusAmount  Decimal @db.Decimal(10, 2) // valor do bônus em dinheiro (rewardType = CASH) — também usado como referência de custo quando PHYSICAL_REWARD
+
+  // Tipo de recompensa ao bater esta faixa — CASH credita bonusAmount na
+  // carteira; PHYSICAL_REWARD concede um item da Loja de Prêmios
+  // (rewardCatalogItemId) ou um prêmio livre descrito em rewardLabel.
+  rewardType          GoalRewardType     @default(CASH)
+  rewardCatalogItemId String?
+  rewardCatalogItem   RewardCatalogItem? @relation(fields: [rewardCatalogItemId], references: [id])
+  rewardLabel         String? // ex: "Jantar Especial", "Folga Extra" — usado quando PHYSICAL_REWARD sem item de catálogo
+  createdAt           DateTime           @default(now())
+
+  payouts GoalPayout[]
 
   @@unique([goalId, order])
 }
@@ -1879,6 +1995,7 @@ model RewardCatalogItem {
   updatedAt   DateTime @updatedAt
 
   redemptions RewardRedemption[]
+  goalTiers   GoalTier[]
 
   @@index([companyId])
 }
@@ -1949,6 +2066,100 @@ model ShiftClosing {
   @@index([status])
 }
 
+// Controle mensal da "1 Folga Adicional por Mês" (ver EmployeeProfile.
+// hasExtraMonthlyDayOff) — 1 registro por colaborador/mês. Se `used` continuar
+// false ao fim do mês, o Financeiro/RH usa `paidAmount` (via GoalPayout ou
+// lançamento manual) para pagar a folga não gozada junto à folha.
+model MonthlyDayOffRecord {
+  id                String          @id @default(cuid())
+  employeeProfileId String
+  employeeProfile   EmployeeProfile @relation(fields: [employeeProfileId], references: [id], onDelete: Cascade)
+  companyId         String
+  company           Company         @relation(fields: [companyId], references: [id])
+  month             String // "AAAA-MM"
+  used              Boolean         @default(false)
+  usedDate          DateTime?
+  paidOut           Boolean         @default(false)
+  paidAmount        Decimal?        @db.Decimal(10, 2)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([employeeProfileId, month])
+  @@index([companyId])
+}
+
+// Comunicação Interna — mensagem formal de um membro da equipe para um Setor
+// (entregue aos responsáveis, ver EmployeeProfile.isSectorCommunicationResponsible),
+// uma Função/Role inteira, ou um Colaborador específico. Distinta do Ticket
+// (que é sempre endereçado à Tribuss/Admin da plataforma).
+model InternalMessage {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+  senderId  String
+  sender    User    @relation("InternalMessageSender", fields: [senderId], references: [id])
+
+  recipientType       InternalMessageRecipientType
+  recipientSectorId   String?
+  recipientSector     Sector?                      @relation(fields: [recipientSectorId], references: [id])
+  recipientRole       Role?
+  recipientEmployeeId String?
+  recipientEmployee   User?                        @relation("InternalMessageRecipientEmployee", fields: [recipientEmployeeId], references: [id])
+
+  subject        String
+  body           String                @db.Text
+  attachmentUrls String[]
+  status         InternalMessageStatus @default(SENT)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  replies InternalMessageReply[]
+
+  @@index([companyId])
+  @@index([senderId])
+  @@index([status])
+}
+
+model InternalMessageReply {
+  id        String          @id @default(cuid())
+  messageId String
+  message   InternalMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User            @relation("InternalMessageReplyAuthor", fields: [authorId], references: [id])
+  body      String          @db.Text
+  createdAt DateTime        @default(now())
+
+  @@index([messageId])
+}
+
+// Registro de quitação de um bônus/prêmio de Meta atingida — criado pela
+// Gerente/Master no Módulo Financeiro (aba "Registro de Quitação"),
+// atualizando o saldo do colaborador como pago (ver app/company/financeiro).
+model GoalPayout {
+  id         String           @id @default(cuid())
+  companyId  String
+  company    Company          @relation(fields: [companyId], references: [id])
+  goalId     String
+  goal       Goal             @relation(fields: [goalId], references: [id])
+  goalTierId String?
+  goalTier   GoalTier?        @relation(fields: [goalTierId], references: [id])
+  employeeId String
+  employee   User             @relation("GoalPayoutEmployee", fields: [employeeId], references: [id])
+  period     String // "AAAA-MM" — competência do bônus
+  amount     Decimal          @db.Decimal(10, 2)
+  rewardType GoalRewardType   @default(CASH)
+  status     GoalPayoutStatus @default(PAID)
+  paidById   String
+  paidBy     User             @relation("GoalPayoutPaidBy", fields: [paidById], references: [id])
+  paidAt     DateTime         @default(now())
+  note       String?
+  createdAt  DateTime         @default(now())
+
+  @@index([companyId])
+  @@index([employeeId])
+  @@index([goalId])
+}
+
 // Espelho de ponto — pedido de justificativa (atestado, esquecimento etc.)
 // para um dia específico, revisado pela Gerente/Master.
 model TimeEntryJustification {
@@ -1967,6 +2178,40 @@ model TimeEntryJustification {
   rejectionReason String?
   createdAt       DateTime            @default(now())
 
+  @@index([companyId])
+  @@index([employeeId])
+}
+
+// Tipo de variação de ponto sugerida automaticamente pelo relógio — LATE_CHECKIN
+// (entrada), CHECKOUT_VARIANCE (saiu mais cedo/mais tarde) e BREAK_OVERAGE
+// (intervalo além do permitido). Ver lib/timeclock-adjustments.ts.
+enum TimeclockAdjustmentKind {
+  LATE_CHECKIN
+  CHECKOUT_VARIANCE
+  BREAK_OVERAGE
+}
+
+// Decisão da Gerente/Master sobre uma variação de ponto calculada pelo
+// sistema — nada é aplicado ao colaborador até esta confirmação acontecer no
+// Fechamento do dia (ver app/api/company/shift-closing/timeclock-adjustments).
+// `@@unique` garante que cada variação só é perguntada uma vez.
+model TimeclockAdjustmentReview {
+  id              String                  @id @default(cuid())
+  companyId       String
+  company         Company                 @relation(fields: [companyId], references: [id])
+  employeeId      String
+  employee        User                    @relation("TimeclockAdjustmentEmployee", fields: [employeeId], references: [id])
+  date            DateTime // normalizado para 00:00 — dia a que a variação se refere
+  kind            TimeclockAdjustmentKind
+  computedMinutes Int // sugerido pelo relógio — negativo = déficit/atraso, positivo = crédito
+  computedPoints  Int // sugerido — negativo = penalidade, positivo = bônus
+  applied         Boolean // true = Gerente confirmou e o ajuste foi lançado; false = perdoado/descartado
+  justification   String?                 @db.Text // obrigatório quando o resultado aplicado é negativo pro colaborador
+  reviewedById    String
+  reviewedBy      User                    @relation("TimeclockAdjustmentReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime                @default(now())
+
+  @@unique([employeeId, date, kind])
   @@index([companyId])
   @@index([employeeId])
 }
