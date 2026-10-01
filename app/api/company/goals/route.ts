@@ -1,7 +1,7 @@
 import type { GoalPeriod, GoalScope } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canManageDailyOperations, canConfigureCompany } from "@/lib/permissions"
 import { logAudit } from "@/lib/audit"
 
 const SCOPES: GoalScope[] = ["COMPANY", "SECTOR", "EMPLOYEE"]
@@ -39,10 +39,11 @@ export async function GET() {
   }
 }
 
+/** Criar meta — exclusivo do Master; a Gerente só visualiza e reporta o resultado diário (ver [id]/records). */
 export async function POST(request: Request) {
   try {
     const user = await requireCompanyStaff()
-    requireCapability(user, canManageDailyOperations)
+    requireCapability(user, canConfigureCompany)
     const companyId = user.companyId
 
     const body = await request.json()

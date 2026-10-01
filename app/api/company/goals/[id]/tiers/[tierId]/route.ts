@@ -1,12 +1,12 @@
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canConfigureCompany } from "@/lib/permissions"
 import { logAudit } from "@/lib/audit"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string; tierId: string }> }) {
   try {
     const user = await requireCompanyStaff()
-    requireCapability(user, canManageDailyOperations)
+    requireCapability(user, canConfigureCompany)
     const { id: goalId, tierId } = await params
     const companyId = user.companyId
 
@@ -43,7 +43,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string; tierId: string }> }) {
   try {
     const user = await requireCompanyStaff()
-    requireCapability(user, canManageDailyOperations)
+    requireCapability(user, canConfigureCompany)
     const { id: goalId, tierId } = await params
     const companyId = user.companyId
 

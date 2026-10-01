@@ -30,6 +30,19 @@ export function CameraRedeemTab() {
   const startScanning = async () => {
     setCameraError("")
     setScannedPayload(null)
+
+    // Navegadores só expõem a câmera (getUserMedia) em contexto seguro —
+    // HTTPS ou localhost. Acessar por um IP de rede local em HTTP (ex:
+    // http://192.168.x.x:3000, comum ao testar pelo celular na mesma Wi-Fi)
+    // faz `navigator.mediaDevices` nem existir, travando o app com um erro
+    // genérico se não checarmos isso antes. Ver `npm run dev:https`.
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      setCameraError(
+        "A câmera só funciona em conexão segura (HTTPS) ou em \"localhost\". Acessando por http://IP:3000 no celular, o navegador bloqueia a câmera por segurança — rode `npm run dev:https` no computador e acesse com https:// no celular (aceite o aviso de certificado).",
+      )
+      return
+    }
+
     try {
       const { Html5Qrcode } = await import("html5-qrcode")
       const scanner = new Html5Qrcode(READER_ELEMENT_ID)
@@ -47,8 +60,17 @@ export function CameraRedeemTab() {
           // erro de leitura por frame — ignorado, tenta o próximo frame
         },
       )
-    } catch {
-      setCameraError("Não foi possível acessar a câmera. Verifique a permissão do navegador.")
+    } catch (err) {
+      const name = err instanceof Error ? err.name : ""
+      const message =
+        name === "NotAllowedError"
+          ? "Permissão de câmera negada. Nas configurações do navegador/site, permita o acesso à câmera e tente de novo."
+          : name === "NotFoundError"
+            ? "Nenhuma câmera foi encontrada neste dispositivo."
+            : name === "NotReadableError"
+              ? "A câmera já está sendo usada por outro aplicativo. Feche-o e tente novamente."
+              : "Não foi possível acessar a câmera. Verifique a permissão do navegador."
+      setCameraError(message)
       setIsScanning(false)
     }
   }

@@ -23,6 +23,7 @@ import {
   MessagesSquare,
   UserCheck,
   Grid3x3,
+  Settings2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Role } from "@prisma/client"
@@ -83,7 +84,10 @@ const NAV_ITEMS: NavItem[] = [
     show: (u) => canOperateFrontDesk(u.role),
     hideFromMobileNav: true,
   },
-  { href: "/company/avaliacoes", label: "Avaliação Diária", shortLabel: "Avaliação", icon: ClipboardCheck, show: () => true },
+  // Gerente/Master já confirmam a nota diária da equipe no Passo 2 do
+  // Fechamento (ManagerEvaluationRoutine) — este item fica só pro Colaborador
+  // ver sua própria nota/histórico, pra não duplicar a mesma ação na nav.
+  { href: "/company/avaliacoes", label: "Avaliação Diária", shortLabel: "Avaliação", icon: ClipboardCheck, show: (u) => u.role === "EMPLOYEE" },
   { href: "/company/crescimento", label: "Programa & Crescimento", shortLabel: "Crescimento", icon: Trophy, show: () => true },
   {
     href: "/company/ocorrencias",
@@ -106,6 +110,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/company/promocoes", label: "Promoções", icon: Gift, show: (u) => canConfigureCompany(u.role) },
   { href: "/company/comunicacao", label: "Comunicação", icon: MessagesSquare, show: () => true },
   { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: (u) => canManageFinance(u.role) || u.isFinanceResponsible },
+  { href: "/company/configuracoes", label: "Configurações", icon: Settings2, show: (u) => canConfigureCompany(u.role) },
 ]
 
 export function CompanyShell({
@@ -146,17 +151,49 @@ export function CompanyShell({
       <div className="min-h-screen bg-[#F7F5F2]">
         {user.role === "EMPLOYEE" && <ProfileCompletionGate />}
         {user.role === "EMPLOYEE" && <TermAcceptanceGate />}
-        {billingWarning && canSeeBillingWarning && (
-          <div className="sticky top-0 z-50 bg-red-600 text-white px-4 py-2 flex items-center justify-center gap-2 text-xs sm:text-sm font-medium text-center">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-            <span>
-              Pendência financeira em aberto há {billingWarning.daysOverdue}{" "}
-              {billingWarning.daysOverdue === 1 ? "dia" : "dias"}. Regularize em até{" "}
-              {billingWarning.daysRemaining} {billingWarning.daysRemaining === 1 ? "dia" : "dias"} para evitar o
-              bloqueio do acesso.
-            </span>
+        {/* Banner de inadimplência + barra mobile precisam dividir UM único
+            `sticky top-0` — dois elementos sticky irmãos com o mesmo `top-0`
+            competem pela mesma posição ao rolar a tela e um cobre o outro
+            (era a causa da "barra de navegação sumindo"/sobreposta no mobile
+            quando a empresa está com aviso de inadimplência). */}
+        <div className="sticky top-0 z-50">
+          {billingWarning && canSeeBillingWarning && (
+            <div className="bg-red-600 text-white px-4 py-2 flex items-center justify-center gap-2 text-xs sm:text-sm font-medium text-center">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              <span>
+                Pendência financeira em aberto há {billingWarning.daysOverdue}{" "}
+                {billingWarning.daysOverdue === 1 ? "dia" : "dias"}. Regularize em até{" "}
+                {billingWarning.daysRemaining} {billingWarning.daysRemaining === 1 ? "dia" : "dias"} para evitar o
+                bloqueio do acesso.
+              </span>
+            </div>
+          )}
+          {/* Mobile top bar + section tabs */}
+          <div className="lg:hidden bg-white border-b border-[#E8E3DC]">
+            <div className="flex items-center justify-between gap-3 px-4 py-2 pt-[calc(0.5rem+var(--safe-top))]">
+              <div className="flex items-center gap-2 min-w-0">
+                <img src="/brand/tribuss-icone-app.png" alt="Tribuss" className="w-8 h-8 rounded-lg object-contain flex-shrink-0" />
+                <span className="font-heading text-sm font-semibold text-[#3E2415] truncate">{user.companyName}</span>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <NotificationBell />
+                <UserAvatarMenu name={user.name} roleLabel={ROLE_LABELS[user.role]} />
+              </div>
+            </div>
+            <MobileNavBar
+              items={items
+                .filter((item) => !item.hideFromMobileNav)
+                .map((item) => ({
+                  href: item.pulseWhenChecklistPending ? `${item.href}?fullscreen=1` : item.href,
+                  label: item.label,
+                  shortLabel: item.shortLabel,
+                  icon: item.icon,
+                  active: isActive(item.href),
+                  pulsing: item.pulseWhenChecklistPending && hasPendingChecklists,
+                }))}
+            />
           </div>
-        )}
+        </div>
         {/* Desktop Sidebar */}
         <aside className="hidden lg:flex fixed left-0 top-0 h-screen w-[260px] flex-col border-r border-[#E8E3DC] bg-white">
           <div className="p-4 border-b border-[#E8E3DC] flex items-center gap-3">
@@ -210,32 +247,6 @@ export function CompanyShell({
             </button>
           </div>
         </aside>
-
-        {/* Mobile top bar + section tabs */}
-        <div className="lg:hidden sticky top-0 z-40 bg-white border-b border-[#E8E3DC]">
-          <div className="flex items-center justify-between gap-3 px-4 py-2 pt-[calc(0.5rem+var(--safe-top))]">
-            <div className="flex items-center gap-2 min-w-0">
-              <img src="/brand/tribuss-icone-app.png" alt="Tribuss" className="w-8 h-8 rounded-lg object-contain flex-shrink-0" />
-              <span className="font-heading text-sm font-semibold text-[#3E2415] truncate">{user.companyName}</span>
-            </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <NotificationBell />
-              <UserAvatarMenu name={user.name} roleLabel={ROLE_LABELS[user.role]} />
-            </div>
-          </div>
-          <MobileNavBar
-            items={items
-              .filter((item) => !item.hideFromMobileNav)
-              .map((item) => ({
-                href: item.pulseWhenChecklistPending ? `${item.href}?fullscreen=1` : item.href,
-                label: item.label,
-                shortLabel: item.shortLabel,
-                icon: item.icon,
-                active: isActive(item.href),
-                pulsing: item.pulseWhenChecklistPending && hasPendingChecklists,
-              }))}
-          />
-        </div>
 
         {canOperateFrontDesk(user.role) && <QuickActionBar />}
 

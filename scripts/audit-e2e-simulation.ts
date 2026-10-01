@@ -287,22 +287,31 @@ async function main() {
   })
 
   await check("2.ScannerPDV", "Scanner exige justificativa quando o valor da conta é R$ 0,00", async () => {
-    const promo2 =
-      (await prisma.promotion.findFirst({ where: { companyId: jeri.id, title: "Vale Retorno — Auditoria R$0" } })) ??
-      (await prisma.promotion.create({
-        data: {
-          companyId: jeri.id,
-          title: "Vale Retorno — Auditoria R$0",
-          description: "fixture",
-          offerType: "DISCOUNT",
-          audience: "INTERNAL",
-          discountPercentage: 10,
-          validFrom: new Date(Date.now() - 1000),
-          validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          cost: 0,
-        },
-      }))
+    const existing = await prisma.promotion.findFirst({ where: { companyId: jeri.id, title: "Vale Retorno — Auditoria R$0" } })
+    // Reaproveita a fixture entre execuções, mas força active/validade em dia —
+    // uma execução anterior pode ter desativado essa Promotion (ex: teste de
+    // desativação em outro script) e a reutilização "as is" quebrava esse teste
+    // com um 404 só por causa do fixture ficar obsoleto, não por bug do app.
+    const promo2 = existing
+      ? await prisma.promotion.update({
+          where: { id: existing.id },
+          data: { active: true, validFrom: new Date(Date.now() - 1000), validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
+        })
+      : await prisma.promotion.create({
+          data: {
+            companyId: jeri.id,
+            title: "Vale Retorno — Auditoria R$0",
+            description: "fixture",
+            offerType: "DISCOUNT",
+            audience: "INTERNAL",
+            discountPercentage: 10,
+            validFrom: new Date(Date.now() - 1000),
+            validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            cost: 0,
+          },
+        })
     const issue = await api(S.colaborador, "POST", "/api/company/scanner/vouchers", { promotionId: promo2.id, clientPhone: "85988887777" })
+    if (issue.status !== 201) return `emissão do voucher falhou: status ${issue.status} — ${JSON.stringify(issue.json)}`
     const code = issue.json.voucher.code
     const form = new FormData()
     form.set("qrPayload", `tribuss:voucher:${code}`)

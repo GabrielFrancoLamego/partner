@@ -116,7 +116,12 @@ export default function CompanyChecklistsPage() {
 
   if (!isFullscreen) return content
 
-  return <div className="fixed inset-0 z-[60] bg-[#F7F5F2] overflow-y-auto p-4 pb-10 lg:static lg:z-auto lg:bg-transparent lg:p-0">{content}</div>
+  // z-50 (não z-[60]) de propósito: precisa cobrir a barra/sidebar do shell
+  // (também z-50, mas antes no DOM — a ordem decide o empate), mas sem ficar
+  // acima dos Dialog/Select/Popover do Radix (portal pro body, também z-50,
+  // porém depois no DOM) — com z-[60] esses diálogos abriam "atrás" da tela
+  // cheia, invisíveis mas ainda capturando clique: parecia a navegação travada.
+  return <div className="fixed inset-0 z-50 bg-[#F7F5F2] overflow-y-auto p-4 pb-10 lg:static lg:z-auto lg:bg-transparent lg:p-0">{content}</div>
 }
 
 function EfficiencyBar({ percent, onCelebrationSeen }: { percent: number; onCelebrationSeen: () => void }) {

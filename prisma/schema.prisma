@@ -95,7 +95,9 @@ enum PostStatus {
 enum OccurrenceType {
   FOLGA_FERIADO // Folga ou feriado (trabalhado ou de descanso)
   VALE // Vale/Adiantamento
-  CONSUMO // Consumo/quebra de caixa do colaborador
+  CONSUMO // Comanda assinada na casa — vira dívida em User.consumptionDebt (ver PAGAMENTO_CONSUMO)
+  QUEBRA_CAIXA // Quebra de caixa — desconto por diferença no fechamento do caixa, não mexe na Conta de Consumo
+  PAGAMENTO_CONSUMO // Pagamento (dinheiro/PIX) recebido do colaborador abatendo a Conta de Consumo
   META // Bonificação por meta batida
   FALTA // Falta — sem ATESTADO em 24h gera abate de 1 dia (ver discountWaived)
   ATESTADO // Atestado médico — exige attachmentUrl; abona uma FALTA do mesmo dia em até 24h
@@ -2055,6 +2057,10 @@ model ShiftClosing {
   summary          String?            @db.Text
   status           ShiftClosingStatus @default(PENDING_GERENTE)
   isMasterOverride Boolean            @default(false)
+  // Fechado depois do shiftClosingDeadline da empresa — independe de quem
+  // fechou (Gerente ou Master); `isMasterOverride` só é true quando foi
+  // especificamente o Master que fechou/corrigiu. Dispara aviso ao Master.
+  isLate           Boolean            @default(false)
   closedById       String?
   closedBy         User?              @relation("ShiftClosingClosedBy", fields: [closedById], references: [id])
   closedAt         DateTime?

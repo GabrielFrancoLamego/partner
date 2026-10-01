@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError } from "@/lib/api-auth"
-import { canReviewCompletedShiftClosings } from "@/lib/permissions"
+import { canManageDailyOperations } from "@/lib/permissions"
 
 function startOfDay(date: Date) {
   const d = new Date(date)
@@ -8,11 +8,15 @@ function startOfDay(date: Date) {
   return d
 }
 
-/** Lista de Fechamentos Diários já efetuados — exclusiva do Master, para revisão/correção. */
+/**
+ * Lista de Fechamentos Diários já efetuados — visível a Gerente e Master
+ * (leitura); só o Master pode de fato corrigir um fechamento já COMPLETED
+ * (ver POST /api/company/shift-closing, que reforça essa regra separadamente).
+ */
 export async function GET(request: Request) {
   try {
     const user = await requireCompanyStaff()
-    requireCapability(user, canReviewCompletedShiftClosings)
+    requireCapability(user, canManageDailyOperations)
     const companyId = user.companyId
 
     const { searchParams } = new URL(request.url)

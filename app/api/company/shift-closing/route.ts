@@ -7,6 +7,28 @@ import { awardXp, getInternalProgramRules } from "@/lib/gamification"
 import { notifyUser } from "@/lib/notifications"
 import { computePendingTimeclockAdjustments } from "@/lib/timeclock-adjustments"
 
+/** Avisa todo Master da empresa quando a Gerente fecha o expediente atrasado (depois do shiftClosingDeadline). */
+async function notifyMastersOfLateClosing(companyId: string, closedByName: string, date: Date) {
+  const masters = await prisma.user.findMany({
+    where: { companyId, role: "COMPANY_MASTER", status: "ACTIVE" },
+    select: { id: true, email: true, phone: true },
+  })
+  const dateLabel = date.toLocaleDateString("pt-BR")
+  await Promise.all(
+    masters.map((m) =>
+      notifyUser({
+        userId: m.id,
+        email: m.email,
+        phone: m.phone,
+        type: "GENERIC",
+        title: "Fechamento de expediente atrasado",
+        message: `${closedByName} fechou o expediente de ${dateLabel} depois do horário-limite.`,
+        linkUrl: "/company/fechamento",
+      }).catch(() => {}),
+    ),
+  )
+}
+
 function startOfDay(date: Date) {
   const d = new Date(date)
   d.setHours(0, 0, 0, 0)
@@ -165,6 +187,9 @@ export async function POST(request: Request) {
     // Override do Master = fechou depois do prazo OU está corrigindo um fechamento já COMPLETED (a Gerente não pode mais mexer nele).
     const isMasterOverride =
       user.role === "COMPANY_MASTER" && (isPastDeadline(date, company.shiftClosingDeadline, now) || existing?.status === "COMPLETED")
+    // Atrasado independe de quem fechou — a Gerente pode (e deve) fechar mesmo
+    // depois do prazo em vez de ficar bloqueada; só avisamos o Master.
+    const isLate = isPastDeadline(date, company.shiftClosingDeadline, now)
 
     const closing = await prisma.shiftClosing.upsert({
       where: { companyId_date: { companyId, date } },
@@ -174,6 +199,7 @@ export async function POST(request: Request) {
         summary: typeof summary === "string" ? summary.trim() || null : null,
         status: "COMPLETED",
         isMasterOverride,
+        isLate,
         closedById: user.id,
         closedAt: now,
       },
@@ -185,11 +211,18 @@ export async function POST(request: Request) {
         summary: typeof summary === "string" ? summary.trim() || null : null,
         status: "COMPLETED",
         isMasterOverride,
+        isLate,
         closedById: user.id,
         closedAt: now,
       },
       include: { closedBy: { select: { id: true, name: true } } },
     })
+
+    // Fechamento atrasado feito pela Gerente (não pelo Master) — avisa o
+    // Master imediatamente, sem esperar ele notar sozinho no dashboard.
+    if (isLate && user.role === "COMPANY_GERENTE") {
+      await notifyMastersOfLateClosing(companyId, user.name, date)
+    }
 
     // Sincroniza com toda meta ativa COMPANY+DAILY: o fechamento do caixa É o
     // resultado do dia para essas metas, sem exigir lançamento duplicado.

@@ -3,14 +3,19 @@ import { requireCompanyStaff, handleApiError } from "@/lib/api-auth"
 import { canManageDailyOperations } from "@/lib/permissions"
 import { periodStart } from "@/lib/period-range"
 import { resolveCareerProgress, getMonthlyScore, computeDailyEfficiency, type EfficiencyMedal } from "@/lib/gamification"
+import { computePendingTimeclockAdjustments } from "@/lib/timeclock-adjustments"
 
-/** Tipos de ocorrência com impacto financeiro somado no "Custo Operacional" do Master (vales, diárias, quebra de caixa, metas batidas). */
-const COST_OCCURRENCE_TYPES = ["VALE", "DIARIA", "CONSUMO", "META"] as const
+/** Tipos de ocorrência com impacto financeiro somado no "Custo Operacional" do Master (vales, diárias, horas extras, metas batidas). */
+const COST_OCCURRENCE_TYPES = ["VALE", "DIARIA", "HORA_EXTRA", "META"] as const
 
 function startOfDay(date: Date) {
   const d = new Date(date)
   d.setHours(0, 0, 0, 0)
   return d
+}
+
+function dedupeById<T extends { id: string }>(rows: T[]): T[] {
+  return Array.from(new Map(rows.map((r) => [r.id, r])).values())
 }
 
 /**
@@ -64,7 +69,10 @@ export async function GET(request: Request) {
       prisma.commission.groupBy({
         by: ["partnerId"],
         where: { companyId, status: { in: ["APPROVED", "PAID"] }, ...dateWhere("date") },
-        _sum: { commissionValue: true },
+        _sum: { commissionValue: true, amount: true },
+        // `_count.promotionId` conta só os registros com promotionId preenchido —
+        // ou seja, indicações atreladas a um Vale Retorno/promoção específica.
+        _count: { _all: true, promotionId: true },
         orderBy: { _sum: { commissionValue: "desc" } },
         take: 5,
       }),
@@ -85,7 +93,14 @@ export async function GET(request: Request) {
     const topPartners = await Promise.all(
       topPartnersRaw.map(async (row) => {
         const partner = await prisma.user.findUnique({ where: { id: row.partnerId }, select: { id: true, name: true } })
-        return { partnerId: row.partnerId, name: partner?.name ?? "—", total: Number(row._sum.commissionValue ?? 0) }
+        return {
+          partnerId: row.partnerId,
+          name: partner?.name ?? "—",
+          total: Number(row._sum.commissionValue ?? 0),
+          revenueGenerated: Number(row._sum.amount ?? 0),
+          referralCount: row._count._all,
+          vouchersUsed: row._count.promotionId,
+        }
       }),
     )
 
@@ -155,16 +170,40 @@ export async function GET(request: Request) {
       } | null
       realRevenue: number
       occurrenceCost: number
+      costBreakdown: { salarios: number; diarias: number; horasExtras: number; consumo: number; outrasOcorrencias: number }
       riskEmployees: { id: string; name: string; monthlyScore: number; recentFlags: number }[]
+      topEmployees: { id: string; name: string; monthlyScore: number; xpPoints: number }[]
       unclosedPastDaysCount: number
+      panoramaToday: {
+        presentes: { count: number; employees: { id: string; name: string }[] }
+        faltas: { count: number; employees: { id: string; name: string }[] }
+        folgas: { count: number; employees: { id: string; name: string }[] }
+        atrasos: { count: number; employees: { id: string; name: string }[] }
+        checklistsAtrasados: { count: number; employees: { id: string; name: string }[] }
+      }
     } | null = null
 
     if (canManageDailyOperations(user.role)) {
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
       const fourteenDaysAgo = new Date(startOfToday.getTime() - 14 * 24 * 60 * 60 * 1000)
+      const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000)
+      const todayWeekday = startOfToday.getDay()
 
-      const [companyRow, todayClosing, revenueAgg, occurrenceCostRows, employeesForRisk, completedPastClosings] = await Promise.all([
+      const [
+        companyRow,
+        todayClosing,
+        revenueAgg,
+        occurrenceCostRows,
+        consumoAgg,
+        salariesAgg,
+        employeesForRisk,
+        completedPastClosings,
+        presentTodayUsers,
+        faltaToday,
+        pendingAdjustmentsToday,
+        lateChecklistsToday,
+      ] = await Promise.all([
         prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { shiftClosingDeadline: true, createdAt: true } }),
         prisma.shiftClosing.findUnique({
           where: { companyId_date: { companyId, date: startOfToday } },
@@ -173,15 +212,37 @@ export async function GET(request: Request) {
         prisma.shiftClosing.aggregate({ where: { companyId, ...dateWhere("date") }, _sum: { revenueAmount: true } }),
         prisma.occurrence.findMany({
           where: { companyId, type: { in: [...COST_OCCURRENCE_TYPES] }, ...dateWhere("date") },
-          select: { total: true, discountWaived: true },
+          select: { type: true, total: true, discountWaived: true },
+        }),
+        prisma.occurrence.aggregate({
+          where: { companyId, type: "CONSUMO", ...dateWhere("date") },
+          _sum: { total: true },
+        }),
+        prisma.employeeProfile.aggregate({
+          where: { user: { companyId, role: "EMPLOYEE", status: "ACTIVE" } },
+          _sum: { monthlySalary: true },
         }),
         prisma.user.findMany({
           where: { companyId, role: "EMPLOYEE", status: "ACTIVE" },
-          select: { id: true, name: true },
+          select: { id: true, name: true, employeeProfile: { select: { xpPoints: true, weeklyDayOff: true } } },
         }),
         prisma.shiftClosing.findMany({
           where: { companyId, date: { gte: fourteenDaysAgo, lt: startOfToday }, status: "COMPLETED" },
           select: { date: true },
+        }),
+        prisma.timeEntry.findMany({
+          where: { companyId, type: "CHECK_IN", createdAt: { gte: startOfToday } },
+          select: { userId: true, user: { select: { id: true, name: true } } },
+          distinct: ["userId"],
+        }),
+        prisma.occurrence.findMany({
+          where: { companyId, type: "FALTA", date: { gte: startOfToday, lt: endOfToday }, employeeId: { not: null } },
+          select: { employee: { select: { id: true, name: true } } },
+        }),
+        computePendingTimeclockAdjustments(companyId, startOfToday),
+        prisma.checklist.findMany({
+          where: { companyId, forDate: startOfToday, status: "PENDING", dueAt: { lt: now } },
+          select: { employee: { select: { id: true, name: true } } },
         }),
       ])
       const companyDeadline = companyRow
@@ -200,23 +261,42 @@ export async function GET(request: Request) {
         if (!completedDates.has(startOfDay(d).toISOString())) unclosedPastDaysCount++
       }
 
-      const occurrenceCost = occurrenceCostRows
-        .filter((o) => !o.discountWaived)
-        .reduce((sum, o) => sum + Math.abs(Number(o.total ?? 0)), 0)
+      const liveRows = occurrenceCostRows.filter((o) => !o.discountWaived)
+      const sumByType = (type: (typeof COST_OCCURRENCE_TYPES)[number]) =>
+        liveRows.filter((o) => o.type === type).reduce((sum, o) => sum + Math.abs(Number(o.total ?? 0)), 0)
+      const costBreakdown = {
+        salarios: Number(salariesAgg._sum.monthlySalary ?? 0),
+        diarias: sumByType("DIARIA"),
+        horasExtras: sumByType("HORA_EXTRA"),
+        consumo: Math.abs(Number(consumoAgg._sum.total ?? 0)),
+        outrasOcorrencias: sumByType("VALE") + sumByType("META"),
+      }
+      const occurrenceCost = costBreakdown.diarias + costBreakdown.horasExtras + costBreakdown.outrasOcorrencias
 
-      const riskEmployees = (
-        await Promise.all(
-          employeesForRisk.map(async (e) => {
-            const [score, recentFlags] = await Promise.all([
-              getMonthlyScore(companyId, e.id, now),
-              prisma.occurrence.count({
-                where: { companyId, employeeId: e.id, type: { in: ["ADVERTENCIA", "FALTA"] }, date: { gte: thirtyDaysAgo } },
-              }),
-            ])
-            return { id: e.id, name: e.name, monthlyScore: score, recentFlags }
-          }),
-        )
-      ).filter((e) => e.monthlyScore < 50 || e.recentFlags >= 2)
+      const scoredEmployees = await Promise.all(
+        employeesForRisk.map(async (e) => {
+          const [score, recentFlags] = await Promise.all([
+            getMonthlyScore(companyId, e.id, now),
+            prisma.occurrence.count({
+              where: { companyId, employeeId: e.id, type: { in: ["ADVERTENCIA", "FALTA"] }, date: { gte: thirtyDaysAgo } },
+            }),
+          ])
+          return { id: e.id, name: e.name, monthlyScore: score, recentFlags, xpPoints: e.employeeProfile?.xpPoints ?? 0, weeklyDayOff: e.employeeProfile?.weeklyDayOff ?? null }
+        }),
+      )
+      const riskEmployees = scoredEmployees.filter((e) => e.monthlyScore < 50 || e.recentFlags >= 2)
+      const topEmployees = [...scoredEmployees]
+        .sort((a, b) => b.monthlyScore - a.monthlyScore || b.xpPoints - a.xpPoints)
+        .slice(0, 5)
+        .map((e) => ({ id: e.id, name: e.name, monthlyScore: e.monthlyScore, xpPoints: e.xpPoints }))
+
+      const presentes = presentTodayUsers.map((t) => t.user)
+      const faltas = dedupeById(faltaToday.map((o) => o.employee!).filter(Boolean))
+      const folgas = scoredEmployees.filter((e) => e.weeklyDayOff === todayWeekday).map((e) => ({ id: e.id, name: e.name }))
+      const atrasos = pendingAdjustmentsToday
+        .filter((a) => a.kind === "LATE_CHECKIN" && a.isNegativeForEmployee)
+        .map((a) => ({ id: a.employeeId, name: a.employeeName }))
+      const checklistsAtrasados = dedupeById(lateChecklistsToday.map((c) => c.employee))
 
       master = {
         shiftClosingToday: todayClosing
@@ -231,8 +311,17 @@ export async function GET(request: Request) {
           : { status: "PENDING_GERENTE", overdue, revenueAmount: null, receiptUrl: null, isMasterOverride: false, closedByName: null },
         realRevenue: Number(revenueAgg._sum.revenueAmount ?? 0),
         occurrenceCost,
+        costBreakdown,
         riskEmployees,
+        topEmployees,
         unclosedPastDaysCount,
+        panoramaToday: {
+          presentes: { count: presentes.length, employees: presentes },
+          faltas: { count: faltas.length, employees: faltas },
+          folgas: { count: folgas.length, employees: folgas },
+          atrasos: { count: atrasos.length, employees: atrasos },
+          checklistsAtrasados: { count: checklistsAtrasados.length, employees: checklistsAtrasados },
+        },
       }
     }
 

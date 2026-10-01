@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Users, TrendingUp, Boxes, Trophy, Star, AlertTriangle, Clock, DollarSign, Target, ReceiptText } from "lucide-react"
+import { Users, TrendingUp, Boxes, Trophy, Star, AlertTriangle, Clock, DollarSign, Target, ReceiptText, PieChart, UserCheck, CalendarOff, Timer, ListChecks } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { adminFetch } from "@/lib/admin-api-client"
 import { PeriodFilter } from "@/components/admin/admin-filters"
-import { AdminCard, MetricRow, LoadingState } from "@/components/admin/admin-ui"
+import { AdminCard, MetricRow, LoadingState, EmptyState } from "@/components/admin/admin-ui"
 import { useCompanyUser } from "@/lib/company-user-context"
 
 type Medal = { stars: 1 | 2 | 3 | 4 | 5; label: string; colorHex: string; efficiencyPercent: number }
@@ -17,7 +18,7 @@ type DashboardData = {
     activePartners: number
     pendingCommissions: { total: number; count: number }
     pendingWithdrawals: { total: number; count: number }
-    topPartners: { partnerId: string; name: string; total: number }[]
+    topPartners: { partnerId: string; name: string; total: number; revenueGenerated: number; referralCount: number; vouchersUsed: number }[]
   }
   operations: {
     totalEmployees: number
@@ -51,10 +52,21 @@ type DashboardData = {
     } | null
     realRevenue: number
     occurrenceCost: number
+    costBreakdown: { salarios: number; diarias: number; horasExtras: number; consumo: number; outrasOcorrencias: number }
     riskEmployees: { id: string; name: string; monthlyScore: number; recentFlags: number }[]
+    topEmployees: { id: string; name: string; monthlyScore: number; xpPoints: number }[]
     unclosedPastDaysCount: number
+    panoramaToday: {
+      presentes: PanoramaBucket
+      faltas: PanoramaBucket
+      folgas: PanoramaBucket
+      atrasos: PanoramaBucket
+      checklistsAtrasados: PanoramaBucket
+    }
   } | null
 }
+
+type PanoramaBucket = { count: number; employees: { id: string; name: string }[] }
 
 const currency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
@@ -121,9 +133,19 @@ export default function CompanyDashboardPage() {
             {data.partners.topPartners.length === 0 ? (
               <p className="text-sm text-gray-500 py-4 text-center">Sem comissões aprovadas no período.</p>
             ) : (
-              <div className="space-y-1">
+              <div className="divide-y divide-gray-50">
                 {data.partners.topPartners.map((p, index) => (
-                  <MetricRow key={p.partnerId} label={`${index + 1}. ${p.name}`} value={currency(p.total)} />
+                  <div key={p.partnerId} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                    <span className="text-sm font-medium text-[#3E2415]">
+                      {index + 1}. {p.name}
+                    </span>
+                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                      <span>{p.referralCount} indicação(ões)</span>
+                      <span>{p.vouchersUsed} vale(s) usado(s)</span>
+                      <span>Faturamento gerado: {currency(p.revenueGenerated)}</span>
+                      <span className="font-bold text-[#3E2415]">{currency(p.total)} pago</span>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -175,6 +197,8 @@ function MasterPanel({ master }: { master: NonNullable<DashboardData["master"]> 
         </div>
       )}
 
+      <PanoramaHoje panorama={master.panoramaToday} />
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <AdminCard title="Faturamento Real (fechamentos)" icon={DollarSign}>
           <p className="text-2xl font-bold text-[#3E2415]">{currency(master.realRevenue)}</p>
@@ -182,25 +206,124 @@ function MasterPanel({ master }: { master: NonNullable<DashboardData["master"]> 
         </AdminCard>
         <AdminCard title="Custo Operacional de Ocorrências" icon={AlertTriangle}>
           <p className="text-2xl font-bold text-[#3E2415]">{currency(master.occurrenceCost)}</p>
-          <p className="text-xs text-gray-500 mt-1">Vales, diárias, quebras de caixa e metas batidas</p>
+          <p className="text-xs text-gray-500 mt-1">Diárias, horas extras, vales e metas batidas (sem salários/consumo)</p>
         </AdminCard>
       </div>
+
+      <AdminCard title="Custo por Categoria" icon={PieChart}>
+        <div className="space-y-1">
+          <MetricRow label="Salários (folha ativa)" value={currency(master.costBreakdown.salarios)} />
+          <MetricRow label="Diárias" value={currency(master.costBreakdown.diarias)} />
+          <MetricRow label="Horas Extras" value={currency(master.costBreakdown.horasExtras)} />
+          <MetricRow label="Consumo (Conta/Comanda)" value={currency(master.costBreakdown.consumo)} />
+          <MetricRow label="Outras Ocorrências (vale/meta)" value={currency(master.costBreakdown.outrasOcorrencias)} />
+        </div>
+      </AdminCard>
+
+      {master.topEmployees.length > 0 && (
+        <AdminCard title="Top 5 Colaboradores" icon={Trophy}>
+          <div className="space-y-1">
+            {master.topEmployees.map((e, index) => (
+              <Link key={e.id} href={`/company/colaboradores/${e.id}`} className="flex items-center justify-between py-1.5 text-sm hover:bg-gray-50 rounded-lg px-1 -mx-1">
+                <span className="text-[#3E2415] font-medium">
+                  {index + 1}. {e.name}
+                </span>
+                <span className="text-xs text-gray-500">
+                  Score mensal {e.monthlyScore} · {e.xpPoints} Pts
+                </span>
+              </Link>
+            ))}
+          </div>
+        </AdminCard>
+      )}
 
       {master.riskEmployees.length > 0 && (
         <AdminCard title="Mapa de Riscos de RH" icon={AlertTriangle}>
           <div className="space-y-1">
             {master.riskEmployees.map((e) => (
-              <div key={e.id} className="flex items-center justify-between py-1.5 text-sm">
+              <Link key={e.id} href={`/company/colaboradores/${e.id}`} className="flex items-center justify-between py-1.5 text-sm hover:bg-gray-50 rounded-lg px-1 -mx-1">
                 <span className="text-[#3E2415]">{e.name}</span>
                 <span className="text-xs text-red-600 font-medium">
                   Score mensal {e.monthlyScore} · {e.recentFlags} ocorrência(s) recente(s)
                 </span>
-              </div>
+              </Link>
             ))}
           </div>
         </AdminCard>
       )}
     </div>
+  )
+}
+
+type PanoramaKey = "presentes" | "faltas" | "folgas" | "atrasos" | "checklistsAtrasados"
+const PANORAMA_CARDS: { key: PanoramaKey; label: string; icon: typeof UserCheck; tone: string }[] = [
+  { key: "presentes", label: "Presentes", icon: UserCheck, tone: "text-green-600 bg-green-50" },
+  { key: "faltas", label: "Faltas", icon: AlertTriangle, tone: "text-red-600 bg-red-50" },
+  { key: "folgas", label: "Folgas", icon: CalendarOff, tone: "text-gray-600 bg-gray-100" },
+  { key: "atrasos", label: "Atrasos", icon: Timer, tone: "text-amber-600 bg-amber-50" },
+  { key: "checklistsAtrasados", label: "Checklists Atrasados", icon: ListChecks, tone: "text-amber-600 bg-amber-50" },
+]
+
+/** Painel "ao vivo" do dia — cada card abre um modal com a lista de nomes e um atalho rápido pra agir. */
+function PanoramaHoje({ panorama }: { panorama: NonNullable<DashboardData["master"]>["panoramaToday"] }) {
+  const [open, setOpen] = useState<(typeof PANORAMA_CARDS)[number] | null>(null)
+
+  return (
+    <AdminCard title="Panorama da Casa Hoje" icon={Clock}>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {PANORAMA_CARDS.map((card) => {
+          const Icon = card.icon
+          const bucket = panorama[card.key]
+          return (
+            <button
+              key={card.key}
+              onClick={() => setOpen(card)}
+              className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-gray-100 hover:border-[#F58220] transition-colors"
+            >
+              <span className={`w-9 h-9 rounded-full flex items-center justify-center ${card.tone}`}>
+                <Icon className="h-4 w-4" />
+              </span>
+              <span className="text-lg font-bold text-[#3E2415]">{bucket.count}</span>
+              <span className="text-[11px] text-gray-500 text-center leading-tight">{card.label}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {open && (
+        <Dialog open onOpenChange={(isOpen) => !isOpen && setOpen(null)}>
+          <DialogContent className="max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{open.label} hoje</DialogTitle>
+            </DialogHeader>
+            {panorama[open.key].employees.length === 0 ? (
+              <EmptyState message="Ninguém nesta lista hoje." />
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {panorama[open.key].employees.map((e) => (
+                  <div key={e.id} className="py-2.5 flex items-center justify-between gap-3">
+                    <span className="text-sm text-[#3E2415]">{e.name}</span>
+                    <Link href={`/company/colaboradores/${e.id}`} className="text-xs font-medium text-[#F58220] hover:underline">
+                      Ver ficha →
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
+            {open.key === "faltas" && (
+              <Link href="/company/ocorrencias?novo=1">
+                <Button className="w-full bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white mt-2">Registrar Ocorrência</Button>
+              </Link>
+            )}
+            {open.key === "checklistsAtrasados" && (
+              <Link href="/company/checklists">
+                <Button className="w-full bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white mt-2">Ver Checklists</Button>
+              </Link>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
+    </AdminCard>
   )
 }
 

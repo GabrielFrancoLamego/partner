@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, AdminCard, StatusBadge } from "@/components/admin/admin-ui"
 import { useCompanyUser } from "@/lib/company-user-context"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canManageDailyOperations, canConfigureCompany } from "@/lib/permissions"
 import { GOAL_PERIOD_LABELS } from "@/lib/goal-period"
 
 type GoalScope = "COMPANY" | "SECTOR" | "EMPLOYEE"
@@ -49,7 +49,10 @@ const SCOPE_LABELS: Record<GoalScope, string> = { COMPANY: "Empresa toda", SECTO
 
 export default function CompanyMetasPage() {
   const user = useCompanyUser()
+  // Ver metas + lançar resultado do dia: Gerente e Master. Criar/editar/excluir
+  // a configuração da meta (faixas, bônus): exclusivo do Master.
   const isManager = canManageDailyOperations(user.role)
+  const isMaster = canConfigureCompany(user.role)
   const [goals, setGoals] = useState<Progress[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -75,7 +78,7 @@ export default function CompanyMetasPage() {
           <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Metas Escalonadas</h1>
           <p className="text-gray-600 mt-1 text-sm">Por empresa, setor ou colaborador — com bônus por faixa batida</p>
         </div>
-        {isManager && (
+        {isMaster && (
           <Button onClick={() => setIsCreateOpen(true)} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
             <Plus className="h-4 w-4 mr-1" /> Nova Meta
           </Button>
@@ -127,19 +130,23 @@ export default function CompanyMetasPage() {
                   </span>
                 ))}
               </div>
-              {isManager && (
+              {(isManager || isMaster) && (
                 <div className="flex items-center gap-1 mt-3 pt-3 border-t border-gray-50">
-                  {g.scope !== "COMPANY" && (
+                  {isManager && g.scope !== "COMPANY" && (
                     <Button size="sm" variant="outline" onClick={() => setReportingGoal(g)}>
                       <Send className="h-3.5 w-3.5 mr-1" /> Lançar resultado do dia
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" onClick={() => setEditingGoal(g)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleDelete(g)} className="text-red-600 ml-auto">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {isMaster && (
+                    <>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingGoal(g)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => handleDelete(g)} className="text-red-600 ml-auto">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
             </AdminCard>

@@ -5,6 +5,7 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
+    "dev:https": "next dev --experimental-https",
     "lint": "eslint .",
     "start": "next start",
     "postinstall": "prisma generate",

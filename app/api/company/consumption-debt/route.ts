@@ -31,7 +31,7 @@ export async function GET(request: Request) {
         where: {
           companyId,
           employeeId: targetId,
-          OR: [{ type: "CONSUMO" }, { paymentMethod: "CONSUMO" }],
+          OR: [{ type: "CONSUMO" }, { type: "PAGAMENTO_CONSUMO" }, { paymentMethod: "CONSUMO" }],
         },
         select: { id: true, type: true, total: true, paymentMethod: true, description: true, date: true, attachmentUrl: true },
         orderBy: { date: "desc" },

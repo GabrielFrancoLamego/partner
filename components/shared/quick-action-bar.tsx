@@ -2,9 +2,11 @@
 
 import { useEffect, useState, useRef } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { ScanLine, MapPin, Loader2, Check } from "lucide-react"
+import { useRouter, usePathname } from "next/navigation"
+import { ScanLine, MapPin, Loader2, Check, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useCompanyUser } from "@/lib/company-user-context"
+import { canManageDailyOperations } from "@/lib/permissions"
 
 type EntryType = "CHECK_IN" | "BREAK_START" | "BREAK_END" | "CHECK_OUT"
 
@@ -39,6 +41,13 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS
  */
 export function QuickActionBar() {
   const router = useRouter()
+  const pathname = usePathname()
+  const user = useCompanyUser()
+  const showOccurrenceButton = canManageDailyOperations(user.role)
+  // Esconde o atalho da tela em que o usuário já está — era um botão
+  // redundante competindo por espaço bem em cima da área de escaneamento/ponto.
+  const hideScanner = pathname?.startsWith("/company/scanner")
+  const hidePonto = pathname?.startsWith("/company/ponto")
   const [lastType, setLastType] = useState<"START" | EntryType>("START")
   const [firstCheckInAt, setFirstCheckInAt] = useState<Date | null>(null)
   const [workStartTime, setWorkStartTime] = useState<string | null>(null)
@@ -160,7 +169,8 @@ export function QuickActionBar() {
           <span className="inline-block px-3 py-1.5 rounded-full bg-red-600 text-white text-xs font-medium shadow-lg">{error}</span>
         </div>
       )}
-      <div className="flex items-center justify-center gap-10 py-2.5">
+      <div className="flex items-center justify-center gap-8 py-2.5">
+        {!hidePonto && (
         <button
           onClick={handlePunch}
           disabled={isSubmitting}
@@ -217,13 +227,25 @@ export function QuickActionBar() {
             {justPunched ? "Registrado!" : TYPE_LABELS[expected]}
           </span>
         </button>
+        )}
 
-        <Link href="/company/scanner" className="flex flex-col items-center gap-0.5">
-          <span className="flex items-center justify-center w-12 h-12 rounded-full bg-[#3E2415] shadow-md">
-            <ScanLine className="w-5 h-5 text-white" />
-          </span>
-          <span className="text-[10px] font-semibold text-[#3E2415] whitespace-nowrap">Scanner</span>
-        </Link>
+        {!hideScanner && (
+          <Link href="/company/scanner" className="flex flex-col items-center gap-0.5">
+            <span className="flex items-center justify-center w-12 h-12 rounded-full bg-[#3E2415] shadow-md">
+              <ScanLine className="w-5 h-5 text-white" />
+            </span>
+            <span className="text-[10px] font-semibold text-[#3E2415] whitespace-nowrap">Scanner</span>
+          </Link>
+        )}
+
+        {showOccurrenceButton && (
+          <Link href="/company/ocorrencias?novo=1" className="flex flex-col items-center gap-0.5">
+            <span className="flex items-center justify-center w-12 h-12 rounded-full bg-red-600 shadow-md">
+              <AlertTriangle className="w-5 h-5 text-white" />
+            </span>
+            <span className="text-[10px] font-semibold text-[#3E2415] whitespace-nowrap">Ocorrência</span>
+          </Link>
+        )}
       </div>
     </div>
   )

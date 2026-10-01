@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Plus, ExternalLink, ShieldAlert, Trash2, Pencil, Users, CheckCircle2, Settings2, Filter } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,7 +21,9 @@ import { canManageDailyOperations } from "@/lib/permissions"
 const TYPE_LABELS: Record<string, string> = {
   FOLGA_FERIADO: "Folga/Feriado",
   VALE: "Vale/Adiantamento",
-  CONSUMO: "Consumo/Quebra de caixa",
+  CONSUMO: "Consumo (Conta/Comanda)",
+  QUEBRA_CAIXA: "Quebra de Caixa",
+  PAGAMENTO_CONSUMO: "Pagamento de Consumo",
   META: "Bonificação de meta",
   FALTA: "Falta",
   ATESTADO: "Atestado",
@@ -32,7 +36,8 @@ const TYPE_LABELS: Record<string, string> = {
   FIXADO: "Efetivação",
   CUSTOM: "Personalizado",
 }
-const REQUIRES_ATTACHMENT = new Set(["ADVERTENCIA", "ATESTADO", "DISPENSADO"])
+// Mantido em sincronia com REQUIRES_ATTACHMENT em app/api/company/occurrences/route.ts
+const REQUIRES_ATTACHMENT = new Set(["ADVERTENCIA", "ATESTADO", "DISPENSADO", "CONSUMO", "QUEBRA_CAIXA"])
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   DINHEIRO: "Dinheiro",
   PIX: "PIX",
@@ -131,6 +136,8 @@ function QuickInsertOnly() {
 }
 
 function ManagerOccurrences() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [month, setMonth] = useState(monthNow())
   const [employeeFilter, setEmployeeFilter] = useState("")
   const [typeFilter, setTypeFilter] = useState("")
@@ -162,6 +169,16 @@ function ManagerOccurrences() {
     reloadEmployees()
     reloadCustomTypes()
   }, [])
+
+  // Deep-link do botão flutuante "+Ocorrência" (barra inferior do Gerente/Master)
+  // — abre o formulário de criação direto, sem precisar achar o botão na tela.
+  useEffect(() => {
+    if (searchParams.get("novo") === "1") {
+      setIsCreateOpen(true)
+      router.replace("/company/ocorrencias")
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const handleDelete = async (o: Occurrence) => {
     if (!confirm("Excluir esta ocorrência?")) return
@@ -448,6 +465,26 @@ function OvertimePreviewHint({ employeeId, hours, onUseValue }: { employeeId: st
   )
 }
 
+/** Saldo atual da Conta de Consumo do colaborador selecionado — contexto rápido antes de lançar CONSUMO/PAGAMENTO_CONSUMO. */
+function ConsumptionDebtHint({ employeeId }: { employeeId: string }) {
+  const [debt, setDebt] = useState<number | null>(null)
+
+  useEffect(() => {
+    setDebt(null)
+    adminFetch<{ debt: number }>(`/api/company/consumption-debt?employeeId=${employeeId}`)
+      .then((d) => setDebt(d.debt))
+      .catch(() => {})
+  }, [employeeId])
+
+  if (debt === null) return null
+
+  return (
+    <p className="text-xs bg-amber-50 border border-amber-100 rounded-lg p-3 text-amber-900">
+      Saldo atual da Conta de Consumo: <strong>{currency(debt)}</strong>
+    </p>
+  )
+}
+
 function OccurrenceForm({
   employees,
   customTypes,
@@ -527,11 +564,23 @@ function OccurrenceForm({
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-        <Button type="button" size="sm" variant={mode === "registered" ? "default" : "ghost"} onClick={() => setMode("registered")} className={mode === "registered" ? "text-xs bg-white shadow-sm" : "text-xs"}>
-          Colaborador cadastrado
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setMode("registered")}
+          className={cn("text-xs", mode === "registered" ? "bg-white shadow-sm text-[#3E2415] font-semibold" : "text-gray-500")}
+        >
+          Colaborador Fixo
         </Button>
-        <Button type="button" size="sm" variant={mode === "temp" ? "default" : "ghost"} onClick={() => setMode("temp")} className={mode === "temp" ? "text-xs bg-white shadow-sm" : "text-xs"}>
-          Temporário/Diarista
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setMode("temp")}
+          className={cn("text-xs", mode === "temp" ? "bg-white shadow-sm text-[#3E2415] font-semibold" : "text-gray-500")}
+        >
+          Temporário / Diarista
         </Button>
       </div>
 
@@ -588,10 +637,32 @@ function OccurrenceForm({
             ficar negativo). Ele também fica isento de penalidade de checklist no fechamento do dia.
           </p>
         )}
+        {type === "CONSUMO" && (
+          <p className="text-xs text-gray-400">
+            Valor da comanda assinada — soma na Conta de Consumo do colaborador (dívida visível pra ele). Para
+            registrar o pagamento dessa dívida, use o tipo "Pagamento de Consumo".
+          </p>
+        )}
+        {type === "QUEBRA_CAIXA" && (
+          <p className="text-xs text-gray-400">
+            Diferença encontrada no fechamento do caixa — desconta do colaborador, sem relação com a Conta de
+            Consumo.
+          </p>
+        )}
+        {type === "PAGAMENTO_CONSUMO" && (
+          <p className="text-xs text-gray-400">
+            Dinheiro/PIX recebido do colaborador para abater a Conta de Consumo — informe o valor pago no campo
+            "Valor".
+          </p>
+        )}
       </div>
 
       {type === "HORA_EXTRA" && mode === "registered" && employeeId && (
         <OvertimePreviewHint employeeId={employeeId} hours={quantity} onUseValue={(v) => setValue(String(v))} />
+      )}
+
+      {(type === "CONSUMO" || type === "PAGAMENTO_CONSUMO") && mode === "registered" && employeeId && (
+        <ConsumptionDebtHint employeeId={employeeId} />
       )}
 
       {type === "CUSTOM" && (

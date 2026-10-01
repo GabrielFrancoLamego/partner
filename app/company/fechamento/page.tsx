@@ -40,6 +40,7 @@ type ShiftClosingStatus = {
     receiptUrl: string | null
     summary: string | null
     isMasterOverride: boolean
+    isLate: boolean
     closedBy: { name: string } | null
     closedAt: string | null
   } | null
@@ -105,12 +106,10 @@ export default function CompanyFechamentoPage() {
           <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Fechamento de Expediente</h1>
           <p className="text-gray-600 mt-1 text-sm">Sequência obrigatória para encerrar o dia — os 4 passos precisam estar completos.</p>
         </div>
-        {isMaster && (
-          <Button variant="outline" size="sm" onClick={() => setShowHistory((v) => !v)}>
-            {showHistory ? <ChevronLeft className="h-4 w-4 mr-1" /> : <History className="h-4 w-4 mr-1" />}
-            {showHistory ? "Voltar" : "Histórico de Fechamentos"}
-          </Button>
-        )}
+        <Button variant="outline" size="sm" onClick={() => setShowHistory((v) => !v)}>
+          {showHistory ? <ChevronLeft className="h-4 w-4 mr-1" /> : <History className="h-4 w-4 mr-1" />}
+          {showHistory ? "Voltar" : "Histórico de Fechamentos"}
+        </Button>
       </div>
 
       {showHistory ? (
@@ -144,6 +143,7 @@ type ClosingHistoryRow = {
   status: string
   revenueAmount: string | null
   isMasterOverride: boolean
+  isLate: boolean
   closedBy: { name: string } | null
   closedAt: string | null
 }
@@ -172,7 +172,7 @@ function ShiftClosingHistory({ onSelect }: { onSelect: (date: string) => void })
           <div>
             <p className="font-medium text-[#3E2415] text-sm">{new Date(r.date).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" })}</p>
             <p className="text-xs text-gray-500">
-              {r.closedBy?.name ?? "—"} {r.isMasterOverride && "· assumido pelo Master"}
+              {r.closedBy?.name ?? "—"} {r.isMasterOverride && "· assumido pelo Master"} {r.isLate && "· atrasado"}
             </p>
           </div>
           <div className="text-right flex items-center gap-2">
@@ -212,7 +212,9 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
 
   const countdown = useCountdown(status?.deadline)
   const isCompleted = status?.closing?.status === "COMPLETED"
-  const isMasterOnlyOverride = status?.overdue && user.role === "COMPANY_GERENTE"
+  // A Gerente pode (e deve) fechar o expediente mesmo depois do prazo — não
+  // trava a tela, só avisa que o Master será notificado do atraso.
+  const isLateForGerente = status?.overdue && user.role === "COMPANY_GERENTE" && !isCompleted
   // Fechamento já concluído só pode ser corrigido pelo Master — a Gerente vê um resumo somente-leitura.
   const isLockedForGerente = isCompleted && !isMaster
 
@@ -285,10 +287,11 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
               <p className="text-sm font-bold text-green-700 flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4" /> Fechamento concluído
                 {status.closing?.isMasterOverride && " (assumido pelo Master)"}
+                {!status.closing?.isMasterOverride && status.closing?.isLate && " (atrasado)"}
               </p>
             ) : status.overdue ? (
               <p className="text-sm font-bold text-red-700 flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4" /> Prazo estourado — PENDENTE_MASTER
+                <AlertTriangle className="w-4 h-4" /> Prazo estourado{isMaster ? "" : " — finalize para avisar o Master"}
               </p>
             ) : (
               <p className="text-lg font-bold text-[#3E2415]">{countdown?.label} restantes</p>
@@ -297,10 +300,13 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
         </div>
       </div>
 
-      {isMasterOnlyOverride && !isCompleted ? (
-        <EmptyState message="O prazo estourou — apenas o Master pode concluir o fechamento agora." />
-      ) : (
-        <>
+      {isLateForGerente && (
+        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+          O prazo já passou — você ainda pode finalizar o expediente, mas o Master será avisado do atraso.
+        </div>
+      )}
+      <>
           <AdminCard title="Passo 0 — Confirmação de Ponto" icon={Clock}>
             <div className="flex items-center gap-2 mb-3">
               <StepBadge done={step0Done} number={0} />
@@ -396,7 +402,6 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
             </form>
           </AdminCard>
         </>
-      )}
     </div>
   )
 }

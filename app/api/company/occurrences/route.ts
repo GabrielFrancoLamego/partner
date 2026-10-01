@@ -13,6 +13,8 @@ const OCCURRENCE_TYPES: OccurrenceType[] = [
   "FOLGA_FERIADO",
   "VALE",
   "CONSUMO",
+  "QUEBRA_CAIXA",
+  "PAGAMENTO_CONSUMO",
   "META",
   "FALTA",
   "ATESTADO",
@@ -25,8 +27,8 @@ const OCCURRENCE_TYPES: OccurrenceType[] = [
   "FIXADO",
   "CUSTOM",
 ]
-// CONSUMO exige a foto da comanda assinada (ver Conta de Consumo abaixo).
-const REQUIRES_ATTACHMENT: OccurrenceType[] = ["ADVERTENCIA", "ATESTADO", "DISPENSADO", "CONSUMO"]
+// CONSUMO/QUEBRA_CAIXA exigem a foto da comanda/registro assinado como comprovante.
+const REQUIRES_ATTACHMENT: OccurrenceType[] = ["ADVERTENCIA", "ATESTADO", "DISPENSADO", "CONSUMO", "QUEBRA_CAIXA"]
 const PAYMENT_METHODS: OccurrencePaymentMethod[] = ["DINHEIRO", "PIX", "TRABALHO", "FOLGA_ADICIONAL", "CONSUMO"]
 const PAYMENT_STATUSES: OccurrencePaymentStatus[] = ["PENDING", "PAID"]
 
@@ -35,7 +37,9 @@ const PAYMENT_STATUSES: OccurrencePaymentStatus[] = ["PENDING", "PAID"]
 const TYPE_LABELS: Record<OccurrenceType, string> = {
   FOLGA_FERIADO: "Folga/Feriado",
   VALE: "Vale/Adiantamento",
-  CONSUMO: "Consumo/Quebra de caixa",
+  CONSUMO: "Consumo (Conta/Comanda)",
+  QUEBRA_CAIXA: "Quebra de Caixa",
+  PAGAMENTO_CONSUMO: "Pagamento de Consumo",
   META: "Bonificação de meta",
   FALTA: "Falta",
   ATESTADO: "Atestado",
@@ -189,6 +193,9 @@ export async function POST(request: Request) {
       const magnitude = Number(customType.salaryImpactValue)
       resolvedValue = customType.salaryImpactType === "DISCOUNT" ? -Math.abs(magnitude) : Math.abs(magnitude)
     }
+    if (type === "PAGAMENTO_CONSUMO" && resolvedValue === null) {
+      throw new ApiError(400, "Informe o valor pago pelo colaborador")
+    }
     const total = resolvedValue !== null ? Math.round(resolvedValue * quantity * 100) / 100 : null
 
     const occurrence = await prisma.$transaction(async (tx) => {
@@ -253,6 +260,14 @@ export async function POST(request: Request) {
         await tx.user.update({ where: { id: employee.id }, data: { consumptionDebt: { increment: Math.abs(total) } } })
       } else if (paymentMethod === "CONSUMO" && employee && total !== null && total > 0) {
         await tx.user.update({ where: { id: employee.id }, data: { consumptionDebt: { decrement: total } } })
+      }
+
+      // Pagamento de Consumo — dinheiro/PIX recebido do colaborador abatendo
+      // a Conta de Consumo diretamente (sentido inverso de CONSUMO acima;
+      // independente da escolha de `paymentMethod`, que aqui descreve só como
+      // o colaborador pagou, não um abatimento via outra ocorrência).
+      if (type === "PAGAMENTO_CONSUMO" && employee && total !== null) {
+        await tx.user.update({ where: { id: employee.id }, data: { consumptionDebt: { decrement: Math.abs(total) } } })
       }
 
       // Abono automático: ATESTADO registrado em até 24h de uma FALTA do
@@ -364,6 +379,8 @@ export async function POST(request: Request) {
       if (type === "HORA_EXTRA") parts.push(`-${Math.round(quantity * 60)}min no banco de horas (hora extra paga)`)
       if (type === "CONSUMO" && total !== null) {
         parts.push(`+${Math.abs(total).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} na Conta de Consumo`)
+      } else if (type === "PAGAMENTO_CONSUMO" && total !== null) {
+        parts.push(`-${Math.abs(total).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} abatidos da Conta de Consumo (pagamento recebido)`)
       } else if (paymentMethod === "CONSUMO" && total !== null && total > 0) {
         parts.push(`-${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} abatidos da Conta de Consumo`)
       }

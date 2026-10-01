@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Trash2, Pencil, Clock, Users2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Plus, Trash2, Pencil, Clock, Users2, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -204,6 +205,7 @@ function SectorsDialog({ onClose }: { onClose: () => void }) {
 }
 
 function EmployeeScheduleTable() {
+  const router = useRouter()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [sectors, setSectors] = useState<Sector[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -260,7 +262,10 @@ function EmployeeScheduleTable() {
                     <td className={`px-4 py-3 font-medium ${e.bankOfHoursMinutes < 0 ? "text-red-600" : e.bankOfHoursMinutes > 0 ? "text-green-600" : "text-gray-400"}`}>
                       {formatBank(e.bankOfHoursMinutes)}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <Button variant="ghost" size="sm" onClick={() => router.push(`/company/colaboradores/${e.id}`)}>
+                        <ExternalLink className="h-3.5 w-3.5 mr-1" /> Ficha
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => setEditing(e)}>
                         Editar
                       </Button>
@@ -291,9 +296,14 @@ function EmployeeScheduleTable() {
                   { label: "Folga fixa", value: e.weeklyDayOff !== null ? WEEKDAY_SHORT[e.weeklyDayOff] : "—" },
                 ]}
                 actions={
-                  <Button variant="ghost" size="sm" onClick={() => setEditing(e)}>
-                    Editar
-                  </Button>
+                  <>
+                    <Button variant="ghost" size="sm" onClick={() => router.push(`/company/colaboradores/${e.id}`)}>
+                      <ExternalLink className="h-3.5 w-3.5 mr-1" /> Ficha
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setEditing(e)}>
+                      Editar
+                    </Button>
+                  </>
                 }
               />
             ))}
