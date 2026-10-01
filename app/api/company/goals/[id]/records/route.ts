@@ -3,6 +3,7 @@ import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from
 import { canManageDailyOperations } from "@/lib/permissions"
 import { uploadImage } from "@/lib/storage"
 import { logAudit } from "@/lib/audit"
+import { maybeDistributeGoalReward } from "@/lib/goal-rewards"
 
 function startOfDay(date: Date) {
   const d = new Date(date)
@@ -66,6 +67,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     })
 
     await logAudit({ userId: user.id, companyId, action: "UPSERT", entity: "GoalRecord", entityId: record.id, details: { goalId, date, amount } })
+
+    await maybeDistributeGoalReward(goalId, companyId, user.id).catch(() => {})
 
     return Response.json(record, { status: 201 })
   } catch (error) {

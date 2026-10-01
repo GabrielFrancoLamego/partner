@@ -220,10 +220,10 @@ export default function CompanyProgramsPage() {
         </div>
 
         <Tabs defaultValue="comissao">
-          <TabsList className="flex-wrap h-auto">
-            <TabsTrigger value="comissao">Comissão</TabsTrigger>
-            <TabsTrigger value="midia">Mídias</TabsTrigger>
-            <TabsTrigger value="validade">Validade & Regulamento</TabsTrigger>
+          <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <TabsTrigger value="comissao" className="flex-shrink-0">Comissão</TabsTrigger>
+            <TabsTrigger value="midia" className="flex-shrink-0">Mídias</TabsTrigger>
+            <TabsTrigger value="validade" className="flex-shrink-0">Validade & Regulamento</TabsTrigger>
           </TabsList>
 
           <TabsContent value="comissao" className="space-y-4 pt-4">

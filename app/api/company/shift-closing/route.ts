@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit"
 import { awardXp, getInternalProgramRules } from "@/lib/gamification"
 import { notifyUser } from "@/lib/notifications"
 import { computePendingTimeclockAdjustments } from "@/lib/timeclock-adjustments"
+import { maybeDistributeGoalReward } from "@/lib/goal-rewards"
 
 /** Avisa todo Master da empresa quando a Gerente fecha o expediente atrasado (depois do shiftClosingDeadline). */
 async function notifyMastersOfLateClosing(companyId: string, closedByName: string, date: Date) {
@@ -237,6 +238,7 @@ export async function POST(request: Request) {
           update: { amount: Number(revenueAmount), receiptUrl: receiptUrl ?? undefined, reportedById: user.id },
           create: { goalId: goal.id, date, amount: Number(revenueAmount), receiptUrl, reportedById: user.id },
         })
+        await maybeDistributeGoalReward(goal.id, companyId, user.id).catch(() => {})
       }
     }
 

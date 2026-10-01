@@ -161,7 +161,7 @@ export function QuickActionBar() {
 
   return (
     <div
-      className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-[#E8E3DC] px-6"
+      className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur border-t border-[#E8E3DC] px-6"
       style={{ paddingBottom: "var(--safe-bottom, 0px)" }}
     >
       {error && (

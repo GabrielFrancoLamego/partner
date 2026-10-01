@@ -73,7 +73,9 @@ export async function GET(request: Request) {
         // `_count.promotionId` conta só os registros com promotionId preenchido —
         // ou seja, indicações atreladas a um Vale Retorno/promoção específica.
         _count: { _all: true, promotionId: true },
-        orderBy: { _sum: { commissionValue: "desc" } },
+        // Ranking pelo que o parceiro gerou pra empresa (faturamento), não pelo
+        // valor pago a ele — esse card não mostra mais a comissão paga.
+        orderBy: { _sum: { amount: "desc" } },
         take: 5,
       }),
       prisma.user.count({ where: { companyId, role: "EMPLOYEE" } }),
@@ -96,7 +98,6 @@ export async function GET(request: Request) {
         return {
           partnerId: row.partnerId,
           name: partner?.name ?? "—",
-          total: Number(row._sum.commissionValue ?? 0),
           revenueGenerated: Number(row._sum.amount ?? 0),
           referralCount: row._count._all,
           vouchersUsed: row._count.promotionId,
@@ -172,7 +173,7 @@ export async function GET(request: Request) {
       occurrenceCost: number
       costBreakdown: { salarios: number; diarias: number; horasExtras: number; consumo: number; outrasOcorrencias: number }
       riskEmployees: { id: string; name: string; monthlyScore: number; recentFlags: number }[]
-      topEmployees: { id: string; name: string; monthlyScore: number; xpPoints: number }[]
+      topEmployees: { id: string; name: string; points: number; efficiencyPercent: number | null }[]
       unclosedPastDaysCount: number
       panoramaToday: {
         presentes: { count: number; employees: { id: string; name: string }[] }
@@ -264,31 +265,52 @@ export async function GET(request: Request) {
       const liveRows = occurrenceCostRows.filter((o) => !o.discountWaived)
       const sumByType = (type: (typeof COST_OCCURRENCE_TYPES)[number]) =>
         liveRows.filter((o) => o.type === type).reduce((sum, o) => sum + Math.abs(Number(o.total ?? 0)), 0)
+      // Fração proporcional da folha fixa no período selecionado — período "all"
+      // (sem limite) usa 1 mês cheio como referência, em vez de somar anos de
+      // folha e distorcer o Custo Operacional.
+      const periodDays = start ? Math.max(1, (now.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) : 30
+      const salarios = Number(salariesAgg._sum.monthlySalary ?? 0) * (periodDays / 30)
       const costBreakdown = {
-        salarios: Number(salariesAgg._sum.monthlySalary ?? 0),
+        salarios,
         diarias: sumByType("DIARIA"),
         horasExtras: sumByType("HORA_EXTRA"),
         consumo: Math.abs(Number(consumoAgg._sum.total ?? 0)),
         outrasOcorrencias: sumByType("VALE") + sumByType("META"),
       }
-      const occurrenceCost = costBreakdown.diarias + costBreakdown.horasExtras + costBreakdown.outrasOcorrencias
+      // Custo Operacional completo: folha proporcional + consumo lançado +
+      // demais ocorrências financeiras do período (pedido explícito do Master).
+      const occurrenceCost = costBreakdown.salarios + costBreakdown.consumo + costBreakdown.diarias + costBreakdown.horasExtras + costBreakdown.outrasOcorrencias
 
       const scoredEmployees = await Promise.all(
         employeesForRisk.map(async (e) => {
-          const [score, recentFlags] = await Promise.all([
+          const [score, recentFlags, periodXpAgg, periodChecklists] = await Promise.all([
             getMonthlyScore(companyId, e.id, now),
             prisma.occurrence.count({
               where: { companyId, employeeId: e.id, type: { in: ["ADVERTENCIA", "FALTA"] }, date: { gte: thirtyDaysAgo } },
             }),
+            prisma.xpEntry.aggregate({ where: { companyId, employeeId: e.id, ...dateWhere("createdAt") }, _sum: { points: true } }),
+            prisma.checklist.findMany({ where: { companyId, employeeId: e.id, ...dateWhere("createdAt") }, select: { status: true } }),
           ])
-          return { id: e.id, name: e.name, monthlyScore: score, recentFlags, xpPoints: e.employeeProfile?.xpPoints ?? 0, weeklyDayOff: e.employeeProfile?.weeklyDayOff ?? null }
+          const checklistTotal = periodChecklists.length
+          const checklistApproved = periodChecklists.filter((c) => c.status === "APPROVED").length
+          return {
+            id: e.id,
+            name: e.name,
+            monthlyScore: score,
+            recentFlags,
+            xpPoints: e.employeeProfile?.xpPoints ?? 0,
+            periodPoints: periodXpAgg._sum.points ?? 0,
+            efficiencyPercent: checklistTotal > 0 ? Math.round((checklistApproved / checklistTotal) * 100) : null,
+            weeklyDayOff: e.employeeProfile?.weeklyDayOff ?? null,
+          }
         }),
       )
       const riskEmployees = scoredEmployees.filter((e) => e.monthlyScore < 50 || e.recentFlags >= 2)
+      // Ranking principal por Pontuação acumulada no período selecionado (não pelo score mensal fixo).
       const topEmployees = [...scoredEmployees]
-        .sort((a, b) => b.monthlyScore - a.monthlyScore || b.xpPoints - a.xpPoints)
+        .sort((a, b) => b.periodPoints - a.periodPoints)
         .slice(0, 5)
-        .map((e) => ({ id: e.id, name: e.name, monthlyScore: e.monthlyScore, xpPoints: e.xpPoints }))
+        .map((e) => ({ id: e.id, name: e.name, points: e.periodPoints, efficiencyPercent: e.efficiencyPercent }))
 
       const presentes = presentTodayUsers.map((t) => t.user)
       const faltas = dedupeById(faltaToday.map((o) => o.employee!).filter(Boolean))

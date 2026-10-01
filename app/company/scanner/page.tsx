@@ -27,17 +27,17 @@ export default function CompanyScannerPage() {
       </div>
 
       <Tabs defaultValue="camera">
-        <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="camera">
+        <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <TabsTrigger value="camera" className="flex-shrink-0">
             <QrCode className="h-4 w-4 mr-1.5" /> Leitor QR
           </TabsTrigger>
-          <TabsTrigger value="manual">
+          <TabsTrigger value="manual" className="flex-shrink-0">
             <ClipboardEdit className="h-4 w-4 mr-1.5" /> Registro Manual
           </TabsTrigger>
-          <TabsTrigger value="vale-retorno">
+          <TabsTrigger value="vale-retorno" className="flex-shrink-0">
             <Gift className="h-4 w-4 mr-1.5" /> Vale Retorno
           </TabsTrigger>
-          <TabsTrigger value="history">
+          <TabsTrigger value="history" className="flex-shrink-0">
             <History className="h-4 w-4 mr-1.5" /> Histórico
           </TabsTrigger>
         </TabsList>

@@ -18,7 +18,7 @@ type DashboardData = {
     activePartners: number
     pendingCommissions: { total: number; count: number }
     pendingWithdrawals: { total: number; count: number }
-    topPartners: { partnerId: string; name: string; total: number; revenueGenerated: number; referralCount: number; vouchersUsed: number }[]
+    topPartners: { partnerId: string; name: string; revenueGenerated: number; referralCount: number; vouchersUsed: number }[]
   }
   operations: {
     totalEmployees: number
@@ -54,7 +54,7 @@ type DashboardData = {
     occurrenceCost: number
     costBreakdown: { salarios: number; diarias: number; horasExtras: number; consumo: number; outrasOcorrencias: number }
     riskEmployees: { id: string; name: string; monthlyScore: number; recentFlags: number }[]
-    topEmployees: { id: string; name: string; monthlyScore: number; xpPoints: number }[]
+    topEmployees: { id: string; name: string; points: number; efficiencyPercent: number | null }[]
     unclosedPastDaysCount: number
     panoramaToday: {
       presentes: PanoramaBucket
@@ -142,8 +142,7 @@ export default function CompanyDashboardPage() {
                     <div className="flex items-center gap-3 text-xs text-gray-500">
                       <span>{p.referralCount} indicação(ões)</span>
                       <span>{p.vouchersUsed} vale(s) usado(s)</span>
-                      <span>Faturamento gerado: {currency(p.revenueGenerated)}</span>
-                      <span className="font-bold text-[#3E2415]">{currency(p.total)} pago</span>
+                      <span className="font-bold text-[#3E2415]">Faturamento gerado: {currency(p.revenueGenerated)}</span>
                     </div>
                   </div>
                 ))}
@@ -204,9 +203,9 @@ function MasterPanel({ master }: { master: NonNullable<DashboardData["master"]> 
           <p className="text-2xl font-bold text-[#3E2415]">{currency(master.realRevenue)}</p>
           <p className="text-xs text-gray-500 mt-1">Soma dos fechamentos de caixa no período</p>
         </AdminCard>
-        <AdminCard title="Custo Operacional de Ocorrências" icon={AlertTriangle}>
+        <AdminCard title="Custo Operacional Completo" icon={AlertTriangle}>
           <p className="text-2xl font-bold text-[#3E2415]">{currency(master.occurrenceCost)}</p>
-          <p className="text-xs text-gray-500 mt-1">Diárias, horas extras, vales e metas batidas (sem salários/consumo)</p>
+          <p className="text-xs text-gray-500 mt-1">Folha proporcional ao período + consumo + diárias/horas extras/vales/metas</p>
         </AdminCard>
       </div>
 
@@ -229,7 +228,8 @@ function MasterPanel({ master }: { master: NonNullable<DashboardData["master"]> 
                   {index + 1}. {e.name}
                 </span>
                 <span className="text-xs text-gray-500">
-                  Score mensal {e.monthlyScore} · {e.xpPoints} Pts
+                  {e.efficiencyPercent !== null ? `Eficiência: ${e.efficiencyPercent}% · ` : ""}
+                  {e.points} Pts
                 </span>
               </Link>
             ))}

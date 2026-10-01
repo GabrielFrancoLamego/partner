@@ -64,11 +64,11 @@ export default function CompanyProgramaInternoPage() {
       </div>
 
       <Tabs defaultValue="config">
-        <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="config">Configuração</TabsTrigger>
-          <TabsTrigger value="fees">Taxa de Serviço</TabsTrigger>
-          <TabsTrigger value="levels">Plano de Carreira</TabsTrigger>
-          <TabsTrigger value="promote">Promover Colaborador</TabsTrigger>
+        <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <TabsTrigger value="config" className="flex-shrink-0">Configuração</TabsTrigger>
+          <TabsTrigger value="fees" className="flex-shrink-0">Taxa de Serviço</TabsTrigger>
+          <TabsTrigger value="levels" className="flex-shrink-0">Plano de Carreira</TabsTrigger>
+          <TabsTrigger value="promote" className="flex-shrink-0">Promover Colaborador</TabsTrigger>
         </TabsList>
         <div className="mt-4">
           <TabsContent value="config">

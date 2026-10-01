@@ -600,10 +600,10 @@ function ManagerView() {
 
   return (
     <Tabs value={tab} onValueChange={setTab}>
-      <TabsList className="flex-wrap h-auto">
-        <TabsTrigger value="master">Checklist Master</TabsTrigger>
-        <TabsTrigger value="templates">Tarefas Recorrentes</TabsTrigger>
-        <TabsTrigger value="review">Aprovações</TabsTrigger>
+      <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <TabsTrigger value="master" className="flex-shrink-0">Checklist Master</TabsTrigger>
+        <TabsTrigger value="templates" className="flex-shrink-0">Tarefas Recorrentes</TabsTrigger>
+        <TabsTrigger value="review" className="flex-shrink-0">Aprovações</TabsTrigger>
       </TabsList>
       <div className="bg-white rounded-2xl p-4 md:p-6 shadow-md border border-gray-100 mt-4">
         <TabsContent value="master">

@@ -205,10 +205,10 @@ function ManagerOccurrences() {
 
   return (
     <Tabs defaultValue="occurrences">
-      <TabsList className="flex-wrap h-auto">
-        <TabsTrigger value="occurrences">Ocorrências</TabsTrigger>
-        <TabsTrigger value="types">Tipos de Ocorrência</TabsTrigger>
-        <TabsTrigger value="access">Colaboradores Autorizados</TabsTrigger>
+      <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <TabsTrigger value="occurrences" className="flex-shrink-0">Ocorrências</TabsTrigger>
+        <TabsTrigger value="types" className="flex-shrink-0">Tipos de Ocorrência</TabsTrigger>
+        <TabsTrigger value="access" className="flex-shrink-0">Colaboradores Autorizados</TabsTrigger>
       </TabsList>
 
       <TabsContent value="occurrences" className="space-y-6 mt-4">

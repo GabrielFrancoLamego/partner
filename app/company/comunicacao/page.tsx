@@ -84,14 +84,14 @@ export default function CompanyCommunicationPage() {
       </div>
 
       <Tabs defaultValue={initialTab}>
-        <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="interna">Interna</TabsTrigger>
+        <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <TabsTrigger value="interna" className="flex-shrink-0">Interna</TabsTrigger>
           {canSeePartnerTickets && (
-            <TabsTrigger value="parceiros">
+            <TabsTrigger value="parceiros" className="flex-shrink-0">
               <Handshake className="h-3.5 w-3.5 mr-1" /> Parceiros
             </TabsTrigger>
           )}
-          <TabsTrigger value="suporte">
+          <TabsTrigger value="suporte" className="flex-shrink-0">
             <LifeBuoy className="h-3.5 w-3.5 mr-1" /> Suporte Tribuss
           </TabsTrigger>
         </TabsList>
@@ -138,11 +138,11 @@ function InternalCommunications() {
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-        <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="enviadas">Enviadas{isMaster ? " (minhas)" : ""}</TabsTrigger>
-          <TabsTrigger value="PENDING_RESPONSE">Pendentes de Resposta</TabsTrigger>
-          <TabsTrigger value="RESPONDED">Respondidas</TabsTrigger>
-          <TabsTrigger value="CONCLUDED">Concluídas</TabsTrigger>
+        <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <TabsTrigger value="enviadas" className="flex-shrink-0">Enviadas{isMaster ? " (minhas)" : ""}</TabsTrigger>
+          <TabsTrigger value="PENDING_RESPONSE" className="flex-shrink-0">Pendentes de Resposta</TabsTrigger>
+          <TabsTrigger value="RESPONDED" className="flex-shrink-0">Respondidas</TabsTrigger>
+          <TabsTrigger value="CONCLUDED" className="flex-shrink-0">Concluídas</TabsTrigger>
         </TabsList>
 
         <div className="mt-4">

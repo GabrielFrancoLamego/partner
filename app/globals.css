@@ -208,3 +208,26 @@ textarea,
     min-width: 44px;
   }
 }
+
+/* Chuva de moedas — animação de Meta/Bônus/Prêmio recebido (ver
+   components/notifications/reward-celebration.tsx). Cada moeda sobe do topo
+   (fora da tela) até cair abaixo da viewport, girando, com timing/posição
+   aleatórios definidos inline por moeda via --coin-left/--coin-rotate. */
+@keyframes coin-fall {
+  0% {
+    transform: translateY(-10vh) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) rotate(var(--coin-rotate, 360deg));
+    opacity: 0.9;
+  }
+}
+.animate-coin-fall {
+  animation-name: coin-fall;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}

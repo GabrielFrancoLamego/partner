@@ -476,12 +476,12 @@ function ManagerGrowthView() {
 
   return (
     <Tabs defaultValue="ranking">
-      <TabsList className="flex-wrap h-auto">
-        <TabsTrigger value="ranking">Ranking</TabsTrigger>
-        <TabsTrigger value="promotions">Promoções</TabsTrigger>
-        <TabsTrigger value="levels">Trilha de Cargos</TabsTrigger>
-        <TabsTrigger value="rewards">Loja de Prêmios</TabsTrigger>
-        <TabsTrigger value="redemptions">Resgates</TabsTrigger>
+      <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <TabsTrigger value="ranking" className="flex-shrink-0">Ranking</TabsTrigger>
+        <TabsTrigger value="promotions" className="flex-shrink-0">Promoções</TabsTrigger>
+        <TabsTrigger value="levels" className="flex-shrink-0">Trilha de Cargos</TabsTrigger>
+        <TabsTrigger value="rewards" className="flex-shrink-0">Loja de Prêmios</TabsTrigger>
+        <TabsTrigger value="redemptions" className="flex-shrink-0">Resgates</TabsTrigger>
       </TabsList>
 
       <div className="bg-white rounded-2xl p-4 md:p-6 shadow-md border border-gray-100 mt-4">

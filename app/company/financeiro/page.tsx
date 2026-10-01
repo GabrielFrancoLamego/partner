@@ -53,10 +53,10 @@ export default function CompanyFinanceiroPage() {
       </div>
 
       <Tabs defaultValue="commissions">
-        <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="commissions">Comissões & Saques</TabsTrigger>
-          <TabsTrigger value="receivables">Recebíveis dos Colaboradores</TabsTrigger>
-          <TabsTrigger value="payouts">Registro de Quitação</TabsTrigger>
+        <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <TabsTrigger value="commissions" className="flex-shrink-0">Comissões & Saques</TabsTrigger>
+          <TabsTrigger value="receivables" className="flex-shrink-0">Recebíveis dos Colaboradores</TabsTrigger>
+          <TabsTrigger value="payouts" className="flex-shrink-0">Registro de Quitação</TabsTrigger>
         </TabsList>
         <div className="mt-4">
           <TabsContent value="commissions">

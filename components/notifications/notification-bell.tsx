@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { playEarningsSound } from "@/lib/earnings-sound"
+import { RewardCelebration } from "./reward-celebration"
 
 type Notification = {
   id: string
@@ -43,6 +44,7 @@ export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [isOpen, setIsOpen] = useState(false)
+  const [celebration, setCelebration] = useState<Notification | null>(null)
   const seenIds = useRef<Set<string> | null>(null)
   const soundEnabled = useRef(true)
 
@@ -54,8 +56,11 @@ export function NotificationBell() {
         const list = data.notifications as Notification[]
 
         if (seenIds.current) {
-          const newEarnings = list.some((n) => !seenIds.current!.has(n.id) && EARNINGS_NOTIFICATION_TYPES.has(n.type))
-          if (newEarnings && soundEnabled.current) playEarningsSound()
+          const newEarning = list.find((n) => !seenIds.current!.has(n.id) && EARNINGS_NOTIFICATION_TYPES.has(n.type))
+          if (newEarning) {
+            if (soundEnabled.current) playEarningsSound()
+            setCelebration(newEarning)
+          }
         }
         seenIds.current = new Set(list.map((n) => n.id))
 
@@ -92,6 +97,7 @@ export function NotificationBell() {
   }
 
   return (
+    <>
     <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="relative" aria-label="Notificações">
@@ -136,5 +142,13 @@ export function NotificationBell() {
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+    {celebration && (
+      <RewardCelebration
+        title={celebration.title}
+        message={celebration.message}
+        onClose={() => setCelebration(null)}
+      />
+    )}
+    </>
   )
 }

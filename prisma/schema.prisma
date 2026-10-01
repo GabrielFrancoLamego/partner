@@ -1671,6 +1671,11 @@ model Occurrence {
   createdBy            User                     @relation("OccurrenceCreatedBy", fields: [createdById], references: [id])
   createdAt            DateTime                 @default(now())
 
+  // Preenchido só quando esta Occurrence (type=META) foi gerada pela
+  // distribuição automática de prêmio de Meta batida (ver lib/goal-rewards.ts)
+  // — permite que excluir a ocorrência estorne o GoalPayout correspondente.
+  goalPayout GoalPayout?
+
   @@index([companyId])
   @@index([employeeId])
   @@index([type])
@@ -2161,6 +2166,16 @@ model GoalPayout {
   note       String?
   createdAt  DateTime         @default(now())
 
+  // Ocorrência (type=META) irmã, criada só pela distribuição automática —
+  // null nos lançamentos manuais via /company/financeiro. Excluir essa
+  // Occurrence estorna este GoalPayout (ver DELETE /api/company/occurrences/[id]).
+  occurrenceId String?     @unique
+  occurrence   Occurrence? @relation(fields: [occurrenceId], references: [id])
+
+  // Evita distribuir a mesma faixa batida duas vezes pro mesmo colaborador no
+  // mesmo período (idempotência da distribuição automática — lançamentos
+  // manuais não preenchem goalTierId, então não colidem com esta regra).
+  @@unique([goalId, goalTierId, employeeId, period])
   @@index([companyId])
   @@index([employeeId])
   @@index([goalId])

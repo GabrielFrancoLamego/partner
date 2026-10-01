@@ -95,10 +95,10 @@ export default function CompanyApprovalsPage() {
         <EmptyState message="Nenhuma solicitação pendente no momento." />
       ) : (
         <Tabs defaultValue="employees">
-          <TabsList className="flex-wrap h-auto">
-            <TabsTrigger value="employees">Novos Colaboradores ({employeeRequests.length})</TabsTrigger>
-            <TabsTrigger value="partners">Novos Parceiros ({partnerRequests.length})</TabsTrigger>
-            <TabsTrigger value="internal">Solicitações Internas ({justifications.length})</TabsTrigger>
+          <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <TabsTrigger value="employees" className="flex-shrink-0">Novos Colaboradores ({employeeRequests.length})</TabsTrigger>
+            <TabsTrigger value="partners" className="flex-shrink-0">Novos Parceiros ({partnerRequests.length})</TabsTrigger>
+            <TabsTrigger value="internal" className="flex-shrink-0">Solicitações Internas ({justifications.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="employees" className="mt-4">
