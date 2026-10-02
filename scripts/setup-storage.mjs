@@ -29,10 +29,14 @@ async function ensureBucket(name, options) {
   console.log(`Bucket "${name}" criado com sucesso.`)
 }
 
+// PDF incluído porque anexos de Ocorrência (ADVERTENCIA/ATESTADO/DISPENSADO/
+// CONSUMO/QUEBRA_CAIXA) e vários outros formulários já aceitam PDF no input
+// do navegador — sem isso aqui o upload falhava com "erro interno" (o bucket
+// rejeitava a mime type antes mesmo de chegar no código da rota).
 await ensureBucket("uploads", {
   public: true,
   fileSizeLimit: "10MB",
-  allowedMimeTypes: ["image/png", "image/jpeg", "image/webp"],
+  allowedMimeTypes: ["image/png", "image/jpeg", "image/webp", "application/pdf"],
 })
 
 // Público — fotos de perfil/capa/logo de Empresas, Colaboradores e Parceiros.

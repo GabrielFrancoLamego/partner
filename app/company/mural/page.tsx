@@ -218,7 +218,7 @@ function PostComposer({ onCreated }: { onCreated: () => void }) {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
+            accept="image/*"
             className="hidden"
             onChange={(e) => {
               setFile(e.target.files?.[0] ?? null)

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Plus, ExternalLink, ShieldAlert, Trash2, Pencil, Users, CheckCircle2, Settings2, Filter } from "lucide-react"
+import { Plus, ExternalLink, ShieldAlert, Trash2, Pencil, Users, CheckCircle2, Settings2, Filter, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,7 +16,7 @@ import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, AdminCard, StatusBadge } from "@/components/admin/admin-ui"
 import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canManageDailyOperations, isCompanyMasterOrAdmin } from "@/lib/permissions"
 
 const TYPE_LABELS: Record<string, string> = {
   FOLGA_FERIADO: "Folga/Feriado",
@@ -43,7 +43,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   PIX: "PIX",
   TRABALHO: "Trabalho",
   FOLGA_ADICIONAL: "Folga adicional",
-  CONSUMO: "Consumo (abate a Conta de Consumo)",
+  CONSUMO: "Consumo (abate dívida)",
 }
 const IMPACT_KIND_LABELS: Record<string, string> = {
   POINTS: "Ganho/Perda de Pts",
@@ -138,15 +138,23 @@ function QuickInsertOnly() {
 function ManagerOccurrences() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const user = useCompanyUser()
+  const isMaster = isCompanyMasterOrAdmin(user.role)
   const [month, setMonth] = useState(monthNow())
   const [employeeFilter, setEmployeeFilter] = useState("")
   const [typeFilter, setTypeFilter] = useState("")
   const [occurrences, setOccurrences] = useState<Occurrence[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [customTypes, setCustomTypes] = useState<CustomOccurrenceType[]>([])
+  const [closedDates, setClosedDates] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(true)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editing, setEditing] = useState<Occurrence | null>(null)
+
+  // A Gerente só edita/exclui ocorrências de dias ainda não fechados (ver
+  // app/api/company/occurrences/[id]/route.ts#assertEditableByRole) — busca
+  // os dias já COMPLETED pra desabilitar as ações na tela antes de tentar.
+  const isDateLocked = (dateStr: string) => !isMaster && closedDates.has(dateStr.slice(0, 10))
 
   const reload = () => {
     setIsLoading(true)
@@ -168,6 +176,12 @@ function ManagerOccurrences() {
   useEffect(() => {
     reloadEmployees()
     reloadCustomTypes()
+    if (!isMaster) {
+      adminFetch<{ date: string; status: string }[]>("/api/company/shift-closing/history")
+        .then((rows) => setClosedDates(new Set(rows.filter((r) => r.status === "COMPLETED").map((r) => r.date.slice(0, 10)))))
+        .catch(() => {})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Deep-link do botão flutuante "+Ocorrência" (barra inferior do Gerente/Master)
@@ -307,8 +321,16 @@ function ManagerOccurrences() {
                       {o.paymentStatus === "PENDING" && o.total !== null && (
                         <MobileCardAction icon={CheckCircle2} label="Marcar como pago" onClick={() => handleMarkPaid(o)} />
                       )}
-                      <MobileCardAction icon={Pencil} label="Editar" onClick={() => setEditing(o)} />
-                      <MobileCardAction icon={Trash2} label="Excluir" tone="danger" onClick={() => handleDelete(o)} />
+                      {isDateLocked(o.date) ? (
+                        <span className="flex items-center gap-1 text-xs text-gray-400">
+                          <Lock className="h-3 w-3" /> Expediente fechado
+                        </span>
+                      ) : (
+                        <>
+                          <MobileCardAction icon={Pencil} label="Editar" onClick={() => setEditing(o)} />
+                          <MobileCardAction icon={Trash2} label="Excluir" tone="danger" onClick={() => handleDelete(o)} />
+                        </>
+                      )}
                     </>
                   }
                 />
@@ -367,12 +389,20 @@ function ManagerOccurrences() {
                             <CheckCircle2 className="h-4 w-4" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" onClick={() => setEditing(o)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(o)} className="text-red-600">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {isDateLocked(o.date) ? (
+                          <span title="Expediente fechado — só o Master pode editar/excluir agora" className="text-gray-300 p-2">
+                            <Lock className="h-4 w-4" />
+                          </span>
+                        ) : (
+                          <>
+                            <Button variant="ghost" size="icon" onClick={() => setEditing(o)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDelete(o)} className="text-red-600">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -737,7 +767,11 @@ function OccurrenceForm({
 
       <div className="space-y-2">
         <Label>{requiresAttachment ? "Anexo (foto/documento) *" : "Anexo (opcional)"}</Label>
-        <Input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        {/* `image/*` (wildcard) em vez de listar os subtipos — é o que faz o
+            seletor nativo do celular oferecer "Câmera" como uma das opções
+            (junto com galeria/arquivos, sem `capture` pra não forçar só a
+            câmera e impedir escolher um PDF já salvo). */}
+        <Input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
       </div>
 
       <DialogFooter>

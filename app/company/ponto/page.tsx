@@ -477,7 +477,7 @@ function JustificationRequestForm() {
           </div>
           <div className="space-y-2">
             <Label>Atestado/documento (opcional)</Label>
-            <Input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <Input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </div>
         </div>
         <div className="space-y-2">

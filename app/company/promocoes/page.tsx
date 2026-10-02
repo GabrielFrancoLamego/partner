@@ -308,7 +308,7 @@ function PromotionDialog({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/png,image/jpeg,image/webp"
+                accept="image/*"
                 className="hidden"
                 onChange={(e) => e.target.files?.[0] && handleUploadPhoto(e.target.files[0])}
               />

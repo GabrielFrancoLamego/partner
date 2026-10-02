@@ -382,7 +382,7 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
                 <Label>Foto do comprovante de fechamento do caixa {!status.closing?.receiptUrl && "*"}</Label>
                 <Input
                   type="file"
-                  accept="image/png,image/jpeg,image/webp,application/pdf"
+                  accept="image/*,application/pdf"
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                   disabled={!step0Done || !step1Done || !step2Done}
                 />

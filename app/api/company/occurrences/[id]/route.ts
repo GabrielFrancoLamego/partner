@@ -1,10 +1,33 @@
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canManageDailyOperations, isCompanyMasterOrAdmin } from "@/lib/permissions"
 import { logAudit } from "@/lib/audit"
 import { notifyUser } from "@/lib/notifications"
 
-/** Editar uma ocorrência — exclusivo de Gerente/Master/Admin. */
+function startOfDay(date: Date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+/**
+ * A Gerente só pode editar/excluir uma ocorrência até o fechamento do
+ * expediente do dia dela ser concluído — depois disso, só o Master (que
+ * também é quem pode reabrir/corrigir um fechamento já COMPLETED). Evita a
+ * Gerente alterar o histórico financeiro de um dia que já foi encerrado.
+ */
+async function assertEditableByRole(companyId: string, occurrenceDate: Date, role: string) {
+  if (isCompanyMasterOrAdmin(role as Parameters<typeof isCompanyMasterOrAdmin>[0])) return
+  const closing = await prisma.shiftClosing.findUnique({
+    where: { companyId_date: { companyId, date: startOfDay(occurrenceDate) } },
+    select: { status: true },
+  })
+  if (closing?.status === "COMPLETED") {
+    throw new ApiError(403, "O expediente deste dia já foi fechado — só o Master pode editar ou excluir esta ocorrência agora.")
+  }
+}
+
+/** Editar uma ocorrência — Gerente/Master/Admin, mas a Gerente só até o fechamento do dia. */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireCompanyStaff()
@@ -14,6 +37,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     const existing = await prisma.occurrence.findFirst({ where: { id, companyId } })
     if (!existing) throw new ApiError(404, "Ocorrência não encontrada")
+    await assertEditableByRole(companyId, existing.date, user.role)
 
     const body = await request.json()
     const { value, quantity, paymentMethod, paymentStatus, description, discountWaived } = body
@@ -45,7 +69,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 }
 
 /**
- * Excluir uma ocorrência — exclusivo de Gerente/Master/Admin. Quando a
+ * Excluir uma ocorrência — Gerente/Master/Admin, mas a Gerente só até o
+ * fechamento do expediente do dia (ver assertEditableByRole acima). Quando a
  * ocorrência é uma "Premiação de Meta" (type=META) gerada pela distribuição
  * automática de prêmio (ver lib/goal-rewards.ts), excluir aqui também
  * estorna o GoalPayout irmão — a dívida/crédito na carteira digital do
@@ -62,6 +87,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       include: { goalPayout: true },
     })
     if (!existing) throw new ApiError(404, "Ocorrência não encontrada")
+    await assertEditableByRole(user.companyId, existing.date, user.role)
 
     await prisma.$transaction(async (tx) => {
       if (existing.goalPayout) await tx.goalPayout.delete({ where: { id: existing.goalPayout.id } })

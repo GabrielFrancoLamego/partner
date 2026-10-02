@@ -460,7 +460,7 @@ function SubmitCompleteDialog({ checklist, onClose, onDone }: { checklist: Check
           </div>
           <div className="space-y-2">
             <Label>{requiresPhoto ? "Foto de comprovação *" : "Foto (opcional)"}</Label>
-            <Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required={requiresPhoto} />
+            <Input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required={requiresPhoto} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
@@ -578,7 +578,7 @@ function ExecuteDialog({ template, onClose, onDone }: { template: Template | nul
           </div>
           <div className="space-y-2">
             <Label>Foto de comprovação *</Label>
-            <Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required />
+            <Input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>

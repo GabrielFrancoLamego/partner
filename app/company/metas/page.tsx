@@ -483,7 +483,7 @@ function ReportResultDialog({ goal, onClose, onReported }: { goal: Progress; onC
           </div>
           <div className="space-y-2">
             <Label>Comprovante (opcional)</Label>
-            <Input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <Input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>

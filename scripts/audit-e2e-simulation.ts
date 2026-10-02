@@ -376,6 +376,10 @@ async function main() {
   await check("3.RBAC", "Colaborador comum tentando aprovar saque (Financeiro) -> 403", async () => {
     const anyWithdrawal = await prisma.withdrawal.findFirst({ where: { companyId: jeri.id } })
     if (!anyWithdrawal) return "sem Withdrawal de fixture para testar"
+    // Reseta pra PENDING — um Withdrawal já REJECTED/PAID de uma execução
+    // anterior responde com outro status (regra de negócio, não RBAC) antes
+    // mesmo de chegar na checagem de permissão que este teste quer validar.
+    await prisma.withdrawal.update({ where: { id: anyWithdrawal.id }, data: { status: "PENDING" } })
     const { status } = await api(S.anaJeri, "PATCH", `/api/company/finance/withdrawals/${anyWithdrawal.id}`, { status: "APPROVED" })
     return status === 403
   })
@@ -398,6 +402,7 @@ async function main() {
   await check("3.MultiTenancy", "Master da Lagoa NÃO consegue aprovar Withdrawal pertencente à Jeri (id de outra empresa)", async () => {
     const jeriWithdrawal = await prisma.withdrawal.findFirst({ where: { companyId: jeri.id } })
     if (!jeriWithdrawal) return "sem Withdrawal de fixture na Jeri para testar"
+    await prisma.withdrawal.update({ where: { id: jeriWithdrawal.id }, data: { status: "PENDING" } })
     const { status } = await api(S.masterLagoa, "PATCH", `/api/company/finance/withdrawals/${jeriWithdrawal.id}`, { status: "APPROVED" })
     return status === 404
   })

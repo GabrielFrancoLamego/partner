@@ -205,7 +205,7 @@ function ConfigTab() {
           <FileUploadField
             label="Foto de capa"
             hint="Tamanho recomendado: 1200x630px · Máx: 5MB"
-            accept="image/png,image/jpeg,image/webp"
+            accept="image/*"
             currentUrl={imageUrl || null}
             uploadEndpoint="/api/company/uploads"
             kind="internal-program-cover"

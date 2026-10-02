@@ -298,7 +298,7 @@ export default function CompanyProgramsPage() {
                 <input
                   ref={coverInputRef}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp"
+                  accept="image/*"
                   className="hidden"
                   onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0], "program-cover")}
                 />

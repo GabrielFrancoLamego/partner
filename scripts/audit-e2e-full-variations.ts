@@ -675,6 +675,33 @@ async function main() {
     return json.isMasterOverride === true || `isMasterOverride = ${json.isMasterOverride}`
   })
 
+  // Ocorrência de hoje — o dia JÁ tem fechamento COMPLETED (testes acima) —
+  // a Gerente não deve mais poder editar/excluir, só o Master.
+  let lockedOccurrenceId = ""
+  await check("F.Fechamento", "Ocorrência de um dia já fechado — Gerente NÃO pode editar/excluir (403)", async () => {
+    const createForm = new FormData()
+    createForm.set("employeeId", mColab.id)
+    createForm.set("type", "VALE")
+    createForm.set("value", "20")
+    const created = await api(M.master, "POST", "/api/company/occurrences", createForm, true)
+    if (created.status !== 201) return `criação falhou: status ${created.status} — ${JSON.stringify(created.json)}`
+    lockedOccurrenceId = created.json.id
+
+    const patch = await api(M.gerente, "PATCH", `/api/company/occurrences/${lockedOccurrenceId}`, { description: "tentativa indevida" })
+    if (patch.status !== 403) return `PATCH: esperado 403, veio ${patch.status}`
+    const del = await api(M.gerente, "DELETE", `/api/company/occurrences/${lockedOccurrenceId}`)
+    if (del.status !== 403) return `DELETE: esperado 403, veio ${del.status}`
+    return true
+  })
+
+  await check("F.Fechamento", "Mesma ocorrência — Master CONSEGUE editar e excluir mesmo com o dia fechado", async () => {
+    const patch = await api(M.master, "PATCH", `/api/company/occurrences/${lockedOccurrenceId}`, { description: "correção do Master" })
+    if (patch.status !== 200) return `PATCH: esperado 200, veio ${patch.status}`
+    const del = await api(M.master, "DELETE", `/api/company/occurrences/${lockedOccurrenceId}`)
+    if (del.status !== 200) return `DELETE: esperado 200, veio ${del.status}`
+    return true
+  })
+
   // ===========================================================================
   // FASE G — Escalonamento de Checklist (ausência do responsável)
   // ===========================================================================

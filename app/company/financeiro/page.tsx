@@ -262,7 +262,7 @@ function WithdrawalsList() {
               fileInputRefs.current[withdrawal.id] = el
             }}
             type="file"
-            accept="image/png,image/jpeg,image/webp,application/pdf"
+            accept="image/*,application/pdf"
             className="hidden"
             onChange={(e) => handleUploadProof(withdrawal.id, e.target.files?.[0])}
           />

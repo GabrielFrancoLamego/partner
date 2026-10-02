@@ -336,7 +336,7 @@ function NewMessageDialog({ onClose, onSent }: { onClose: () => void; onSent: ()
             <Input
               type="file"
               multiple
-              accept="image/png,image/jpeg,image/webp,application/pdf"
+              accept="image/*,application/pdf"
               onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
             />
             {files.length > 0 && <p className="text-xs text-gray-500">{files.length} arquivo(s) selecionado(s)</p>}

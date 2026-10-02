@@ -240,14 +240,21 @@ function MasterPanel({ master }: { master: NonNullable<DashboardData["master"]> 
       {master.riskEmployees.length > 0 && (
         <AdminCard title="Mapa de Riscos de RH" icon={AlertTriangle}>
           <div className="space-y-1">
-            {master.riskEmployees.map((e) => (
-              <Link key={e.id} href={`/company/colaboradores/${e.id}`} className="flex items-center justify-between py-1.5 text-sm hover:bg-gray-50 rounded-lg px-1 -mx-1">
-                <span className="text-[#3E2415]">{e.name}</span>
-                <span className="text-xs text-red-600 font-medium">
-                  Score mensal {e.monthlyScore} · {e.recentFlags} ocorrência(s) recente(s)
-                </span>
-              </Link>
-            ))}
+            {master.riskEmployees.map((e) => {
+              // Mostra explicitamente POR QUE entrou no mapa — baixa pontuação
+              // e ocorrências disciplinares recentes são sinais independentes
+              // (alguém pode ter boa pontuação no mês e ainda assim ter levado
+              // 2+ advertências/faltas recentes, o que já merece atenção).
+              const reasons: string[] = []
+              if (e.monthlyScore < 50) reasons.push(`pontuação baixa (${e.monthlyScore} Pts no mês)`)
+              if (e.recentFlags >= 2) reasons.push(`${e.recentFlags} ocorrência(s) disciplinar(es) recente(s)`)
+              return (
+                <Link key={e.id} href={`/company/colaboradores/${e.id}`} className="flex items-center justify-between py-1.5 text-sm hover:bg-gray-50 rounded-lg px-1 -mx-1 gap-3">
+                  <span className="text-[#3E2415]">{e.name}</span>
+                  <span className="text-xs text-red-600 font-medium text-right">{reasons.join(" · ")}</span>
+                </Link>
+              )
+            })}
           </div>
         </AdminCard>
       )}
