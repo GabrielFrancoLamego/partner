@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { StatusBadge, LoadingState, EmptyState, AdminCard } from "@/components/admin/admin-ui"
 import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
-import { canManageFinance } from "@/lib/permissions"
+import { canManageFinance, canManageDailyOperations } from "@/lib/permissions"
 
 type Withdrawal = {
   id: string
@@ -39,10 +40,14 @@ const currency = (value: string | null) => (value === null ? "—" : Number(valu
 
 export default function CompanyFinanceiroPage() {
   const user = useCompanyUser()
-  const allowed = canManageFinance(user.role) || user.isFinanceResponsible
+  // Gerente também acessa (visualiza ocorrências financeiras + quita, ver
+  // ReceivablesList) — aprovar Comissão/Saque PIX de Parceiro continua
+  // exclusivo do Financeiro/Master (canApproveFinance abaixo).
+  const allowed = canManageFinance(user.role) || user.isFinanceResponsible || canManageDailyOperations(user.role)
+  const canApproveFinance = canManageFinance(user.role) || user.isFinanceResponsible
 
   if (!allowed) {
-    return <EmptyState message="Acesso restrito ao Master e ao Responsável pelo Financeiro." />
+    return <EmptyState message="Acesso restrito ao Master, Gerente e ao Responsável pelo Financeiro." />
   }
 
   return (
@@ -67,10 +72,10 @@ export default function CompanyFinanceiroPage() {
               </TabsList>
               <div className="mt-4">
                 <TabsContent value="commissions-sub">
-                  <CommissionsList />
+                  <CommissionsList canApprove={canApproveFinance} />
                 </TabsContent>
                 <TabsContent value="withdrawals-sub">
-                  <WithdrawalsList />
+                  <WithdrawalsList canApprove={canApproveFinance} />
                 </TabsContent>
               </div>
             </Tabs>
@@ -87,7 +92,7 @@ export default function CompanyFinanceiroPage() {
   )
 }
 
-function CommissionsList() {
+function CommissionsList({ canApprove }: { canApprove: boolean }) {
   const [commissions, setCommissions] = useState<Commission[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -110,7 +115,8 @@ function CommissionsList() {
 
   const commissionActions = (c: Commission) => (
     <>
-      {(c.status === "PENDING" || c.status === "AWAITING_VALUE") && (
+      {!canApprove && <span className="text-xs text-gray-400">Só Financeiro/Master</span>}
+      {canApprove && (c.status === "PENDING" || c.status === "AWAITING_VALUE") && (
         <>
           <Button variant="ghost" size="icon" className="text-green-600" onClick={() => handleUpdate(c.id, "APPROVED")}>
             <Check className="h-4 w-4" />
@@ -120,7 +126,7 @@ function CommissionsList() {
           </Button>
         </>
       )}
-      {c.status === "APPROVED" && (
+      {canApprove && c.status === "APPROVED" && (
         <Button variant="ghost" size="icon" className="text-green-600" onClick={() => handleUpdate(c.id, "PAID")}>
           <Banknote className="h-4 w-4" />
         </Button>
@@ -204,7 +210,7 @@ function CommissionsList() {
   )
 }
 
-function WithdrawalsList() {
+function WithdrawalsList({ canApprove }: { canApprove: boolean }) {
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
@@ -282,7 +288,8 @@ function WithdrawalsList() {
 
   const withdrawalActions = (withdrawal: Withdrawal) => (
     <>
-      {withdrawal.status === "PENDING" && (
+      {!canApprove && <span className="text-xs text-gray-400">Só Financeiro/Master</span>}
+      {canApprove && withdrawal.status === "PENDING" && (
         <>
           <Button variant="ghost" size="icon" className="text-green-600" onClick={() => handleUpdate(withdrawal.id, "APPROVED")}>
             <Check className="h-4 w-4" />
@@ -292,7 +299,7 @@ function WithdrawalsList() {
           </Button>
         </>
       )}
-      {withdrawal.status === "APPROVED" && (
+      {canApprove && withdrawal.status === "APPROVED" && (
         <Button variant="ghost" size="icon" className="text-green-600" onClick={() => handleUpdate(withdrawal.id, "PAID")}>
           <Banknote className="h-4 w-4" />
         </Button>
@@ -362,12 +369,13 @@ function WithdrawalsList() {
   )
 }
 
+type ReceivableOccurrence = { id: string; type: string; total: number; status: string; date: string; description: string | null; paymentProofUrl: string | null }
 type ReceivableRow = {
   employeeId: string
   employeeName: string
   pendingAmount: number
   paidAmount: number
-  occurrences: { type: string; total: number; status: string; date: string; description: string | null }[]
+  occurrences: ReceivableOccurrence[]
   goalPayouts: { goalName: string; amount: number; status: string; rewardType: string; period: string; paidAt: string; note: string | null }[]
   redemptions: { itemName: string; costXp: number; status: string; createdAt: string }[]
 }
@@ -376,12 +384,15 @@ function ReceivablesList() {
   const [rows, setRows] = useState<ReceivableRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [paying, setPaying] = useState<ReceivableOccurrence | null>(null)
 
-  useEffect(() => {
+  const reload = () => {
+    setIsLoading(true)
     adminFetch<ReceivableRow[]>("/api/company/finance/receivables")
       .then(setRows)
       .finally(() => setIsLoading(false))
-  }, [])
+  }
+  useEffect(reload, [])
 
   if (isLoading) return <LoadingState />
   if (rows.length === 0) return <EmptyState message="Nenhum colaborador ativo nesta empresa." />
@@ -406,14 +417,26 @@ function ReceivablesList() {
                 <p className="text-xs text-gray-400">Sem lançamentos financeiros registrados.</p>
               ) : (
                 <>
-                  {r.occurrences.map((o, i) => (
-                    <div key={`occ-${i}`} className="flex items-center justify-between text-xs">
+                  {r.occurrences.map((o) => (
+                    <div key={o.id} className="flex items-center justify-between gap-2 text-xs flex-wrap">
                       <span className="text-gray-600">
                         {o.type} {o.description && `— ${o.description}`} · {new Date(o.date).toLocaleDateString("pt-BR")}
                       </span>
-                      <span className={o.status === "PAID" ? "text-green-700 font-medium" : "text-amber-700 font-medium"}>
-                        {currency(String(o.total))} ({o.status === "PAID" ? "Pago" : "Pendente"})
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {o.paymentProofUrl && (
+                          <a href={o.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="text-[#F58220] underline">
+                            Comprovante
+                          </a>
+                        )}
+                        <span className={o.status === "PAID" ? "text-green-700 font-medium" : "text-amber-700 font-medium"}>
+                          {currency(String(o.total))} ({o.status === "PAID" ? "Pago" : "Pendente"})
+                        </span>
+                        {o.status === "PENDING" && (
+                          <Button size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => setPaying(o)}>
+                            Marcar como Pago
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ))}
                   {r.goalPayouts.map((p, i) => (
@@ -439,7 +462,64 @@ function ReceivablesList() {
           )}
         </div>
       ))}
+      {paying && (
+        <MarkOccurrencePaidDialog
+          occurrence={paying}
+          onClose={() => setPaying(null)}
+          onDone={() => {
+            setPaying(null)
+            reload()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+function MarkOccurrencePaidDialog({ occurrence, onClose, onDone }: { occurrence: ReceivableOccurrence; onClose: () => void; onDone: () => void }) {
+  const [file, setFile] = useState<File | null>(null)
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    setIsSubmitting(true)
+    try {
+      const body = new FormData()
+      if (file) body.append("file", file)
+      await adminFetch(`/api/company/occurrences/${occurrence.id}/mark-paid`, { method: "POST", body })
+      onDone()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao registrar pagamento")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Marcar como Pago — {currency(String(occurrence.total))}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="space-y-2">
+            <Label>Comprovante de pagamento (opcional)</Label>
+            <Input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+              Confirmar Pagamento
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 

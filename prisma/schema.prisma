@@ -173,6 +173,17 @@ enum ChecklistStatus {
   REJECTED
 }
 
+// Destinatário de um ChecklistTemplate — SPECIFIC usa primary/secondaryEmployeeId
+// (comportamento original); FREE/SECTOR/TAG geram UMA instância compartilhada
+// por dia (Checklist.employeeId null até alguém clicar "Vou Fazer" — ver
+// lib/checklist-engine.ts e app/api/company/checklists/[id]/claim).
+enum ChecklistAssignmentType {
+  SPECIFIC
+  FREE
+  SECTOR
+  TAG
+}
+
 enum ChecklistRecurrence {
   DAILY
   WEEKLY
@@ -638,6 +649,7 @@ model User {
   postReactions                PostReaction[]              @relation("PostReactionUser")
   occurrencesReceived          Occurrence[]                @relation("OccurrenceEmployee")
   occurrencesCreated           Occurrence[]                @relation("OccurrenceCreatedBy")
+  occurrencesPaid              Occurrence[]                @relation("OccurrencePaidBy")
   occurrenceTypeConfigsMade    OccurrenceTypeConfig[]      @relation("OccurrenceTypeConfigCreatedBy")
   dailyEvaluationsReceived     DailyEvaluation[]           @relation("DailyEvaluationEmployee")
   dailyEvaluationsGiven        DailyEvaluation[]           @relation("DailyEvaluationEvaluator")
@@ -779,6 +791,11 @@ model EmployeeProfile {
   // Responsável pelo Módulo Financeiro da empresa (além do Master) — ver
   // lib/permissions.ts#canAccessFinanceModule.
   isFinanceResponsible Boolean @default(false)
+
+  // Etiqueta livre (ex: "Cozinha", "Caixa", "Limpeza") usada por
+  // ChecklistTemplate.targetTag pra endereçar tarefas livres a um grupo de
+  // colaboradores que não corresponde exatamente a um Setor formal.
+  tag String?
 
   // Responsável por receber Comunicações Internas destinadas ao seu Setor
   // (ver InternalMessage, recipientType = SECTOR).
@@ -1301,9 +1318,25 @@ model ChecklistTemplate {
   secondaryEmployeeId String?
   secondaryEmployee   User?   @relation("ChecklistTemplateSecondary", fields: [secondaryEmployeeId], references: [id])
 
+  // SECTOR/TAG/FREE: a tarefa "aparece" pra todo colaborador elegível
+  // simultaneamente — o primeiro que clicar "Vou Fazer" reserva pra si (ver
+  // enum ChecklistAssignmentType acima). secondary/primaryEmployeeId ficam
+  // null nesses 3 modos (campo de responsável secundário é omitido na tela).
+  assignmentType   ChecklistAssignmentType @default(SPECIFIC)
+  targetSectorId   String?
+  targetSector     Sector?                 @relation(fields: [targetSectorId], references: [id])
+  targetTag        String? // casa com EmployeeProfile.tag
+
+  // Se false, a entrega do colaborador já nasce APPROVED (sem passar por
+  // SUBMITTED aguardando double-check) — ver app/api/company/checklists/[id]/submit.
+  // Mesmo auto-aprovada, Gerente/Master podem "Recusar/Reabrir" enquanto o
+  // fechamento do expediente do dia não for concluído.
+  requiresApproval Boolean @default(true)
+
   instances Checklist[]
 
   @@index([companyId])
+  @@index([targetSectorId])
 }
 
 // Instância diária de um ChecklistTemplate (ou tarefa avulsa quando templateId
@@ -1318,8 +1351,20 @@ model Checklist {
   unit             Unit?              @relation(fields: [unitId], references: [id])
   templateId       String? // null = tarefa avulsa, não vinculada a uma recorrência
   template         ChecklistTemplate? @relation(fields: [templateId], references: [id])
-  employeeId       String
-  employee         User               @relation("ChecklistEmployee", fields: [employeeId], references: [id])
+  // Null = tarefa compartilhada (FREE/SECTOR/TAG) ainda não reservada por
+  // ninguém — qualquer colaborador elegível a vê e pode "Vou Fazer"
+  // (claimedAt grava o momento da reserva). Vira obrigatório assim que
+  // alguém reserva, e some do pool pra todo mundo (ver app/api/company/checklists/[id]/claim).
+  employeeId       String?
+  employee         User?              @relation("ChecklistEmployee", fields: [employeeId], references: [id])
+  claimedAt        DateTime?
+  // Cópia do template no momento da criação (não um join), pra filtrar
+  // elegibilidade de quem ainda não reservou sem precisar seguir templateId
+  // (tarefas avulsas não têm template, mas também não ficam "livres pra reservar").
+  targetSectorId   String?
+  targetSector     Sector?            @relation(fields: [targetSectorId], references: [id])
+  targetTag        String?
+  requiresApproval Boolean            @default(true)
   forDate          DateTime // dia (00:00) a que esta instância pertence — chave de deduplicação com templateId
   title            String
   notes            String?
@@ -1350,6 +1395,7 @@ model Checklist {
   @@index([status])
   @@index([templateId])
   @@index([forDate])
+  @@index([targetSectorId])
 }
 
 // Histórico de transferência de atribuição de um checklist entre colaboradores
@@ -1671,6 +1717,14 @@ model Occurrence {
   createdBy            User                     @relation("OccurrenceCreatedBy", fields: [createdById], references: [id])
   createdAt            DateTime                 @default(now())
 
+  // Comprovante de pagamento anexado ao marcar a ocorrência como Paga/Quitada
+  // no Financeiro (ver app/api/company/occurrences/[id]/mark-paid) — distinto
+  // de attachmentUrl, que é a evidência do REGISTRO da ocorrência, não do pagamento.
+  paymentProofUrl String?
+  paidAt          DateTime?
+  paidById        String?
+  paidBy          User?     @relation("OccurrencePaidBy", fields: [paidById], references: [id])
+
   // Preenchido só quando esta Occurrence (type=META) foi gerada pela
   // distribuição automática de prêmio de Meta batida (ver lib/goal-rewards.ts)
   // — permite que excluir a ocorrência estorne o GoalPayout correspondente.
@@ -1892,6 +1946,8 @@ model Sector {
   registrationLinks    PublicRegistrationLink[]
   registrationRequests PublicRegistrationRequest[]
   internalMessages     InternalMessage[]
+  checklistTemplates   ChecklistTemplate[]
+  checklists           Checklist[]
 
   @@unique([companyId, name])
   @@index([companyId])

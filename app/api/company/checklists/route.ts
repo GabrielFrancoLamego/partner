@@ -3,7 +3,7 @@ import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from
 import { canManageDailyOperations, canOperateFrontDesk } from "@/lib/permissions"
 import { uploadImage } from "@/lib/storage"
 import { logAudit } from "@/lib/audit"
-import { ensureTodayChecklistInstances } from "@/lib/checklist-engine"
+import { ensureTodayChecklistInstances, eligibleSharedChecklistWhere, previewChecklistsForDate } from "@/lib/checklist-engine"
 
 function startOfDay(date: Date) {
   const d = new Date(date)
@@ -22,16 +22,35 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const isTeamScope = searchParams.get("scope") === "team"
     const status = searchParams.get("status")
+    const dateParam = searchParams.get("date")
     if (isTeamScope) requireCapability(user, canManageDailyOperations)
+
+    // "Amanhã" (ou qualquer data futura) — sem instância real no banco ainda,
+    // devolve uma pré-visualização somente leitura a partir dos templates.
+    if (isTeamScope && dateParam) {
+      const target = startOfDay(new Date(dateParam))
+      if (target.getTime() > startOfDay(new Date()).getTime()) {
+        const preview = await previewChecklistsForDate(companyId, target)
+        return Response.json({ checklists: preview, efficiency: null, isPreview: true })
+      }
+    }
+
+    let scopeWhere: Record<string, unknown> = {}
+    if (!isTeamScope) {
+      const profile = await prisma.employeeProfile.findUnique({ where: { userId: user.id }, select: { sectorId: true, tag: true } })
+      // Minhas tarefas (já reservadas/atribuídas) + o pool compartilhado
+      // (FREE/SECTOR/TAG) ainda sem reserva que eu sou elegível a "Vou Fazer".
+      scopeWhere = { OR: [{ employeeId: user.id }, eligibleSharedChecklistWhere(profile?.tag ?? null, profile?.sectorId ?? null)] }
+    }
 
     const checklists = await prisma.checklist.findMany({
       where: {
         companyId,
-        ...(isTeamScope ? {} : { employeeId: user.id }),
+        ...scopeWhere,
         ...(status ? { status: status as "PENDING" | "SUBMITTED" | "APPROVED" | "RETURNED" | "REJECTED" } : {}),
       },
       include: {
-        employee: { select: { id: true, name: true, role: true } },
+        employee: { select: { id: true, name: true, role: true, employeeProfile: { select: { sectorId: true } } } },
         unit: { select: { id: true, name: true } },
         template: { select: { id: true, title: true, recurrence: true, requiresPhoto: true } },
       },
@@ -42,7 +61,9 @@ export async function GET(request: Request) {
     let efficiency: { total: number; approved: number; percent: number } | null = null
     if (!isTeamScope) {
       const today = startOfDay(new Date())
-      const todays = checklists.filter((c) => new Date(c.forDate).getTime() === today.getTime())
+      // Tarefas compartilhadas ainda não reservadas (employeeId null) não são
+      // "minhas" de fato ainda — não contam na eficiência até alguém reservar.
+      const todays = checklists.filter((c) => new Date(c.forDate).getTime() === today.getTime() && c.employeeId !== null)
       const total = todays.length
       const approved = todays.filter((c) => c.status === "APPROVED").length
       efficiency = { total, approved, percent: total > 0 ? Math.round((approved / total) * 100) : 100 }
@@ -55,11 +76,13 @@ export async function GET(request: Request) {
 }
 
 /**
- * Colaborador executa uma tarefa AVULSA (sem template) ou um template SEM
- * responsável pré-definido — o modelo antigo, livre. Templates com
- * primaryEmployeeId configurado já têm a instância do dia criada por
- * ensureTodayChecklistInstances(); para essas, o colaborador usa
- * POST .../[id]/submit na instância existente, não este endpoint.
+ * Colaborador registra uma tarefa AVULSA (sem template, sem recorrência) —
+ * qualquer ChecklistTemplate (SPECIFIC, FREE, SECTOR ou TAG) já tem a
+ * instância do dia criada preventivamente por ensureTodayChecklistInstances()
+ * (a de FREE/SECTOR/TAG fica compartilhada, employeeId null, até alguém
+ * reservar via POST .../[id]/claim) — pra executar uma tarefa de template, o
+ * colaborador sempre usa .../[id]/submit (claim primeiro, se for o caso),
+ * nunca este endpoint.
  */
 export async function POST(request: Request) {
   try {
@@ -68,34 +91,17 @@ export async function POST(request: Request) {
     const companyId = user.companyId
 
     const formData = await request.formData()
-    const templateId = formData.get("templateId")
     const titleRaw = formData.get("title")
     const notes = formData.get("notes")
     const priorityRaw = formData.get("priority")
     const file = formData.get("file")
 
-    let title = typeof titleRaw === "string" ? titleRaw.trim() : ""
-    let priority = typeof priorityRaw === "string" && priorityRaw ? priorityRaw : "MEDIUM"
-    let unitId: string | null = null
-    let dueAt: Date | null = null
-    let resolvedTemplateId: string | null = null
-    let requiresPhoto = true
-
-    if (typeof templateId === "string" && templateId) {
-      const template = await prisma.checklistTemplate.findFirst({ where: { id: templateId, companyId, active: true } })
-      if (!template) throw new ApiError(404, "Tarefa recorrente não encontrada")
-      if (template.primaryEmployeeId) {
-        throw new ApiError(400, "Esta tarefa já tem responsável definido — use a instância do dia atribuída a você")
-      }
-      resolvedTemplateId = template.id
-      title = title || template.title
-      priority = priorityRaw ? priority : template.priority
-      unitId = template.unitId
-      requiresPhoto = template.requiresPhoto
-      const [h, m] = template.dueTime.split(":").map(Number)
-      dueAt = new Date()
-      dueAt.setHours(h, m, 0, 0)
-    }
+    const title = typeof titleRaw === "string" ? titleRaw.trim() : ""
+    const priority = typeof priorityRaw === "string" && priorityRaw ? priorityRaw : "MEDIUM"
+    const unitId: string | null = null
+    const dueAt: Date | null = null
+    const resolvedTemplateId: string | null = null
+    const requiresPhoto = true
 
     if (!title) throw new ApiError(400, "Título é obrigatório")
     if (requiresPhoto && (!(file instanceof File) || file.size === 0)) {

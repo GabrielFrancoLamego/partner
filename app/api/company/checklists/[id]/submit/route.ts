@@ -3,6 +3,7 @@ import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from
 import { canOperateFrontDesk } from "@/lib/permissions"
 import { uploadImage } from "@/lib/storage"
 import { logAudit } from "@/lib/audit"
+import { applyChecklistReview } from "@/lib/checklist-review"
 
 /**
  * Colaborador entrega (com foto, se o template exigir) ou marca como não
@@ -52,7 +53,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
       const photoUrl = file instanceof File && file.size > 0 ? await uploadImage("checklists", file) : null
 
-      const updated = await prisma.checklist.update({
+      let updated = await prisma.checklist.update({
         where: { id },
         data: {
           status: "SUBMITTED",
@@ -63,6 +64,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         },
       })
       await logAudit({ userId: user.id, companyId, action: "SUBMIT", entity: "Checklist", entityId: id })
+
+      // Template sem "Exige Aprovação do Gestor" — conclui direto, sem passar
+      // pela fila de double-check (mesmo assim, Gerente/Master podem
+      // "Recusar/Reabrir" até o fechamento do expediente do dia).
+      if (!checklist.requiresApproval) {
+        const review = await applyChecklistReview({ checklistId: id, companyId, status: "APPROVED", reviewerId: user.id })
+        updated = review.updated
+        await logAudit({ userId: user.id, companyId, action: "APPROVED", entity: "Checklist", entityId: id, details: { autoApproved: true } })
+      }
+
       return Response.json(updated)
     }
 

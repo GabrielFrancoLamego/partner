@@ -14,6 +14,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const checklist = await prisma.checklist.findUnique({ where: { id } })
     if (!checklist) throw new ApiError(404, "Checklist não encontrado")
     if (checklist.employeeId === toUserId) throw new ApiError(400, "O checklist já está com este colaborador")
+    if (!checklist.employeeId) {
+      throw new ApiError(400, "Esta tarefa compartilhada ainda não tem responsável — não há de quem reatribuir (use a reserva normal, não reatribuição)")
+    }
 
     const [reassignment, updated] = await prisma.$transaction([
       prisma.checklistReassignment.create({

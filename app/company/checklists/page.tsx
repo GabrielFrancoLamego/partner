@@ -1,7 +1,25 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Plus, Power, Trash2, Pencil, Check, X, Camera, Undo2, PartyPopper, RefreshCcw, HandHelping, Minimize2 } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import {
+  Plus,
+  Power,
+  Trash2,
+  Pencil,
+  Check,
+  X,
+  Camera,
+  Undo2,
+  PartyPopper,
+  RefreshCcw,
+  HandHelping,
+  Minimize2,
+  HandMetal,
+  ChevronRight,
+  History,
+  Filter,
+  RotateCcw,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,7 +33,15 @@ import { LoadingState, EmptyState, StatusBadge } from "@/components/admin/admin-
 import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
 import { canManageDailyOperations } from "@/lib/permissions"
-import { resolveChecklistUrgency, CHECKLIST_URGENCY_CLASSES, CHECKLIST_URGENCY_TEXT_CLASSES } from "@/lib/checklist-urgency"
+import {
+  resolveChecklistUrgency,
+  resolveChecklistDisplayState,
+  CHECKLIST_URGENCY_CLASSES,
+  CHECKLIST_URGENCY_TEXT_CLASSES,
+  CHECKLIST_DISPLAY_CLASSES,
+  CHECKLIST_DISPLAY_TEXT_CLASSES,
+  sortChecklists,
+} from "@/lib/checklist-urgency"
 import { useSearchParams, useRouter } from "next/navigation"
 
 const RECURRENCE_LABELS: Record<string, string> = {
@@ -46,7 +72,15 @@ const MONTH_LABELS = [
   "Dezembro",
 ]
 
+const ASSIGNMENT_LABELS: Record<string, string> = {
+  SPECIFIC: "Colaborador Específico",
+  FREE: "Livre (Qualquer Colaborador)",
+  SECTOR: "Por Setor",
+  TAG: "Por Tag",
+}
+
 type Employee = { id: string; name: string }
+type Sector = { id: string; name: string }
 
 type Template = {
   id: string
@@ -59,10 +93,14 @@ type Template = {
   priority: string
   dueTime: string
   requiresPhoto: boolean
+  requiresApproval: boolean
   active: boolean
   unit: { id: string; name: string } | null
+  assignmentType: "SPECIFIC" | "FREE" | "SECTOR" | "TAG"
   primaryEmployee: Employee | null
   secondaryEmployee: Employee | null
+  targetSector: Sector | null
+  targetTag: string | null
   _count: { instances: number }
 }
 
@@ -76,11 +114,25 @@ type ChecklistInstance = {
   dueAt: string | null
   forDate: string
   createdAt: string
+  approvedAt: string | null
   isAutoReassigned: boolean
   isExtraTask: boolean
+  claimedAt: string | null
+  requiresApproval: boolean
   rejectionReason: string | null
-  employee: { id: string; name: string; role: string }
-  template: { id: string; title: string; requiresPhoto: boolean } | null
+  employee: { id: string; name: string; role: string; employeeProfile: { sectorId: string | null } | null } | null
+  template: { id: string; title: string; requiresPhoto: boolean; recurrence?: string } | null
+}
+
+type PreviewRow = {
+  id: string
+  title: string
+  notes: string | null
+  priority: string
+  dueAt: string
+  forDate: string
+  isPreview: true
+  destination: string
 }
 
 /**
@@ -181,25 +233,25 @@ type VolunteerOpportunity = {
 }
 
 function EmployeeView() {
-  const [templates, setTemplates] = useState<Template[]>([])
+  const user = useCompanyUser()
   const [instances, setInstances] = useState<ChecklistInstance[]>([])
   const [opportunities, setOpportunities] = useState<VolunteerOpportunity[]>([])
   const [efficiency, setEfficiency] = useState<{ total: number; approved: number; percent: number } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [executing, setExecuting] = useState<Template | "custom" | null>(null)
+  const [isCreatingAdhoc, setIsCreatingAdhoc] = useState(false)
   const [submitting, setSubmitting] = useState<ChecklistInstance | null>(null)
   const [markingNotExecuted, setMarkingNotExecuted] = useState<ChecklistInstance | null>(null)
   const [volunteering, setVolunteering] = useState<string | null>(null)
+  const [claiming, setClaiming] = useState<string | null>(null)
+  const [error, setError] = useState("")
 
   const reload = () => {
     setIsLoading(true)
     Promise.all([
-      adminFetch<Template[]>("/api/company/checklists/templates"),
       adminFetch<{ checklists: ChecklistInstance[]; efficiency: typeof efficiency }>("/api/company/checklists"),
       adminFetch<VolunteerOpportunity[]>("/api/company/checklists/volunteer"),
     ])
-      .then(([t, res, vol]) => {
-        setTemplates(t)
+      .then(([res, vol]) => {
         setInstances(res.checklists)
         setEfficiency(res.efficiency)
         setOpportunities(vol)
@@ -220,26 +272,43 @@ function EmployeeView() {
     }
   }
 
+  const handleClaim = async (checklistId: string) => {
+    setError("")
+    setClaiming(checklistId)
+    try {
+      await adminFetch(`/api/company/checklists/${checklistId}/claim`, { method: "POST" })
+      reload()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao reservar tarefa")
+      setTimeout(() => setError(""), 4000)
+    } finally {
+      setClaiming(null)
+    }
+  }
+
   if (isLoading) return <LoadingState />
 
   const pending = instances.filter((i) => i.status === "PENDING")
+  const myPending = sortChecklists(pending.filter((i) => i.employee))
+  const claimable = sortChecklists(pending.filter((i) => !i.employee))
   const awaitingReview = instances.filter((i) => i.status === "SUBMITTED")
   const finished = instances.filter((i) => ["APPROVED", "REJECTED"].includes(i.status)).slice(0, 20)
-  const freeTemplates = templates.filter((t) => !t.primaryEmployee)
 
   return (
     <div className="space-y-6">
+      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">{error}</p>}
+
       {efficiency && efficiency.total > 0 && (
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
           <EfficiencyBar percent={efficiency.percent} onCelebrationSeen={reload} />
         </div>
       )}
 
-      {pending.length > 0 && (
+      {myPending.length > 0 && (
         <div className="space-y-3">
           <h4 className="font-semibold text-[#3E2415]">Minhas tarefas de hoje</h4>
           <div className="grid gap-2">
-            {pending.map((i) => {
+            {myPending.map((i) => {
               const urgency = resolveChecklistUrgency(i.dueAt)
               return (
                 <div key={i.id} className={`p-3 rounded-xl border ${CHECKLIST_URGENCY_CLASSES[urgency]}`}>
@@ -256,6 +325,9 @@ function EmployeeView() {
                         Tarefa Extra
                       </span>
                     )}
+                    {i.claimedAt && (
+                      <span className="text-[10px] font-medium text-blue-700 bg-blue-50 rounded-full px-2 py-0.5">Reservada por você</span>
+                    )}
                     {urgency === "OVERDUE" && (
                       <span className="text-[10px] font-bold text-red-700 bg-red-100 rounded-full px-2 py-0.5">Atrasada</span>
                     )}
@@ -269,20 +341,54 @@ function EmployeeView() {
                     </p>
                   )}
                   <div className="flex flex-wrap gap-2 mt-2">
-                    <Button size="sm" variant="outline" disabled className="text-xs">
-                      Em andamento
-                    </Button>
                     <Button
                       size="sm"
                       onClick={() => setSubmitting(i)}
-                      className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white text-xs"
+                      className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white text-xs font-bold"
                     >
-                      <Camera className="h-3.5 w-3.5 mr-1" /> Concluído
+                      <Camera className="h-3.5 w-3.5 mr-1" /> Concluir
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => setMarkingNotExecuted(i)} className="text-xs text-red-600 border-red-200">
                       Não executado
                     </Button>
                   </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {claimable.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-semibold text-[#3E2415] flex items-center gap-1.5">
+            <HandMetal className="h-4 w-4 text-[#F58220]" /> Tarefas disponíveis — reserve a sua
+          </h4>
+          <p className="text-xs text-gray-500 -mt-2">O primeiro a clicar "Vou Fazer" reserva a tarefa — ela some da tela dos outros.</p>
+          <div className="grid gap-2">
+            {claimable.map((i) => {
+              const urgency = resolveChecklistUrgency(i.dueAt)
+              return (
+                <div key={i.id} className={`flex items-center justify-between gap-3 p-3 rounded-xl border flex-wrap ${CHECKLIST_URGENCY_CLASSES[urgency]}`}>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium text-[#3E2415] text-sm">{i.title}</p>
+                      <StatusBadge status={i.priority} />
+                    </div>
+                    {i.dueAt && (
+                      <p className={`text-xs mt-0.5 ${CHECKLIST_URGENCY_TEXT_CLASSES[urgency]}`}>
+                        Até às {new Date(i.dueAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={claiming === i.id}
+                    onClick={() => handleClaim(i.id)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
+                  >
+                    <HandMetal className="h-3.5 w-3.5 mr-1" /> Vou Fazer
+                  </Button>
                 </div>
               )
             })}
@@ -338,27 +444,7 @@ function EmployeeView() {
       )}
 
       <div className="space-y-3">
-        <h4 className="font-semibold text-[#3E2415]">Tarefas livres (sem responsável fixo)</h4>
-        {freeTemplates.length === 0 ? (
-          <EmptyState message="Nenhuma tarefa livre configurada." />
-        ) : (
-          <div className="grid gap-2">
-            {freeTemplates.map((t) => (
-              <div key={t.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-white">
-                <div>
-                  <p className="font-medium text-[#3E2415] text-sm">{t.title}</p>
-                  <p className="text-xs text-gray-500">
-                    {RECURRENCE_LABELS[t.recurrence]} até às {t.dueTime}
-                  </p>
-                </div>
-                <Button size="sm" onClick={() => setExecuting(t)} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
-                  <Camera className="h-4 w-4 mr-1" /> Executar
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-        <Button variant="outline" size="sm" onClick={() => setExecuting("custom")}>
+        <Button variant="outline" size="sm" onClick={() => setIsCreatingAdhoc(true)}>
           <Plus className="h-4 w-4 mr-1" /> Registrar tarefa avulsa
         </Button>
       </div>
@@ -381,12 +467,11 @@ function EmployeeView() {
         </div>
       )}
 
-      {executing && (
+      {isCreatingAdhoc && (
         <ExecuteDialog
-          template={executing === "custom" ? null : executing}
-          onClose={() => setExecuting(null)}
+          onClose={() => setIsCreatingAdhoc(false)}
           onDone={() => {
-            setExecuting(null)
+            setIsCreatingAdhoc(false)
             reload()
           }}
         />
@@ -454,6 +539,11 @@ function SubmitCompleteDialog({ checklist, onClose, onDone }: { checklist: Check
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <p className="text-sm text-red-600">{error}</p>}
+          {!checklist.requiresApproval && (
+            <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg p-2">
+              Esta tarefa não exige aprovação do Gestor — ao enviar, já conta como concluída.
+            </p>
+          )}
           <div className="space-y-2">
             <Label>Observações (opcional)</Label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -528,8 +618,9 @@ function SubmitNotExecutedDialog({ checklist, onClose, onDone }: { checklist: Ch
   )
 }
 
-function ExecuteDialog({ template, onClose, onDone }: { template: Template | null; onClose: () => void; onDone: () => void }) {
-  const [title, setTitle] = useState(template?.title ?? "")
+/** Tarefa avulsa (sem template) — exige foto sempre, criada já SUBMITTED. */
+function ExecuteDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [title, setTitle] = useState("")
   const [notes, setNotes] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [error, setError] = useState("")
@@ -545,7 +636,6 @@ function ExecuteDialog({ template, onClose, onDone }: { template: Template | nul
     setIsSubmitting(true)
     try {
       const body = new FormData()
-      if (template) body.append("templateId", template.id)
       if (title) body.append("title", title)
       if (notes) body.append("notes", notes)
       body.append("file", file)
@@ -562,16 +652,14 @@ function ExecuteDialog({ template, onClose, onDone }: { template: Template | nul
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{template ? template.title : "Tarefa avulsa"}</DialogTitle>
+          <DialogTitle>Tarefa avulsa</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <p className="text-sm text-red-600">{error}</p>}
-          {!template && (
-            <div className="space-y-2">
-              <Label>Título</Label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label>Título</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
+          </div>
           <div className="space-y-2">
             <Label>Observações</Label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -595,19 +683,19 @@ function ExecuteDialog({ template, onClose, onDone }: { template: Template | nul
 }
 
 function ManagerView() {
-  const [tab, setTab] = useState("master")
+  const [tab, setTab] = useState("day")
   const [createSignal, setCreateSignal] = useState(0)
 
   return (
     <Tabs value={tab} onValueChange={setTab}>
       <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-        <TabsTrigger value="master" className="flex-shrink-0">Checklist Master</TabsTrigger>
+        <TabsTrigger value="day" className="flex-shrink-0">Checklist do Dia</TabsTrigger>
         <TabsTrigger value="templates" className="flex-shrink-0">Tarefas Recorrentes</TabsTrigger>
         <TabsTrigger value="review" className="flex-shrink-0">Aprovações</TabsTrigger>
       </TabsList>
       <div className="bg-white rounded-2xl p-4 md:p-6 shadow-md border border-gray-100 mt-4">
-        <TabsContent value="master">
-          <MasterTab
+        <TabsContent value="day">
+          <DayView
             onCreateTask={() => {
               setTab("templates")
               setCreateSignal((n) => n + 1)
@@ -625,73 +713,259 @@ function ManagerView() {
   )
 }
 
-/** Visão consolidada de TODAS as tarefas de hoje da empresa — quem é o responsável atual, prazo e status em tempo real. */
-function MasterTab({ onCreateTask }: { onCreateTask: () => void }) {
+type ViewMode = "today" | "tomorrow" | "history"
+
+function addDays(date: Date, days: number) {
+  const d = new Date(date)
+  d.setDate(d.getDate() + days)
+  return d
+}
+function startOfDay(date: Date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+/** Visão consolidada das tarefas da empresa — Hoje (com ações), Amanhã (prévia só leitura) e Histórico Concluído. */
+function DayView({ onCreateTask }: { onCreateTask: () => void }) {
+  const [viewMode, setViewMode] = useState<ViewMode>("today")
   const [instances, setInstances] = useState<ChecklistInstance[]>([])
+  const [preview, setPreview] = useState<PreviewRow[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [sectors, setSectors] = useState<Sector[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [reopening, setReopening] = useState<ChecklistInstance | null>(null)
+
+  const [recurrenceFilter, setRecurrenceFilter] = useState("")
+  const [priorityFilter, setPriorityFilter] = useState("")
+  const [search, setSearch] = useState("")
+  const [employeeFilter, setEmployeeFilter] = useState("")
+  const [sectorFilter, setSectorFilter] = useState("")
 
   const reload = () => {
     setIsLoading(true)
-    adminFetch<{ checklists: ChecklistInstance[] }>("/api/company/checklists?scope=team")
-      .then((res) => setInstances(res.checklists))
+    const requests: Promise<unknown>[] = [
+      adminFetch<Employee[]>("/api/company/employees"),
+      adminFetch<Sector[]>("/api/company/sectors"),
+    ]
+    if (viewMode === "tomorrow") {
+      const tomorrow = addDays(startOfDay(new Date()), 1).toISOString().slice(0, 10)
+      requests.push(adminFetch<{ checklists: PreviewRow[] }>(`/api/company/checklists?scope=team&date=${tomorrow}`))
+    } else {
+      requests.push(adminFetch<{ checklists: ChecklistInstance[] }>("/api/company/checklists?scope=team"))
+    }
+    Promise.all(requests)
+      .then(([e, s, res]) => {
+        setEmployees(e as Employee[])
+        setSectors(s as Sector[])
+        if (viewMode === "tomorrow") setPreview((res as { checklists: PreviewRow[] }).checklists)
+        else setInstances((res as { checklists: ChecklistInstance[] }).checklists)
+      })
       .finally(() => setIsLoading(false))
   }
-  useEffect(reload, [])
+  useEffect(reload, [viewMode])
+
+  const rows = useMemo(() => {
+    const today = startOfDay(new Date()).getTime()
+    let list = instances
+    if (viewMode === "today") {
+      list = list.filter((c) => new Date(c.forDate).getTime() === today)
+    } else if (viewMode === "history") {
+      list = list.filter((c) => new Date(c.forDate).getTime() < today && ["APPROVED", "REJECTED"].includes(c.status))
+    }
+    if (recurrenceFilter) list = list.filter((c) => c.template?.recurrence === recurrenceFilter)
+    if (priorityFilter) list = list.filter((c) => c.priority === priorityFilter)
+    if (search.trim()) list = list.filter((c) => c.title.toLowerCase().includes(search.trim().toLowerCase()))
+    if (employeeFilter) list = list.filter((c) => c.employee?.id === employeeFilter)
+    if (sectorFilter) list = list.filter((c) => c.employee?.employeeProfile?.sectorId === sectorFilter)
+    return sortChecklists(list)
+  }, [instances, viewMode, recurrenceFilter, priorityFilter, search, employeeFilter, sectorFilter])
+
+  const previewRows = useMemo(() => {
+    let list = preview
+    if (priorityFilter) list = list.filter((c) => c.priority === priorityFilter)
+    if (search.trim()) list = list.filter((c) => c.title.toLowerCase().includes(search.trim().toLowerCase()))
+    return sortChecklists(list)
+  }, [preview, priorityFilter, search])
 
   if (isLoading) return <LoadingState />
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const todays = instances.filter((i) => new Date(i.forDate).getTime() === today.getTime())
-
-  if (todays.length === 0)
-    return (
-      <div className="space-y-3">
-        <div className="flex justify-end">
-          <Button size="sm" onClick={onCreateTask} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
-            <Plus className="h-4 w-4 mr-1" /> Criar Nova Tarefa
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+          <Button type="button" size="sm" variant="ghost" onClick={() => setViewMode("today")} className={viewMode === "today" ? "text-xs bg-white shadow-sm text-[#3E2415] font-semibold" : "text-xs text-gray-500"}>
+            Hoje
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setViewMode("tomorrow")} className={viewMode === "tomorrow" ? "text-xs bg-white shadow-sm text-[#3E2415] font-semibold" : "text-xs text-gray-500"}>
+            <ChevronRight className="h-3.5 w-3.5 mr-1" /> Amanhã
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setViewMode("history")} className={viewMode === "history" ? "text-xs bg-white shadow-sm text-[#3E2415] font-semibold" : "text-xs text-gray-500"}>
+            <History className="h-3.5 w-3.5 mr-1" /> Histórico Concluído
           </Button>
         </div>
-        <EmptyState message="Nenhuma tarefa atribuída para hoje." />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={reload}>
+            <RefreshCcw className="h-3.5 w-3.5 mr-1" /> Atualizar
+          </Button>
+          <Button size="sm" onClick={onCreateTask} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+            <Plus className="h-4 w-4 mr-1" /> Nova Tarefa
+          </Button>
+        </div>
       </div>
-    )
 
-  return (
-    <div className="space-y-3">
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={reload}>
-          <RefreshCcw className="h-3.5 w-3.5 mr-1" /> Atualizar
-        </Button>
-        <Button size="sm" onClick={onCreateTask} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
-          <Plus className="h-4 w-4 mr-1" /> Criar Nova Tarefa
-        </Button>
+      <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-gray-50 border border-gray-100">
+        <Filter className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+        <Input placeholder="Buscar por nome..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-40 bg-white h-8 text-xs" />
+        {viewMode !== "tomorrow" && (
+          <>
+            <Select value={recurrenceFilter || "ALL"} onValueChange={(v) => setRecurrenceFilter(v === "ALL" ? "" : v)}>
+              <SelectTrigger className="w-36 bg-white h-8 text-xs">
+                <SelectValue placeholder="Recorrência" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Toda recorrência</SelectItem>
+                {Object.entries(RECURRENCE_LABELS).map(([v, label]) => (
+                  <SelectItem key={v} value={v}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={employeeFilter || "ALL"} onValueChange={(v) => setEmployeeFilter(v === "ALL" ? "" : v)}>
+              <SelectTrigger className="w-40 bg-white h-8 text-xs">
+                <SelectValue placeholder="Colaborador" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todo colaborador</SelectItem>
+                {employees.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>
+                    {e.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={sectorFilter || "ALL"} onValueChange={(v) => setSectorFilter(v === "ALL" ? "" : v)}>
+              <SelectTrigger className="w-36 bg-white h-8 text-xs">
+                <SelectValue placeholder="Setor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todo setor</SelectItem>
+                {sectors.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        )}
+        <Select value={priorityFilter || "ALL"} onValueChange={(v) => setPriorityFilter(v === "ALL" ? "" : v)}>
+          <SelectTrigger className="w-32 bg-white h-8 text-xs">
+            <SelectValue placeholder="Prioridade" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Toda prioridade</SelectItem>
+            <SelectItem value="HIGH">Alta</SelectItem>
+            <SelectItem value="MEDIUM">Média</SelectItem>
+            <SelectItem value="LOW">Baixa</SelectItem>
+          </SelectContent>
+        </Select>
+        {(recurrenceFilter || priorityFilter || search || employeeFilter || sectorFilter) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs text-gray-500"
+            onClick={() => {
+              setRecurrenceFilter("")
+              setPriorityFilter("")
+              setSearch("")
+              setEmployeeFilter("")
+              setSectorFilter("")
+            }}
+          >
+            <RotateCcw className="h-3 w-3 mr-1" /> Limpar
+          </Button>
+        )}
       </div>
-      <div className="grid gap-2">
-        {todays.map((i) => (
-          <div key={i.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 flex-wrap">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <p className="font-medium text-[#3E2415] text-sm">{i.title}</p>
-                <StatusBadge status={i.status} />
-                {i.isAutoReassigned && (
-                  <span className="text-[10px] font-medium text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">
-                    Reatribuída
-                  </span>
-                )}
-                {i.isExtraTask && (
-                  <span className="text-[10px] font-medium text-purple-700 bg-purple-50 rounded-full px-2 py-0.5">
-                    Tarefa Extra
-                  </span>
+
+      {viewMode === "tomorrow" ? (
+        previewRows.length === 0 ? (
+          <EmptyState message="Nenhuma tarefa recorrente prevista para amanhã." />
+        ) : (
+          <div className="grid gap-2">
+            {previewRows.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50/50 flex-wrap">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium text-[#3E2415] text-sm">{p.title}</p>
+                    <StatusBadge status={p.priority} />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {p.destination} · até às {new Date(p.dueAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
+                <span className="text-[10px] font-medium text-gray-400 bg-white border border-gray-200 rounded-full px-2 py-0.5">Prévia</span>
+              </div>
+            ))}
+          </div>
+        )
+      ) : rows.length === 0 ? (
+        <EmptyState message={viewMode === "history" ? "Nenhuma tarefa concluída em dias anteriores." : "Nenhuma tarefa atribuída para hoje."} />
+      ) : (
+        <div className="grid gap-2">
+          {rows.map((i) => {
+            const display = resolveChecklistDisplayState(i.status, i.dueAt)
+            const isLate = i.status === "REJECTED" || (i.dueAt && i.approvedAt && new Date(i.approvedAt) > new Date(i.dueAt))
+            return (
+              <div key={i.id} className={`flex items-center justify-between gap-3 p-3 rounded-xl border flex-wrap ${CHECKLIST_DISPLAY_CLASSES[display]}`}>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium text-[#3E2415] text-sm">{i.title}</p>
+                    <StatusBadge status={i.status} />
+                    <StatusBadge status={i.priority} />
+                    {i.isAutoReassigned && (
+                      <span className="text-[10px] font-medium text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">Reatribuída</span>
+                    )}
+                    {i.isExtraTask && (
+                      <span className="text-[10px] font-medium text-purple-700 bg-purple-50 rounded-full px-2 py-0.5">Tarefa Extra</span>
+                    )}
+                    {!i.requiresApproval && (
+                      <span className="text-[10px] font-medium text-blue-700 bg-blue-50 rounded-full px-2 py-0.5">Sem aprovação</span>
+                    )}
+                    {viewMode === "history" && isLate && (
+                      <span className="text-[10px] font-bold text-red-700 bg-red-100 rounded-full px-2 py-0.5">Atrasada</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Responsável: {i.employee?.name ?? "Aguardando reserva (tarefa livre)"}
+                    {i.dueAt && ` · Prazo: ${new Date(i.dueAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`}
+                  </p>
+                </div>
+                {viewMode === "today" && i.status === "APPROVED" && (
+                  <Button size="sm" variant="outline" className="text-xs text-amber-700 border-amber-200" onClick={() => setReopening(i)}>
+                    <Undo2 className="h-3.5 w-3.5 mr-1" /> Recusar/Reabrir
+                  </Button>
                 )}
               </div>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Responsável: {i.employee.name}
-                {i.dueAt && ` · Prazo: ${new Date(i.dueAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
+            )
+          })}
+        </div>
+      )}
+
+      {reopening && (
+        <ReviewNoteDialog
+          checklist={reopening}
+          title="Recusar/Reabrir tarefa concluída"
+          confirmLabel="Reabrir"
+          status="RETURNED"
+          onClose={() => setReopening(null)}
+          onDone={() => {
+            setReopening(null)
+            reload()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -699,6 +973,7 @@ function MasterTab({ onCreateTask }: { onCreateTask: () => void }) {
 function TemplatesTab({ openCreateSignal }: { openCreateSignal?: number }) {
   const [templates, setTemplates] = useState<Template[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [sectors, setSectors] = useState<Sector[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editing, setEditing] = useState<Template | null>(null)
@@ -713,10 +988,12 @@ function TemplatesTab({ openCreateSignal }: { openCreateSignal?: number }) {
     Promise.all([
       adminFetch<Template[]>("/api/company/checklists/templates"),
       adminFetch<Employee[]>("/api/company/employees"),
+      adminFetch<Sector[]>("/api/company/sectors"),
     ])
-      .then(([t, e]) => {
+      .then(([t, e, s]) => {
         setTemplates(t)
         setEmployees(e)
+        setSectors(s)
       })
       .finally(() => setIsLoading(false))
   }
@@ -737,6 +1014,13 @@ function TemplatesTab({ openCreateSignal }: { openCreateSignal?: number }) {
 
   if (isLoading) return <LoadingState />
 
+  const destinationLabel = (t: Template) => {
+    if (t.assignmentType === "SPECIFIC") return t.primaryEmployee?.name ?? "livre (qualquer colaborador)"
+    if (t.assignmentType === "SECTOR") return `Setor: ${t.targetSector?.name ?? "—"}`
+    if (t.assignmentType === "TAG") return `Tag: ${t.targetTag ?? "—"}`
+    return "Livre (qualquer colaborador)"
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
@@ -755,6 +1039,7 @@ function TemplatesTab({ openCreateSignal }: { openCreateSignal?: number }) {
                   <p className="font-medium text-[#3E2415] text-sm">{t.title}</p>
                   <StatusBadge status={t.priority} />
                   <StatusBadge status={t.active ? "ACTIVE" : "INACTIVE"} />
+                  <span className="text-[10px] font-medium text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">{ASSIGNMENT_LABELS[t.assignmentType]}</span>
                 </div>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {RECURRENCE_LABELS[t.recurrence]}
@@ -765,9 +1050,10 @@ function TemplatesTab({ openCreateSignal }: { openCreateSignal?: number }) {
                   {" "}até às {t.dueTime} · {t._count.instances} execuções
                 </p>
                 <p className="text-xs text-gray-500">
-                  Principal: {t.primaryEmployee?.name ?? "livre (qualquer colaborador)"}
-                  {t.secondaryEmployee && ` · Secundário: ${t.secondaryEmployee.name}`}
+                  {destinationLabel(t)}
+                  {t.assignmentType === "SPECIFIC" && t.secondaryEmployee && ` · Secundário: ${t.secondaryEmployee.name}`}
                   {!t.requiresPhoto && " · sem exigência de foto"}
+                  {!t.requiresApproval && " · sem aprovação do gestor"}
                 </p>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
@@ -788,6 +1074,7 @@ function TemplatesTab({ openCreateSignal }: { openCreateSignal?: number }) {
       {isCreateOpen && (
         <TemplateDialog
           employees={employees}
+          sectors={sectors}
           onClose={() => setIsCreateOpen(false)}
           onSaved={() => {
             setIsCreateOpen(false)
@@ -799,6 +1086,7 @@ function TemplatesTab({ openCreateSignal }: { openCreateSignal?: number }) {
         <TemplateDialog
           template={editing}
           employees={employees}
+          sectors={sectors}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)
@@ -813,11 +1101,13 @@ function TemplatesTab({ openCreateSignal }: { openCreateSignal?: number }) {
 function TemplateDialog({
   template,
   employees,
+  sectors,
   onClose,
   onSaved,
 }: {
   template?: Template
   employees: Employee[]
+  sectors: Sector[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -830,8 +1120,12 @@ function TemplateDialog({
   const [priority, setPriority] = useState(template?.priority ?? "MEDIUM")
   const [dueTime, setDueTime] = useState(template?.dueTime ?? "18:00")
   const [requiresPhoto, setRequiresPhoto] = useState(template?.requiresPhoto ?? true)
+  const [requiresApproval, setRequiresApproval] = useState(template?.requiresApproval ?? true)
+  const [assignmentType, setAssignmentType] = useState(template?.assignmentType ?? "SPECIFIC")
   const [primaryEmployeeId, setPrimaryEmployeeId] = useState<string>(template?.primaryEmployee?.id ?? "none")
   const [secondaryEmployeeId, setSecondaryEmployeeId] = useState<string>(template?.secondaryEmployee?.id ?? "none")
+  const [targetSectorId, setTargetSectorId] = useState<string>(template?.targetSector?.id ?? "")
+  const [targetTag, setTargetTag] = useState(template?.targetTag ?? "")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -842,6 +1136,14 @@ function TemplateDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    if (assignmentType === "SECTOR" && !targetSectorId) {
+      setError("Selecione o setor de destino")
+      return
+    }
+    if (assignmentType === "TAG" && !targetTag.trim()) {
+      setError("Informe a tag de destino")
+      return
+    }
     setIsSubmitting(true)
     try {
       const payload = {
@@ -854,8 +1156,12 @@ function TemplateDialog({
         priority,
         dueTime,
         requiresPhoto,
-        primaryEmployeeId: primaryEmployeeId !== "none" ? primaryEmployeeId : null,
-        secondaryEmployeeId: secondaryEmployeeId !== "none" ? secondaryEmployeeId : null,
+        requiresApproval,
+        assignmentType,
+        primaryEmployeeId: assignmentType === "SPECIFIC" && primaryEmployeeId !== "none" ? primaryEmployeeId : null,
+        secondaryEmployeeId: assignmentType === "SPECIFIC" && secondaryEmployeeId !== "none" ? secondaryEmployeeId : null,
+        targetSectorId: assignmentType === "SECTOR" ? targetSectorId : null,
+        targetTag: assignmentType === "TAG" ? targetTag.trim() : null,
       }
       if (template) {
         await adminFetch(`/api/company/checklists/templates/${template.id}`, { method: "PATCH", body: JSON.stringify(payload) })
@@ -987,45 +1293,96 @@ function TemplateDialog({
             Exige foto de comprovação na entrega
           </label>
 
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <Checkbox checked={requiresApproval} onCheckedChange={(v) => setRequiresApproval(v === true)} />
+            Exige Aprovação do Gestor (se desativado, conclui direto ao entregar)
+          </label>
+
           <div className="space-y-3 pt-2 border-t border-gray-100">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Responsáveis (opcional)</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Principal</Label>
-                <Select value={primaryEmployeeId} onValueChange={setPrimaryEmployeeId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Livre (qualquer colaborador)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Livre (qualquer colaborador)</SelectItem>
-                    {employees.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Secundário</Label>
-                <Select value={secondaryEmployeeId} onValueChange={setSecondaryEmployeeId} disabled={primaryEmployeeId === "none"}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Nenhum" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Nenhum</SelectItem>
-                    {employees.filter((e) => e.id !== primaryEmployeeId).map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Destinatário da tarefa</p>
+            <div className="space-y-2">
+              <Label>Tipo</Label>
+              <Select value={assignmentType} onValueChange={(v) => setAssignmentType(v as Template["assignmentType"])}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(ASSIGNMENT_LABELS).map(([v, label]) => (
+                    <SelectItem key={v} value={v}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+
+            {assignmentType === "SPECIFIC" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Principal</Label>
+                  <Select value={primaryEmployeeId} onValueChange={setPrimaryEmployeeId}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Livre (qualquer colaborador)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Livre (qualquer colaborador)</SelectItem>
+                      {employees.map((e) => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Secundário</Label>
+                  <Select value={secondaryEmployeeId} onValueChange={setSecondaryEmployeeId} disabled={primaryEmployeeId === "none"}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Nenhum" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Nenhum</SelectItem>
+                      {employees.filter((e) => e.id !== primaryEmployeeId).map((e) => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            {assignmentType === "SECTOR" && (
+              <div className="space-y-2">
+                <Label>Setor de destino</Label>
+                <Select value={targetSectorId} onValueChange={setTargetSectorId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecione o setor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sectors.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {assignmentType === "TAG" && (
+              <div className="space-y-2">
+                <Label>Tag de destino</Label>
+                <Input value={targetTag} onChange={(e) => setTargetTag(e.target.value)} placeholder="Ex: Cozinha, Caixa, Limpeza" />
+                <p className="text-xs text-gray-400">Precisa casar com a tag cadastrada no perfil do colaborador (ver Colaboradores).</p>
+              </div>
+            )}
+
             <p className="text-xs text-gray-400">
-              Com principal definido, a tarefa é atribuída automaticamente todo dia. Se ele faltar (sem check-in ou
-              inativo), cai no secundário; se os dois faltarem, cai no Checklist Master da Gerente.
+              {assignmentType === "SPECIFIC"
+                ? "Com principal definido, a tarefa é atribuída automaticamente todo dia. Se ele faltar (sem check-in ou inativo), cai no secundário; se os dois faltarem, cai no Checklist da Gerente/Master."
+                : "A tarefa aparece simultaneamente pra todo colaborador elegível — o primeiro que clicar \"Vou Fazer\" reserva pra si, e ela some da tela dos outros."}
             </p>
           </div>
 
@@ -1052,7 +1409,7 @@ function ReviewTab() {
   const [rejecting, setRejecting] = useState<ChecklistInstance | null>(null)
 
   // Tarefa escalada para a própria Gerente só pode ser avaliada pelo Master (ver app/api/company/checklists/[id]).
-  const canReview = (i: ChecklistInstance) => !(user.role === "COMPANY_GERENTE" && i.employee.role === "COMPANY_GERENTE")
+  const canReview = (i: ChecklistInstance) => !(user.role === "COMPANY_GERENTE" && i.employee?.role === "COMPANY_GERENTE")
 
   const reload = () => {
     setIsLoading(true)
@@ -1079,7 +1436,7 @@ function ReviewTab() {
           <MobileCard
             key={i.id}
             title={i.title}
-            subtitle={i.employee.name}
+            subtitle={i.employee?.name ?? "—"}
             badges={<StatusBadge status={i.status} />}
             fields={[
               ...(i.rejectionReason ? [{ label: "Obs. do colaborador", value: i.rejectionReason }] : []),
@@ -1125,7 +1482,7 @@ function ReviewTab() {
                   {i.title}
                   {i.rejectionReason && <p className="text-xs text-gray-500 font-normal mt-0.5">{i.rejectionReason}</p>}
                 </td>
-                <td className="px-4 py-3 text-gray-600">{i.employee.name}</td>
+                <td className="px-4 py-3 text-gray-600">{i.employee?.name ?? "—"}</td>
                 <td className="px-4 py-3">
                   {i.photoUrl ? (
                     <a href={i.photoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#F58220] hover:underline">

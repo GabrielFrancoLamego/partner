@@ -263,11 +263,14 @@ export async function POST(request: Request) {
     })
     const exemptEmployeeIds = new Set(exemptOccurrences.map((o) => o.employeeId!))
 
+    // Tarefa compartilhada (FREE/SECTOR/TAG) que ninguém reservou não tem um
+    // responsável pra penalizar/notificar — ainda assim fica marcada REJECTED
+    // pra não ficar PENDING pra sempre, só sem XP nem notificação.
     const strandedChecklists = (
       await prisma.checklist.findMany({
         where: { companyId, forDate: date, status: "PENDING" },
       })
-    ).filter((c) => !exemptEmployeeIds.has(c.employeeId))
+    ).filter((c) => c.employeeId === null || !exemptEmployeeIds.has(c.employeeId))
     if (strandedChecklists.length > 0) {
       const rules = await getInternalProgramRules(companyId)
       await prisma.$transaction(async (tx) => {
@@ -276,12 +279,12 @@ export async function POST(request: Request) {
             where: { id: checklist.id },
             data: {
               status: "REJECTED",
-              rejectionReason: "Fechamento do dia sem entrega",
+              rejectionReason: checklist.employeeId ? "Fechamento do dia sem entrega" : "Ninguém reservou esta tarefa hoje",
               approvedById: user.id,
               approvedAt: now,
             },
           })
-          if (rules.pointsChecklistFail !== 0) {
+          if (checklist.employeeId && rules.pointsChecklistFail !== 0) {
             const hasEmployeeProfile = await tx.employeeProfile.findUnique({ where: { userId: checklist.employeeId } })
             if (hasEmployeeProfile) {
               await awardXp(
@@ -303,9 +306,11 @@ export async function POST(request: Request) {
       // Clareza para o colaborador: sem isso, uma tarefa que nunca foi
       // entregue vira "não entregue" silenciosamente no fechamento do dia.
       await Promise.all(
-        strandedChecklists.map((checklist) =>
+        strandedChecklists
+          .filter((checklist) => checklist.employeeId)
+          .map((checklist) =>
           notifyUser({
-            userId: checklist.employeeId,
+            userId: checklist.employeeId!,
             type: "GENERIC",
             title: `Checklist "${checklist.title}" marcado como não entregue`,
             message: `O expediente foi fechado sem nenhuma entrega desta tarefa${

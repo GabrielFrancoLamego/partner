@@ -26,6 +26,7 @@ type Employee = {
   id: string
   name: string
   sectorId: string | null
+  tag: string | null
   shiftType: "DAY" | "NIGHT" | null
   workStartTime: string | null
   workEndTime: string | null
@@ -338,6 +339,7 @@ function EmployeeScheduleDialog({
   onSaved: () => void
 }) {
   const [sectorId, setSectorId] = useState(employee.sectorId ?? "none")
+  const [tag, setTag] = useState(employee.tag ?? "")
   const [shiftType, setShiftType] = useState(employee.shiftType ?? "DAY")
   const [workStartTime, setWorkStartTime] = useState(employee.workStartTime ?? "08:00")
   const [workEndTime, setWorkEndTime] = useState(employee.workEndTime ?? "18:00")
@@ -369,6 +371,7 @@ function EmployeeScheduleDialog({
         method: "PATCH",
         body: JSON.stringify({
           sectorId: sectorId === "none" ? null : sectorId,
+          tag: tag.trim() || null,
           shiftType,
           workStartTime,
           workEndTime,
@@ -413,6 +416,11 @@ function EmployeeScheduleDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Tag (opcional)</Label>
+            <Input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="Ex: Cozinha, Caixa, Limpeza" />
+            <p className="text-xs text-gray-400">Usada em Checklists para endereçar tarefas livres por tag, além de Setor.</p>
           </div>
           <div className="space-y-2">
             <Label>Turno</Label>

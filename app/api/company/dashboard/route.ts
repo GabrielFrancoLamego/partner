@@ -318,7 +318,7 @@ export async function GET(request: Request) {
       const atrasos = pendingAdjustmentsToday
         .filter((a) => a.kind === "LATE_CHECKIN" && a.isNegativeForEmployee)
         .map((a) => ({ id: a.employeeId, name: a.employeeName }))
-      const checklistsAtrasados = dedupeById(lateChecklistsToday.map((c) => c.employee))
+      const checklistsAtrasados = dedupeById(lateChecklistsToday.map((c) => c.employee).filter(Boolean) as { id: string; name: string }[])
 
       master = {
         shiftClosingToday: todayClosing

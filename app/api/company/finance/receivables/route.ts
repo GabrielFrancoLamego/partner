@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
-import { requireCompanyStaff, requireFinanceAccess, handleApiError } from "@/lib/api-auth"
+import { requireCompanyStaff, handleApiError, ApiError } from "@/lib/api-auth"
+import { canManageDailyOperations, canAccessFinanceModule } from "@/lib/permissions"
 
 /**
  * Recebíveis e Carteira dos Colaboradores — mapeia por colaborador os bônus
@@ -11,7 +12,12 @@ import { requireCompanyStaff, requireFinanceAccess, handleApiError } from "@/lib
 export async function GET() {
   try {
     const user = await requireCompanyStaff()
-    requireFinanceAccess(user)
+    // Gerente também visualiza (e quita, ver .../occurrences/[id]/mark-paid) —
+    // só a aprovação de Comissão/Saque PIX de Parceiro continua exclusiva do
+    // Financeiro/Master (ver app/api/company/finance/commissions e withdrawals).
+    if (!canManageDailyOperations(user.role) && !canAccessFinanceModule(user)) {
+      throw new ApiError(403, "Sem permissão para esta ação")
+    }
     const companyId = user.companyId
 
     const employees = await prisma.user.findMany({
@@ -23,7 +29,7 @@ export async function GET() {
     const [occurrences, goalPayouts, redemptions] = await Promise.all([
       prisma.occurrence.findMany({
         where: { companyId, employeeId: { not: null }, total: { not: null } },
-        select: { employeeId: true, type: true, total: true, paymentStatus: true, date: true, description: true },
+        select: { id: true, employeeId: true, type: true, total: true, paymentStatus: true, date: true, description: true, paymentProofUrl: true },
         orderBy: { date: "desc" },
       }),
       prisma.goalPayout.findMany({
@@ -57,7 +63,15 @@ export async function GET() {
         employeeName: e.name,
         pendingAmount,
         paidAmount,
-        occurrences: empOccurrences.map((o) => ({ type: o.type, total: Number(o.total ?? 0), status: o.paymentStatus, date: o.date, description: o.description })),
+        occurrences: empOccurrences.map((o) => ({
+          id: o.id,
+          type: o.type,
+          total: Number(o.total ?? 0),
+          status: o.paymentStatus,
+          date: o.date,
+          description: o.description,
+          paymentProofUrl: o.paymentProofUrl,
+        })),
         goalPayouts: empPayouts.map((p) => ({
           goalName: p.goal.name,
           amount: Number(p.amount),

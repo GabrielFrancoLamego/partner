@@ -72,21 +72,22 @@ export async function isEmployeeAbsentToday(companyId: string, employeeId: strin
 }
 
 /**
- * Cria as instâncias de hoje para templates ativos que têm responsável
- * principal definido (templates sem responsável continuam no modelo antigo —
- * qualquer colaborador executa livremente, sem pré-atribuição). Idempotente:
- * não recria se já existe um Checklist para (templateId, forDate).
+ * Cria as instâncias de hoje para templates ativos de responsável ESPECÍFICO
+ * (assignmentType=SPECIFIC com primaryEmployeeId definido — templates sem
+ * responsável específico seguem matchesRecurrenceToday + o pool compartilhado
+ * em ensureTodaySharedChecklistInstances abaixo). Idempotente: não recria se
+ * já existe um Checklist para (templateId, forDate).
  *
  * Aplica a regra de reassumpção automática: ausente = status INACTIVE ou sem
  * check-in de ponto hoje. Principal ausente → cai no secundário; secundário
  * também ausente (ou inexistente) → cai no Master/Gerente da empresa.
  */
-export async function ensureTodayChecklistInstances(companyId: string) {
+async function ensureTodaySpecificChecklistInstances(companyId: string) {
   const today = startOfDay(new Date())
   const dayEnd = new Date(today.getTime() + 24 * 60 * 60 * 1000)
 
   const templates = await prisma.checklistTemplate.findMany({
-    where: { companyId, active: true, primaryEmployeeId: { not: null } },
+    where: { companyId, active: true, assignmentType: "SPECIFIC", primaryEmployeeId: { not: null } },
   })
 
   const applicable = templates.filter((t) => matchesRecurrenceToday(t, today))
@@ -132,6 +133,7 @@ export async function ensureTodayChecklistInstances(companyId: string) {
         unitId: template.unitId,
         templateId: template.id,
         employeeId: assigneeId,
+        requiresApproval: template.requiresApproval,
         forDate: today,
         title: template.title,
         notes: template.description,
@@ -154,4 +156,108 @@ export async function ensureTodayChecklistInstances(companyId: string) {
       })
     }
   }
+}
+
+/**
+ * Cria a instância COMPARTILHADA de hoje (employeeId=null) para templates
+ * FREE/SECTOR/TAG — aparece pra todo colaborador elegível até alguém
+ * reservar com "Vou Fazer" (ver app/api/company/checklists/[id]/claim).
+ * Idempotente: uma instância por template/dia.
+ */
+async function ensureTodaySharedChecklistInstances(companyId: string) {
+  const today = startOfDay(new Date())
+
+  const templates = await prisma.checklistTemplate.findMany({
+    where: { companyId, active: true, assignmentType: { in: ["FREE", "SECTOR", "TAG"] } },
+  })
+  const applicable = templates.filter((t) => matchesRecurrenceToday(t, today))
+  if (applicable.length === 0) return
+
+  const existing = await prisma.checklist.findMany({
+    where: { templateId: { in: applicable.map((t) => t.id) }, forDate: today },
+    select: { templateId: true },
+  })
+  const alreadyCreated = new Set(existing.map((e) => e.templateId))
+
+  for (const template of applicable) {
+    if (alreadyCreated.has(template.id)) continue
+    await prisma.checklist.create({
+      data: {
+        companyId,
+        unitId: template.unitId,
+        templateId: template.id,
+        employeeId: null,
+        targetSectorId: template.assignmentType === "SECTOR" ? template.targetSectorId : null,
+        targetTag: template.assignmentType === "TAG" ? template.targetTag : null,
+        requiresApproval: template.requiresApproval,
+        forDate: today,
+        title: template.title,
+        notes: template.description,
+        priority: template.priority,
+        dueAt: combineDateAndTime(today, template.dueTime),
+        status: "PENDING",
+      },
+    })
+  }
+}
+
+export async function ensureTodayChecklistInstances(companyId: string) {
+  await ensureTodaySpecificChecklistInstances(companyId)
+  await ensureTodaySharedChecklistInstances(companyId)
+}
+
+/** Filtro Prisma das tarefas compartilhadas (ainda sem reserva) elegíveis a este colaborador. */
+export function eligibleSharedChecklistWhere(employeeTag: string | null, employeeSectorId: string | null) {
+  return {
+    employeeId: null,
+    OR: [
+      { targetSectorId: null, targetTag: null }, // FREE
+      ...(employeeSectorId ? [{ targetSectorId: employeeSectorId }] : []),
+      ...(employeeTag ? [{ targetTag: employeeTag }] : []),
+    ],
+  }
+}
+
+export type ChecklistPreviewRow = {
+  id: string
+  title: string
+  notes: string | null
+  priority: string
+  dueAt: Date
+  forDate: Date
+  isPreview: true
+  destination: string // descrição legível de quem vai receber ("Colaborador X", "Setor Y", "Tag Z", "Livre")
+}
+
+/**
+ * "Amanhã" (ou qualquer data futura) é só leitura — sem Checklist no banco
+ * ainda (ensureTodayChecklistInstances só materializa o dia corrente). Monta
+ * uma pré-visualização a partir dos templates ativos que bateriam a
+ * recorrência naquela data, sem persistir nada.
+ */
+export async function previewChecklistsForDate(companyId: string, date: Date): Promise<ChecklistPreviewRow[]> {
+  const day = startOfDay(date)
+  const templates = await prisma.checklistTemplate.findMany({
+    where: { companyId, active: true },
+    include: { primaryEmployee: { select: { name: true } }, targetSector: { select: { name: true } } },
+  })
+  const applicable = templates.filter((t) => matchesRecurrenceToday(t, day))
+
+  return applicable.map((t) => ({
+    id: `preview:${t.id}:${day.toISOString()}`,
+    title: t.title,
+    notes: t.description,
+    priority: t.priority,
+    dueAt: combineDateAndTime(day, t.dueTime),
+    forDate: day,
+    isPreview: true,
+    destination:
+      t.assignmentType === "SPECIFIC"
+        ? t.primaryEmployee?.name ?? "A definir (sem responsável)"
+        : t.assignmentType === "SECTOR"
+          ? `Setor: ${t.targetSector?.name ?? "—"}`
+          : t.assignmentType === "TAG"
+            ? `Tag: ${t.targetTag ?? "—"}`
+            : "Livre (qualquer colaborador)",
+  }))
 }
