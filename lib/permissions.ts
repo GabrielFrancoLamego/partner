@@ -53,9 +53,9 @@ export function canOperateFrontDesk(role: Role) {
   return role === "EMPLOYEE" || role === "COMPANY_GERENTE" || role === "COMPANY_MASTER"
 }
 
-/** Bater ponto no GPS — exclusivo do Colaborador; Master e Gerente não registram ponto próprio. */
+/** Bater ponto no GPS — Colaborador e Gerente (quando tiverem horário configurado pelo Master); Master não registra ponto próprio. */
 export function canPunchTimeclock(role: Role) {
-  return role === "EMPLOYEE"
+  return role === "EMPLOYEE" || role === "COMPANY_GERENTE"
 }
 
 /** Master da empresa (ou Admin da plataforma) — ações exclusivas que nem a Gerente tem: editar um Fechamento já COMPLETED, ver o histórico de dias já fechados, moderar (ocultar/excluir) qualquer post do Mural, etc. */

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canConfigureCompany } from "@/lib/permissions"
 import { logAudit } from "@/lib/audit"
 
 async function findLevelInCompany(id: string, companyId: string) {
@@ -10,7 +10,7 @@ async function findLevelInCompany(id: string, companyId: string) {
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireCompanyStaff()
-    requireCapability(user, canManageDailyOperations)
+    requireCapability(user, canConfigureCompany)
     const { id } = await params
 
     const existing = await findLevelInCompany(id, user.companyId)
@@ -65,7 +65,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireCompanyStaff()
-    requireCapability(user, canManageDailyOperations)
+    requireCapability(user, canConfigureCompany)
     const { id } = await params
 
     const existing = await findLevelInCompany(id, user.companyId)

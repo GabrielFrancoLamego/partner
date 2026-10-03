@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { Clock, Camera, CheckCircle2, AlertTriangle, ExternalLink, Lock, ReceiptText, History, ChevronLeft, Check, X } from "lucide-react"
+import { useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from "react"
+import { Clock, Camera, CheckCircle2, AlertTriangle, ExternalLink, Lock, ReceiptText, History, ChevronLeft, Check, X, Save, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,7 +10,6 @@ import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, AdminCard, EmptyState, StatusBadge } from "@/components/admin/admin-ui"
 import { useCompanyUser } from "@/lib/company-user-context"
 import { canManageDailyOperations, isCompanyMasterOrAdmin } from "@/lib/permissions"
-import { ManagerEvaluationRoutine } from "@/components/company/manager-evaluation-routine"
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10)
@@ -195,8 +194,10 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
   const [summary, setSummary] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [error, setError] = useState("")
+  const [isSavingDraft, setIsSavingDraft] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
+  const evaluationStepRef = useRef<EvaluationStepHandle>(null)
 
   const reload = () => {
     setIsLoading(true)
@@ -221,24 +222,61 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
   const step0Done = isCompleted || Boolean(status?.checklist.step0Complete)
   const step1Done = isCompleted || Boolean(status?.checklist.step1Complete)
   const step2Done = isCompleted || Boolean(status?.checklist.step2Complete)
-  const step3Ready = Boolean((status?.closing?.receiptUrl || file) && revenueAmount)
-  const canFinish = step0Done && step1Done && step2Done && step3Ready
+  const hasPhoto = Boolean(status?.closing?.receiptUrl || file)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submitClosing = async (isDraft: boolean) => {
+    setError("")
+    const body = new FormData()
+    body.append("date", date)
+    if (revenueAmount) body.append("revenueAmount", revenueAmount)
+    if (summary) body.append("summary", summary)
+    if (file) body.append("file", file)
+    if (isDraft) body.append("isDraft", "true")
+    await adminFetch("/api/company/shift-closing", { method: "POST", body })
+  }
+
+  const handleSaveDraft = async () => {
+    setError("")
+    setIsSavingDraft(true)
+    try {
+      // Rascunho salva o que já estiver preenchido nas notas diárias também —
+      // sem exigir que todo mundo tenha nota ainda (ver EvaluationStep.saveDraft).
+      await evaluationStepRef.current?.saveDraft()
+      await submitClosing(true)
+      setSuccess(false)
+      reload()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao salvar rascunho")
+    } finally {
+      setIsSavingDraft(false)
+    }
+  }
+
+  const handleFinish = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
-    if (!canFinish) {
-      setError("Complete os 4 passos da sequência antes de finalizar o expediente")
+    if (!step0Done || !step1Done) {
+      setError("Complete os passos 0 e 1 antes de concluir o fechamento")
+      return
+    }
+    if (!hasPhoto) {
+      setError("A foto do comprovante de fechamento de caixa é obrigatória para concluir e enviar")
+      return
+    }
+    if (!revenueAmount) {
+      setError("Informe o faturamento total do dia")
       return
     }
     setIsSubmitting(true)
     try {
-      const body = new FormData()
-      body.append("date", date)
-      if (revenueAmount) body.append("revenueAmount", revenueAmount)
-      if (summary) body.append("summary", summary)
-      if (file) body.append("file", file)
-      await adminFetch("/api/company/shift-closing", { method: "POST", body })
+      // Garante que toda nota diária esteja preenchida e salva antes de finalizar.
+      const notesOk = await evaluationStepRef.current?.saveAllStrict()
+      if (notesOk === false) {
+        setError("Avalie todos os colaboradores presentes hoje antes de concluir o fechamento")
+        setIsSubmitting(false)
+        return
+      }
+      await submitClosing(false)
       setSuccess(true)
       reload()
     } catch (e) {
@@ -352,40 +390,38 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
                   : `Faltam avaliar: ${status.checklist.pendingEmployees.map((e) => e.name).join(", ")}.`}
               </p>
             </div>
-            <ManagerEvaluationRoutine onSaved={reload} />
+            <EvaluationStep ref={evaluationStepRef} date={date} onSaved={reload} disabled={isCompleted && !isMaster} />
           </AdminCard>
 
           <AdminCard title={isCompleted ? "Passo 3 — Fechamento registrado" : "Passo 3 — Faturamento Total do Caixa"}>
             <div className="flex items-center gap-2 mb-3">
               <StepBadge done={isCompleted} number={3} />
-              {!step0Done || !step1Done || !step2Done ? (
-                <p className="text-sm text-amber-700 flex items-center gap-1.5">
-                  <Lock className="h-4 w-4" /> Conclua os passos 0, 1 e 2 para liberar o fechamento.
-                </p>
-              ) : (
-                <p className="text-sm text-gray-600">Informe o faturamento total e anexe a foto do comprovante.</p>
-              )}
+              <p className="text-sm text-gray-600">
+                Informe o faturamento e anexe a foto do comprovante a qualquer momento — "Salvar como Rascunho" grava o
+                preenchimento parcial; "Concluir e Enviar Fechamento" exige os passos 0-2 completos e a foto anexada.
+              </p>
             </div>
             {success && isCompleted && (
               <div className="flex items-center gap-2 p-3 mb-4 bg-green-50 border border-green-200 rounded-xl text-sm text-green-800">
                 <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-                Fechamento salvo com sucesso.
+                Fechamento concluído e enviado com sucesso.
               </div>
             )}
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-4">
               {error && <p className="text-sm text-red-600">{error}</p>}
               <div className="space-y-2">
                 <Label>Faturamento total do dia (R$)</Label>
-                <Input type="number" step="0.01" value={revenueAmount} onChange={(e) => setRevenueAmount(e.target.value)} disabled={!step0Done || !step1Done || !step2Done} />
+                <Input type="number" step="0.01" value={revenueAmount} onChange={(e) => setRevenueAmount(e.target.value)} disabled={isCompleted && !isMaster} />
               </div>
               <div className="space-y-2">
-                <Label>Foto do comprovante de fechamento do caixa {!status.closing?.receiptUrl && "*"}</Label>
+                <Label>Foto do Comprovante de Fechamento de Caixa {!status.closing?.receiptUrl && "*"}</Label>
                 <Input
                   type="file"
                   accept="image/*,application/pdf"
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                  disabled={!step0Done || !step1Done || !step2Done}
+                  disabled={isCompleted && !isMaster}
                 />
+                <p className="text-xs text-gray-400">Obrigatória para concluir e enviar — sem ela, só é possível salvar como rascunho.</p>
                 {status.closing?.receiptUrl && (
                   <a href={status.closing.receiptUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-[#F58220] hover:underline w-fit">
                     <Camera className="h-3 w-3" /> Ver comprovante atual <ExternalLink className="h-3 w-3" />
@@ -394,17 +430,158 @@ function ShiftClosingPanel({ date, isMaster }: { date: string; isMaster: boolean
               </div>
               <div className="space-y-2">
                 <Label>Resumo do dia</Label>
-                <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Relato breve das ocorrências do expediente..." disabled={!step0Done || !step1Done || !step2Done} />
+                <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Relato breve das ocorrências do expediente..." disabled={isCompleted && !isMaster} />
               </div>
-              <Button type="submit" disabled={isSubmitting || !canFinish} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white disabled:opacity-40">
-                {isCompleted ? "Atualizar Fechamento" : "Finalizar Expediente"}
-              </Button>
-            </form>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isSavingDraft || isSubmitting || (isCompleted && !isMaster)}
+                  onClick={handleSaveDraft}
+                  className="flex-1"
+                >
+                  <Save className="h-4 w-4 mr-1.5" /> Salvar como Rascunho
+                </Button>
+                <Button
+                  type="button"
+                  disabled={isSubmitting || isSavingDraft || (isCompleted && !isMaster)}
+                  onClick={handleFinish}
+                  className="flex-1 bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white disabled:opacity-40"
+                >
+                  <Send className="h-4 w-4 mr-1.5" /> {isCompleted ? "Atualizar e Reenviar" : "Concluir e Enviar Fechamento"}
+                </Button>
+              </div>
+            </div>
           </AdminCard>
         </>
     </div>
   )
 }
+
+type EvaluationStepHandle = {
+  /** Salva só as linhas já preenchidas (parcial é permitido) — usado por "Salvar como Rascunho". */
+  saveDraft: () => Promise<void>
+  /** Exige TODO colaborador com nota válida; devolve false (sem salvar nada) se faltar alguém — usado por "Concluir e Enviar". */
+  saveAllStrict: () => Promise<boolean>
+}
+
+type EvalRow = { id: string; name: string; evaluation: { id: string; score: string; justification: string | null; evaluatedBy: { name: string } } | null }
+
+const NEUTRAL_BAND = 1
+
+/**
+ * Passo 2 do Fechamento — mesma regra de negócio de app/company/avaliacoes
+ * (nota + justificativa obrigatória fora de -1..1), mas SEM botão de salvar
+ * por linha: o rascunho fica só em estado local até o rodapé da página
+ * (Salvar Rascunho / Concluir e Enviar) decidir gravar tudo de uma vez.
+ */
+const EvaluationStep = forwardRef<EvaluationStepHandle, { date: string; onSaved: () => void; disabled?: boolean }>(function EvaluationStep(
+  { date, onSaved, disabled },
+  ref,
+) {
+  const [rows, setRows] = useState<EvalRow[]>([])
+  const [drafts, setDrafts] = useState<Record<string, { score: string; justification: string }>>({})
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [isLoading, setIsLoading] = useState(true)
+
+  const reload = () => {
+    setIsLoading(true)
+    adminFetch<EvalRow[]>(`/api/company/evaluations?date=${date}`)
+      .then((data) => {
+        setRows(data)
+        setDrafts(Object.fromEntries(data.map((r) => [r.id, { score: r.evaluation?.score ?? "", justification: r.evaluation?.justification ?? "" }])))
+      })
+      .finally(() => setIsLoading(false))
+  }
+  useEffect(reload, [date])
+
+  const validate = (row: EvalRow) => {
+    const draft = drafts[row.id]
+    const score = Number(draft?.score)
+    if (!draft || draft.score === "" || Number.isNaN(score)) return { ok: false as const, empty: true }
+    if ((score > NEUTRAL_BAND || score < -NEUTRAL_BAND) && !draft.justification.trim()) {
+      return { ok: false as const, empty: false, message: "Justificativa obrigatória para notas fora de -1 a 1" }
+    }
+    return { ok: true as const, score }
+  }
+
+  const saveRow = (row: EvalRow, score: number) =>
+    adminFetch("/api/company/evaluations", {
+      method: "POST",
+      body: JSON.stringify({ employeeId: row.id, dateRaw: date, score, justification: drafts[row.id]?.justification ?? "" }),
+    })
+
+  useImperativeHandle(ref, () => ({
+    saveDraft: async () => {
+      const toSave = rows.filter((row) => {
+        const v = validate(row)
+        return v.ok
+      })
+      await Promise.all(toSave.map((row) => saveRow(row, (validate(row) as { ok: true; score: number }).score)))
+      if (toSave.length > 0) {
+        onSaved()
+        reload()
+      }
+    },
+    saveAllStrict: async () => {
+      const nextErrors: Record<string, string> = {}
+      let allOk = true
+      for (const row of rows) {
+        const v = validate(row)
+        if (!v.ok) {
+          allOk = false
+          nextErrors[row.id] = v.empty ? "Informe uma nota" : v.message!
+        }
+      }
+      setErrors(nextErrors)
+      if (!allOk) return false
+      await Promise.all(rows.map((row) => saveRow(row, (validate(row) as { ok: true; score: number }).score)))
+      onSaved()
+      reload()
+      return true
+    },
+  }))
+
+  if (isLoading) return <LoadingState />
+  if (rows.length === 0) return <EmptyState message="Nenhum colaborador presente hoje para avaliar." />
+
+  return (
+    <div className="space-y-3">
+      {rows.map((row) => {
+        const draft = drafts[row.id] ?? { score: "", justification: "" }
+        const score = Number(draft.score)
+        const needsJustification = draft.score !== "" && !Number.isNaN(score) && (score > NEUTRAL_BAND || score < -NEUTRAL_BAND)
+        return (
+          <div key={row.id} className="bg-white rounded-xl p-3 border border-gray-100">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <p className="font-semibold text-[#3E2415] flex-1 text-sm">{row.name}</p>
+              <Input
+                type="number"
+                step="0.5"
+                placeholder="Nota"
+                value={draft.score}
+                disabled={disabled}
+                onChange={(e) => setDrafts((d) => ({ ...d, [row.id]: { ...draft, score: e.target.value } }))}
+                className="w-24"
+              />
+            </div>
+            {needsJustification && (
+              <Textarea
+                className="mt-2"
+                placeholder="Justificativa (obrigatória para notas fora de -1 a 1)"
+                value={draft.justification}
+                disabled={disabled}
+                onChange={(e) => setDrafts((d) => ({ ...d, [row.id]: { ...draft, justification: e.target.value } }))}
+              />
+            )}
+            {errors[row.id] && <p className="text-xs text-red-600 mt-1">{errors[row.id]}</p>}
+            {row.evaluation && <p className="text-xs text-gray-400 mt-2">Avaliado por {row.evaluation.evaluatedBy.name}</p>}
+          </div>
+        )
+      })}
+    </div>
+  )
+})
 
 function PendingCommissionRow({ commission, onSaved }: { commission: PendingCommission; onSaved: () => void }) {
   const [amount, setAmount] = useState("")

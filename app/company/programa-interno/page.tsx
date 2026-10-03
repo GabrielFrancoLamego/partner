@@ -11,7 +11,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, AdminCard } from "@/components/admin/admin-ui"
 import { useCompanyUser } from "@/lib/company-user-context"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canConfigureCompany } from "@/lib/permissions"
 import { RichTextEditor } from "@/components/admin/rich-text-editor"
 import { FileUploadField } from "@/components/shared/file-upload-field"
 import {
@@ -49,9 +49,9 @@ type Employee = { id: string; name: string; xpPoints: number; currentLevel: { id
 
 export default function CompanyProgramaInternoPage() {
   const user = useCompanyUser()
-  const allowed = canManageDailyOperations(user.role)
+  const allowed = canConfigureCompany(user.role)
 
-  if (!allowed) return <EmptyState message="Acesso restrito à Gerente e ao Administrador da empresa." />
+  if (!allowed) return <EmptyState message="Acesso restrito ao Master/Administrador da empresa — a Gerência acompanha o programa em Crescimento." />
 
   return (
     <div className="space-y-6">
@@ -401,6 +401,7 @@ function PromoteTab() {
   const [isLoading, setIsLoading] = useState(true)
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
   const [targetLevelId, setTargetLevelId] = useState("")
+  const [justification, setJustification] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [message, setMessage] = useState("")
 
@@ -417,14 +418,22 @@ function PromoteTab() {
 
   const handlePromote = async () => {
     if (!selectedEmployee || !targetLevelId) return
+    if (!justification.trim()) {
+      setMessage("Justifique a mudança de cargo antes de confirmar.")
+      return
+    }
     if (!confirm(`Promover ${selectedEmployee.name}? A pontuação de Pts dele será zerada, iniciando um novo ciclo no novo cargo.`)) return
     setIsSubmitting(true)
     setMessage("")
     try {
-      await adminFetch(`/api/company/employees/${selectedEmployee.id}/promote`, { method: "POST", body: JSON.stringify({ levelId: targetLevelId }) })
+      await adminFetch(`/api/company/employees/${selectedEmployee.id}/promote`, {
+        method: "POST",
+        body: JSON.stringify({ levelId: targetLevelId, justification: justification.trim() }),
+      })
       setMessage(`${selectedEmployee.name} promovido(a) com sucesso — Pts zerado no novo cargo.`)
       setSelectedEmployee(null)
       setTargetLevelId("")
+      setJustification("")
       reload()
     } catch (e) {
       setMessage(e instanceof AdminApiError ? e.message : "Erro ao promover")
@@ -450,25 +459,41 @@ function PromoteTab() {
               </p>
             </div>
             {selectedEmployee?.id === e.id ? (
-              <div className="flex items-center gap-2">
-                <Select value={targetLevelId} onValueChange={setTargetLevelId}>
-                  <SelectTrigger className="w-44">
-                    <SelectValue placeholder="Novo cargo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {levels.map((l) => (
-                      <SelectItem key={l.id} value={l.id}>
-                        {l.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button size="sm" disabled={!targetLevelId || isSubmitting} onClick={handlePromote} variant="brand">
-                  Confirmar
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setSelectedEmployee(null)}>
-                  Cancelar
-                </Button>
+              <div className="flex flex-col gap-2 w-full sm:w-auto sm:items-end">
+                <div className="flex items-center gap-2">
+                  <Select value={targetLevelId} onValueChange={setTargetLevelId}>
+                    <SelectTrigger className="w-44">
+                      <SelectValue placeholder="Novo cargo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {levels.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {l.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" disabled={!targetLevelId || !justification.trim() || isSubmitting} onClick={handlePromote} variant="brand">
+                    Confirmar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setSelectedEmployee(null)
+                      setJustification("")
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+                <Textarea
+                  value={justification}
+                  onChange={(ev) => setJustification(ev.target.value)}
+                  placeholder="Justificativa da mudança de cargo (obrigatória)"
+                  className="w-full sm:w-80 text-xs"
+                  rows={2}
+                />
               </div>
             ) : (
               <Button size="sm" variant="outline" onClick={() => setSelectedEmployee(e)}>

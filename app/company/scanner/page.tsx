@@ -27,7 +27,7 @@ export default function CompanyScannerPage() {
       </div>
 
       <Tabs defaultValue="camera">
-        <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap pb-2 pr-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <TabsTrigger value="camera" className="flex-shrink-0">
             <QrCode className="h-4 w-4 mr-1.5" /> Leitor QR
           </TabsTrigger>
@@ -40,6 +40,7 @@ export default function CompanyScannerPage() {
           <TabsTrigger value="history" className="flex-shrink-0">
             <History className="h-4 w-4 mr-1.5" /> Histórico
           </TabsTrigger>
+          <span className="flex-shrink-0 w-1" aria-hidden />
         </TabsList>
 
         <div className="mt-4">

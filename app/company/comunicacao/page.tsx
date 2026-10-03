@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { MessagesSquare, Plus, Paperclip, Send, LifeBuoy, Handshake } from "lucide-react"
+import { MessagesSquare, Plus, Paperclip, Send, LifeBuoy, Handshake, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -71,6 +71,7 @@ function recipientLabel(m: Message) {
 export default function CompanyCommunicationPage() {
   const user = useCompanyUser()
   const canSeePartnerTickets = canManageDailyOperations(user.role)
+  const isMaster = isCompanyMasterOrAdmin(user.role)
   const searchParams = useSearchParams()
   const initialTab = searchParams.get("tab") === "parceiros" && canSeePartnerTickets ? "parceiros" : "interna"
 
@@ -94,6 +95,11 @@ export default function CompanyCommunicationPage() {
           <TabsTrigger value="suporte" className="flex-shrink-0">
             <LifeBuoy className="h-3.5 w-3.5 mr-1" /> Suporte Tribuss
           </TabsTrigger>
+          {isMaster && (
+            <TabsTrigger value="auditoria" className="flex-shrink-0">
+              <ShieldCheck className="h-3.5 w-3.5 mr-1" /> Auditoria
+            </TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="interna" className="mt-4">
           <InternalCommunications />
@@ -106,6 +112,11 @@ export default function CompanyCommunicationPage() {
         <TabsContent value="suporte" className="mt-4">
           <TicketsPanel basePath="/api/company/tickets" />
         </TabsContent>
+        {isMaster && (
+          <TabsContent value="auditoria" className="mt-4">
+            <AuditTab />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )
@@ -192,6 +203,133 @@ function InternalCommunications() {
           onChanged={reload}
         />
       )}
+    </div>
+  )
+}
+
+const ALL_STATUSES: MessageStatus[] = ["SENT", "PENDING_RESPONSE", "RESPONDED", "CONCLUDED"]
+
+/** Auditoria geral do Master — todas as comunicações internas da empresa, com filtros por Colaborador/Setor/Status/Período. */
+function AuditTab() {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [sectors, setSectors] = useState<Sector[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [employeeId, setEmployeeId] = useState("ALL")
+  const [sectorId, setSectorId] = useState("ALL")
+  const [status, setStatus] = useState("ALL")
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
+  const [selected, setSelected] = useState<Message | null>(null)
+
+  useEffect(() => {
+    adminFetch<Sector[]>("/api/company/sectors").then(setSectors)
+    adminFetch<Employee[]>("/api/company/employees").then(setEmployees)
+  }, [])
+
+  const reload = () => {
+    setIsLoading(true)
+    const params = new URLSearchParams()
+    if (employeeId !== "ALL") params.set("employeeId", employeeId)
+    if (sectorId !== "ALL") params.set("sectorId", sectorId)
+    if (status !== "ALL") params.set("status", status)
+    if (startDate) params.set("startDate", startDate)
+    if (endDate) params.set("endDate", endDate)
+    adminFetch<Message[]>(`/api/company/communications?${params.toString()}`)
+      .then(setMessages)
+      .finally(() => setIsLoading(false))
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(reload, [employeeId, sectorId, status, startDate, endDate])
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="space-y-1.5">
+          <Label className="text-xs">Colaborador</Label>
+          <Select value={employeeId} onValueChange={setEmployeeId}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todos</SelectItem>
+              {employees.map((e) => (
+                <SelectItem key={e.id} value={e.id}>
+                  {e.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Setor</Label>
+          <Select value={sectorId} onValueChange={setSectorId}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todos</SelectItem>
+              {sectors.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Status</Label>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todos</SelectItem>
+              {ALL_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {STATUS_LABELS[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Período</Label>
+          <div className="flex items-center gap-1.5">
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="text-xs" />
+            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="text-xs" />
+          </div>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <LoadingState />
+      ) : messages.length === 0 ? (
+        <EmptyState message="Nenhuma comunicação encontrada para esses filtros." />
+      ) : (
+        <div className="grid gap-2">
+          {messages.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setSelected(m)}
+              className="text-left flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-white hover:bg-gray-50 transition-colors"
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-medium text-[#3E2415] text-sm truncate">{m.subject}</p>
+                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${STATUS_CLASSES[m.status]}`}>{STATUS_LABELS[m.status]}</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  De {m.sender.name} · {recipientLabel(m)} · {m._count.replies} resposta(s)
+                </p>
+              </div>
+              <span className="text-[10px] text-gray-400 flex-shrink-0">{new Date(m.updatedAt).toLocaleDateString("pt-BR")}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selected && <MessageThreadDialog messageId={selected.id} isMaster onClose={() => setSelected(null)} onChanged={reload} />}
     </div>
   )
 }

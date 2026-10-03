@@ -162,7 +162,7 @@ export default function CompanyChecklistsPage() {
         )}
       </div>
 
-      {isManager ? <ManagerView /> : <EmployeeView />}
+      {isManager ? <ManagerView /> : <PersonalChecklistView />}
     </div>
   )
 
@@ -232,7 +232,8 @@ type VolunteerOpportunity = {
   primaryEmployee: { id: string; name: string }
 }
 
-function EmployeeView() {
+/** Aba 1 "Checklist do Dia" — tarefas do próprio usuário logado, inclusive pra Gerente/Master (ver ManagerView). */
+function PersonalChecklistView() {
   const user = useCompanyUser()
   const [instances, setInstances] = useState<ChecklistInstance[]>([])
   const [opportunities, setOpportunities] = useState<VolunteerOpportunity[]>([])
@@ -682,19 +683,31 @@ function ExecuteDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
   )
 }
 
+/**
+ * 4 abas pra Gerente/Master: "Checklist do Dia" (tarefas do PRÓPRIO usuário,
+ * igual ao colaborador — Gerente também pode ter tarefas SPECIFIC/escaladas),
+ * "Todas as Tarefas / Equipe" (panorama da unidade com filtros rápidos de
+ * status), "Aprovação de Tarefas" (fila exclusiva do que exige aprovação) e
+ * "Tarefas Recorrentes" (cadastro dos templates — não pedido explicitamente
+ * nesta reorganização, mas é a única forma de criar/editar tarefa).
+ */
 function ManagerView() {
-  const [tab, setTab] = useState("day")
+  const [tab, setTab] = useState("mine")
   const [createSignal, setCreateSignal] = useState(0)
 
   return (
     <Tabs value={tab} onValueChange={setTab}>
       <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-        <TabsTrigger value="day" className="flex-shrink-0">Checklist do Dia</TabsTrigger>
+        <TabsTrigger value="mine" className="flex-shrink-0">Checklist do Dia</TabsTrigger>
+        <TabsTrigger value="all" className="flex-shrink-0">Todas as Tarefas / Equipe</TabsTrigger>
+        <TabsTrigger value="review" className="flex-shrink-0">Aprovação de Tarefas</TabsTrigger>
         <TabsTrigger value="templates" className="flex-shrink-0">Tarefas Recorrentes</TabsTrigger>
-        <TabsTrigger value="review" className="flex-shrink-0">Aprovações</TabsTrigger>
       </TabsList>
       <div className="bg-white rounded-2xl p-4 md:p-6 shadow-md border border-gray-100 mt-4">
-        <TabsContent value="day">
+        <TabsContent value="mine">
+          <PersonalChecklistView />
+        </TabsContent>
+        <TabsContent value="all">
           <DayView
             onCreateTask={() => {
               setTab("templates")
@@ -702,11 +715,11 @@ function ManagerView() {
             }}
           />
         </TabsContent>
-        <TabsContent value="templates">
-          <TemplatesTab openCreateSignal={createSignal} />
-        </TabsContent>
         <TabsContent value="review">
           <ReviewTab />
+        </TabsContent>
+        <TabsContent value="templates">
+          <TemplatesTab openCreateSignal={createSignal} />
         </TabsContent>
       </div>
     </Tabs>
@@ -741,6 +754,7 @@ function DayView({ onCreateTask }: { onCreateTask: () => void }) {
   const [search, setSearch] = useState("")
   const [employeeFilter, setEmployeeFilter] = useState("")
   const [sectorFilter, setSectorFilter] = useState("")
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "LATE" | "IN_PROGRESS" | "DONE">("ALL")
 
   const reload = () => {
     setIsLoading(true)
@@ -778,8 +792,18 @@ function DayView({ onCreateTask }: { onCreateTask: () => void }) {
     if (search.trim()) list = list.filter((c) => c.title.toLowerCase().includes(search.trim().toLowerCase()))
     if (employeeFilter) list = list.filter((c) => c.employee?.id === employeeFilter)
     if (sectorFilter) list = list.filter((c) => c.employee?.employeeProfile?.sectorId === sectorFilter)
+    if (statusFilter !== "ALL") {
+      const now = Date.now()
+      list = list.filter((c) => {
+        const isOverdue = c.status === "PENDING" && c.dueAt && new Date(c.dueAt).getTime() < now
+        if (statusFilter === "LATE") return isOverdue
+        if (statusFilter === "IN_PROGRESS") return (c.status === "PENDING" && !isOverdue) || c.status === "SUBMITTED"
+        if (statusFilter === "DONE") return c.status === "APPROVED" || c.status === "REJECTED"
+        return true
+      })
+    }
     return sortChecklists(list)
-  }, [instances, viewMode, recurrenceFilter, priorityFilter, search, employeeFilter, sectorFilter])
+  }, [instances, viewMode, recurrenceFilter, priorityFilter, search, employeeFilter, sectorFilter, statusFilter])
 
   const previewRows = useMemo(() => {
     let list = preview
@@ -813,6 +837,29 @@ function DayView({ onCreateTask }: { onCreateTask: () => void }) {
           </Button>
         </div>
       </div>
+
+      {viewMode !== "tomorrow" && (
+        <div className="flex items-center gap-1 flex-wrap">
+          {(
+            [
+              ["ALL", "Todas"],
+              ["LATE", "Atrasadas"],
+              ["IN_PROGRESS", "Em Andamento"],
+              ["DONE", "Concluídas"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setStatusFilter(value)}
+              className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                statusFilter === value ? "bg-[#3E2415] text-white border-[#3E2415]" : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-gray-50 border border-gray-100">
         <Filter className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
@@ -1414,7 +1461,10 @@ function ReviewTab() {
   const reload = () => {
     setIsLoading(true)
     adminFetch<{ checklists: ChecklistInstance[] }>("/api/company/checklists?scope=team&status=SUBMITTED")
-      .then((res) => setInstances(res.checklists))
+      // Fila de aprovação é exclusiva de tarefas que exigem aprovação do
+      // Gestor — as que não exigem já nascem APPROVED/REJECTED direto na
+      // entrega (ver lib/checklist-review.ts), nunca aparecem aqui.
+      .then((res) => setInstances(res.checklists.filter((i) => i.requiresApproval)))
       .finally(() => setIsLoading(false))
   }
   useEffect(reload, [])

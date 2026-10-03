@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canConfigureCompany } from "@/lib/permissions"
 import { promoteEmployee } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
 import { notifyUser } from "@/lib/notifications"
@@ -9,7 +9,7 @@ import { notifyUser } from "@/lib/notifications"
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireCompanyStaff()
-    requireCapability(user, canManageDailyOperations)
+    requireCapability(user, canConfigureCompany)
     const { id } = await params
     const companyId = user.companyId
 
@@ -17,8 +17,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!employee) throw new ApiError(404, "Colaborador não encontrado nesta empresa")
 
     const body = await request.json()
-    const { levelId } = body as { levelId: string }
+    const { levelId, justification } = body as { levelId: string; justification?: string }
     if (!levelId) throw new ApiError(400, "Selecione o novo nível/cargo")
+    const reason = typeof justification === "string" ? justification.trim() : ""
+    if (!reason) throw new ApiError(400, "Justifique a mudança de cargo")
 
     const level = await prisma.internalLevelRule.findFirst({ where: { id: levelId, internalProgram: { companyId } } })
     if (!level) throw new ApiError(404, "Nível não encontrado nesta empresa")
@@ -31,7 +33,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       action: "UPDATE",
       entity: "EmployeeProfile",
       entityId: updated.id,
-      details: { promotedTo: level.name, levelId, xpReset: true },
+      details: { promotedTo: level.name, levelId, xpReset: true, justification: reason },
     })
 
     await notifyUser({

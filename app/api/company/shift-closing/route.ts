@@ -153,32 +153,39 @@ export async function POST(request: Request) {
     const revenueAmount = formData.get("revenueAmount")
     const summary = formData.get("summary")
     const file = formData.get("file")
+    // Rascunho — grava o preenchimento parcial (revenueAmount/summary/foto, se
+    // já tiver) sem exigir a sequência completa nem marcar COMPLETED. Só
+    // "Concluir e Enviar Fechamento" (isDraft ausente/false) de fato finaliza.
+    const isDraft = formData.get("isDraft") === "true"
 
     const date = startOfDay(dateRaw && typeof dateRaw === "string" ? new Date(dateRaw) : new Date())
     const now = new Date()
 
     // Sequência obrigatória — reforça no servidor o que a UI já bloqueia:
     // passos 0, 1 e 2 têm que estar 100% completos antes do passo 3 (faturamento + foto).
+    // Só exigido quando não é rascunho.
     const checklist = await getClosingChecklist(companyId, date)
-    if (!checklist.step0Complete) {
-      throw new ApiError(400, "Confirme a variação de ponto de todos os colaboradores hoje antes de finalizar o expediente")
-    }
-    if (!checklist.step1Complete) {
-      throw new ApiError(400, "Confirme o valor da conta de todos os clientes indicados hoje antes de finalizar o expediente")
-    }
-    if (!checklist.step2Complete) {
-      throw new ApiError(400, "Avalie todos os colaboradores presentes hoje antes de finalizar o expediente")
+    if (!isDraft) {
+      if (!checklist.step0Complete) {
+        throw new ApiError(400, "Confirme a variação de ponto de todos os colaboradores hoje antes de finalizar o expediente")
+      }
+      if (!checklist.step1Complete) {
+        throw new ApiError(400, "Confirme o valor da conta de todos os clientes indicados hoje antes de finalizar o expediente")
+      }
+      if (!checklist.step2Complete) {
+        throw new ApiError(400, "Avalie todos os colaboradores presentes hoje antes de finalizar o expediente")
+      }
     }
 
     const existing = await prisma.shiftClosing.findUnique({ where: { companyId_date: { companyId, date } } })
 
     // Fechamento já submetido (COMPLETED) só pode ser corrigido pelo Master —
-    // a Gerente perde a permissão de edição assim que o expediente é finalizado.
+    // a Gerente perde a permissão de edição (inclusive rascunho) assim que o expediente é finalizado.
     if (existing?.status === "COMPLETED" && !canReviewCompletedShiftClosings(user.role)) {
       throw new ApiError(403, "Este fechamento já foi submetido. Apenas o Master pode corrigi-lo.")
     }
 
-    if (!(file instanceof File) || file.size === 0) {
+    if (!isDraft && (!(file instanceof File) || file.size === 0)) {
       if (!existing?.receiptUrl) throw new ApiError(400, "Foto do comprovante de fechamento do caixa é obrigatória")
     }
 
@@ -187,10 +194,10 @@ export async function POST(request: Request) {
     const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { shiftClosingDeadline: true } })
     // Override do Master = fechou depois do prazo OU está corrigindo um fechamento já COMPLETED (a Gerente não pode mais mexer nele).
     const isMasterOverride =
-      user.role === "COMPANY_MASTER" && (isPastDeadline(date, company.shiftClosingDeadline, now) || existing?.status === "COMPLETED")
+      !isDraft && user.role === "COMPANY_MASTER" && (isPastDeadline(date, company.shiftClosingDeadline, now) || existing?.status === "COMPLETED")
     // Atrasado independe de quem fechou — a Gerente pode (e deve) fechar mesmo
     // depois do prazo em vez de ficar bloqueada; só avisamos o Master.
-    const isLate = isPastDeadline(date, company.shiftClosingDeadline, now)
+    const isLate = !isDraft && isPastDeadline(date, company.shiftClosingDeadline, now)
 
     const closing = await prisma.shiftClosing.upsert({
       where: { companyId_date: { companyId, date } },
@@ -198,11 +205,7 @@ export async function POST(request: Request) {
         revenueAmount: revenueAmount ? Number(revenueAmount) : null,
         receiptUrl,
         summary: typeof summary === "string" ? summary.trim() || null : null,
-        status: "COMPLETED",
-        isMasterOverride,
-        isLate,
-        closedById: user.id,
-        closedAt: now,
+        ...(isDraft ? {} : { status: "COMPLETED", isMasterOverride, isLate, closedById: user.id, closedAt: now }),
       },
       create: {
         companyId,
@@ -210,14 +213,27 @@ export async function POST(request: Request) {
         revenueAmount: revenueAmount ? Number(revenueAmount) : null,
         receiptUrl,
         summary: typeof summary === "string" ? summary.trim() || null : null,
-        status: "COMPLETED",
+        status: isDraft ? "PENDING_GERENTE" : "COMPLETED",
         isMasterOverride,
         isLate,
-        closedById: user.id,
-        closedAt: now,
+        closedById: isDraft ? null : user.id,
+        closedAt: isDraft ? null : now,
       },
       include: { closedBy: { select: { id: true, name: true } } },
     })
+
+    await logAudit({
+      userId: user.id,
+      companyId,
+      action: isDraft ? "DRAFT" : isMasterOverride ? "MASTER_OVERRIDE" : existing ? "UPDATE" : "CREATE",
+      entity: "ShiftClosing",
+      entityId: closing.id,
+      details: { date, revenueAmount, isDraft },
+    })
+
+    if (isDraft) {
+      return Response.json(closing, { status: 201 })
+    }
 
     // Fechamento atrasado feito pela Gerente (não pelo Master) — avisa o
     // Master imediatamente, sem esperar ele notar sozinho no dashboard.
@@ -241,15 +257,6 @@ export async function POST(request: Request) {
         await maybeDistributeGoalReward(goal.id, companyId, user.id).catch(() => {})
       }
     }
-
-    await logAudit({
-      userId: user.id,
-      companyId,
-      action: isMasterOverride ? "MASTER_OVERRIDE" : existing ? "UPDATE" : "CREATE",
-      entity: "ShiftClosing",
-      entityId: closing.id,
-      details: { date, revenueAmount },
-    })
 
     // Fechar o dia varre os checklists que ficaram sem NENHUMA entrega (nunca
     // chegaram a SUBMITTED) e os marca como não executados, penalizando XP —

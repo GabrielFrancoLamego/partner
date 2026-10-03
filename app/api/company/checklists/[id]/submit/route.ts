@@ -38,11 +38,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const reason = typeof justification === "string" ? justification.trim() : ""
       if (!reason) throw new ApiError(400, "Justifique por que a tarefa não foi executada")
 
-      const updated = await prisma.checklist.update({
+      let updated = await prisma.checklist.update({
         where: { id },
         data: { status: "SUBMITTED", submittedAt: new Date(), rejectionReason: reason, photoUrl: null },
       })
       await logAudit({ userId: user.id, companyId, action: "SUBMIT_NOT_EXECUTED", entity: "Checklist", entityId: id, details: { reason } })
+
+      // Mesma regra do COMPLETE: sem exigência de aprovação, a tarefa já
+      // nasce finalizada (aqui, REJECTED) — não fica parada esperando um
+      // double-check que o template dispensou.
+      if (!checklist.requiresApproval) {
+        const review = await applyChecklistReview({ checklistId: id, companyId, status: "REJECTED", note: reason, reviewerId: user.id })
+        updated = review.updated
+        await logAudit({ userId: user.id, companyId, action: "REJECTED", entity: "Checklist", entityId: id, details: { autoApproved: true } })
+      }
+
       return Response.json(updated)
     }
 

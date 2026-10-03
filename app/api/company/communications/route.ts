@@ -31,6 +31,10 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
     const mineOnly = searchParams.get("mine") === "1"
+    const employeeId = searchParams.get("employeeId")
+    const sectorId = searchParams.get("sectorId")
+    const startDate = searchParams.get("startDate")
+    const endDate = searchParams.get("endDate")
 
     const visibilityOR: Record<string, unknown>[] = [
       { senderId: user.id },
@@ -46,6 +50,17 @@ export async function GET(request: Request) {
       ...(isMaster ? {} : { OR: visibilityOR }),
       ...(mineOnly ? { senderId: user.id } : {}),
       ...(status && STATUSES.includes(status as InternalMessageStatus) ? { status } : {}),
+      // Filtros de auditoria — exclusivos do Master, usados pela tela de Auditoria Geral.
+      ...(isMaster && employeeId ? { OR: [{ senderId: employeeId }, { recipientType: "EMPLOYEE", recipientEmployeeId: employeeId }] } : {}),
+      ...(isMaster && sectorId ? { recipientType: "SECTOR", recipientSectorId: sectorId } : {}),
+      ...(isMaster && (startDate || endDate)
+        ? {
+            createdAt: {
+              ...(startDate ? { gte: new Date(startDate) } : {}),
+              ...(endDate ? { lte: new Date(`${endDate}T23:59:59.999Z`) } : {}),
+            },
+          }
+        : {}),
     }
 
     const messages = await prisma.internalMessage.findMany({

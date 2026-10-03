@@ -14,7 +14,7 @@ import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, StatusBadge, AdminCard } from "@/components/admin/admin-ui"
 import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
-import { canManageDailyOperations, isCompanyMasterOrAdmin } from "@/lib/permissions"
+import { canManageDailyOperations, isCompanyMasterOrAdmin, canPunchTimeclock } from "@/lib/permissions"
 
 type EntryType = "CHECK_IN" | "BREAK_START" | "BREAK_END" | "CHECK_OUT"
 
@@ -52,7 +52,10 @@ export default function CompanyPontoPage() {
   const user = useCompanyUser()
   const isManager = canManageDailyOperations(user.role)
   const isMaster = isCompanyMasterOrAdmin(user.role)
-  const isEmployee = user.role === "EMPLOYEE"
+  // Gerente também bate ponto (quando tiver horário configurado pelo
+  // Master) — só o Master não registra ponto próprio.
+  const canPunch = canPunchTimeclock(user.role)
+  const isGerente = user.role === "COMPANY_GERENTE"
 
   return (
     <div className="space-y-6">
@@ -72,15 +75,21 @@ export default function CompanyPontoPage() {
 
       {isManager && <OvertimeAlerts />}
 
-      {isEmployee && <ClockWidget />}
+      {canPunch && <ClockWidget />}
 
       {isManager ? (
-        <Tabs defaultValue="mirror">
+        <Tabs defaultValue={isGerente ? "mine" : "mirror"}>
           <TabsList>
+            {isGerente && <TabsTrigger value="mine">Meu Ponto</TabsTrigger>}
             <TabsTrigger value="mirror">Espelho da Equipe</TabsTrigger>
             <TabsTrigger value="justifications">Justificativas</TabsTrigger>
           </TabsList>
           <div className="bg-white rounded-2xl p-4 md:p-6 shadow-md border border-gray-100 mt-4">
+            {isGerente && (
+              <TabsContent value="mine">
+                <Mirror scope="me" canAdjust={false} />
+              </TabsContent>
+            )}
             <TabsContent value="mirror">
               <Mirror scope="team" canAdjust={isMaster} />
             </TabsContent>
@@ -95,7 +104,7 @@ export default function CompanyPontoPage() {
         </AdminCard>
       )}
 
-      {isEmployee && <JustificationRequestForm />}
+      {canPunch && <JustificationRequestForm />}
     </div>
   )
 }

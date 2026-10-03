@@ -2,12 +2,16 @@
 
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, Clock, Trophy, AlertTriangle, ListChecks, TrendingUp, Pencil } from "lucide-react"
+import { ArrowLeft, Clock, Trophy, AlertTriangle, ListChecks, TrendingUp, Pencil, ArrowUpCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { adminFetch } from "@/lib/admin-api-client"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, AdminCard, StatusBadge } from "@/components/admin/admin-ui"
 import { useCompanyUser } from "@/lib/company-user-context"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canManageDailyOperations, canConfigureCompany } from "@/lib/permissions"
 
 type BankExtractRow = { date: string; deltaMinutes: number; label: string; source: "TIMECLOCK" | "OCCURRENCE" }
 type XpEntryRow = { id: string; points: number; reason: string; note: string | null; createdAt: string }
@@ -25,6 +29,7 @@ type EmployeeDetail = {
   workStartTime: string | null
   workEndTime: string | null
   weeklyDayOff: number | null
+  currentLevel: { id: string; name: string } | null
   bankExtract: BankExtractRow[]
   xpEntries: XpEntryRow[]
   occurrences: OccurrenceRow[]
@@ -67,14 +72,21 @@ export default function EmployeeDetailPage() {
   const [data, setData] = useState<EmployeeDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [isPromoteOpen, setIsPromoteOpen] = useState(false)
   const isManager = canManageDailyOperations(user.role)
+  const isMaster = canConfigureCompany(user.role)
 
-  useEffect(() => {
-    if (!isManager) return
+  const reload = () => {
+    setIsLoading(true)
     adminFetch<EmployeeDetail>(`/api/company/employees/${params.id}`)
       .then(setData)
       .catch(() => setNotFound(true))
       .finally(() => setIsLoading(false))
+  }
+
+  useEffect(() => {
+    if (!isManager) return
+    reload()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id, isManager])
 
@@ -93,15 +105,33 @@ export default function EmployeeDetailPage() {
           </Button>
           <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">{data.name}</h1>
           <p className="text-gray-600 mt-1 text-sm">
-            {data.sector?.name ?? "Sem setor"}
+            {data.currentLevel?.name ?? "Sem cargo"} · {data.sector?.name ?? "Sem setor"}
             {data.workStartTime && data.workEndTime && ` · ${data.workStartTime} – ${data.workEndTime}`}
             {data.weeklyDayOff !== null && ` · Folga: ${WEEKDAY_SHORT[data.weeklyDayOff]}`}
           </p>
         </div>
-        <Button variant="outline" onClick={() => router.push("/company/colaboradores")}>
-          <Pencil className="h-4 w-4 mr-1.5" /> Editar Setor/Horário
-        </Button>
+        <div className="flex items-center gap-2">
+          {isMaster && (
+            <Button variant="outline" onClick={() => setIsPromoteOpen(true)}>
+              <ArrowUpCircle className="h-4 w-4 mr-1.5" /> Promoção Forçada
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => router.push("/company/colaboradores")}>
+            <Pencil className="h-4 w-4 mr-1.5" /> Editar Setor/Horário
+          </Button>
+        </div>
       </div>
+
+      {isMaster && (
+        <ForcedPromotionDialog
+          open={isPromoteOpen}
+          onOpenChange={setIsPromoteOpen}
+          employeeId={data.id}
+          employeeName={data.name}
+          currentLevelName={data.currentLevel?.name ?? "Sem cargo"}
+          onPromoted={reload}
+        />
+      )}
 
       <div className="grid sm:grid-cols-3 gap-4">
         <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100">
@@ -210,5 +240,106 @@ export default function EmployeeDetailPage() {
         )}
       </AdminCard>
     </div>
+  )
+}
+
+type LevelOption = { id: string; name: string }
+
+/** Alterar o cargo do colaborador manualmente, fora do fluxo normal de promoção por pontuação — exclusivo do Master, exige justificativa (gravada em AuditLog). */
+function ForcedPromotionDialog({
+  open,
+  onOpenChange,
+  employeeId,
+  employeeName,
+  currentLevelName,
+  onPromoted,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  employeeId: string
+  employeeName: string
+  currentLevelName: string
+  onPromoted: () => void
+}) {
+  const [levels, setLevels] = useState<LevelOption[]>([])
+  const [levelId, setLevelId] = useState("")
+  const [justification, setJustification] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    if (!open) return
+    setLevelId("")
+    setJustification("")
+    setError("")
+    adminFetch<LevelOption[]>("/api/company/gamification/levels").then(setLevels)
+  }, [open])
+
+  const handleSubmit = async () => {
+    if (!levelId) {
+      setError("Selecione o novo cargo/nível")
+      return
+    }
+    if (!justification.trim()) {
+      setError("Justifique a alteração manual de nível")
+      return
+    }
+    setIsSubmitting(true)
+    setError("")
+    try {
+      await adminFetch(`/api/company/employees/${employeeId}/promote`, {
+        method: "POST",
+        body: JSON.stringify({ levelId, justification: justification.trim() }),
+      })
+      onOpenChange(false)
+      onPromoted()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao alterar o cargo")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Promoção Forçada — {employeeName}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Cargo atual: <strong className="text-[#3E2415]">{currentLevelName}</strong>. Alterar o nível manualmente zera a pontuação do colaborador, iniciando um novo ciclo no cargo novo.
+          </p>
+          <div className="space-y-1.5">
+            <Label>Novo cargo/nível</Label>
+            <Select value={levelId} onValueChange={setLevelId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o novo cargo" />
+              </SelectTrigger>
+              <SelectContent>
+                {levels.map((l) => (
+                  <SelectItem key={l.id} value={l.id}>
+                    {l.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Justificativa (obrigatória)</Label>
+            <Textarea value={justification} onChange={(e) => setJustification(e.target.value)} placeholder="Motivo da alteração manual de cargo" rows={3} />
+          </div>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSubmit} disabled={isSubmitting} variant="brand">
+            Confirmar alteração
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

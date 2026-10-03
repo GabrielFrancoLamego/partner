@@ -1,7 +1,7 @@
 import type { MeasurementPeriod } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canConfigureCompany } from "@/lib/permissions"
 import { uploadImage } from "@/lib/storage"
 import { logAudit } from "@/lib/audit"
 
@@ -25,7 +25,7 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const user = await requireCompanyStaff()
-    requireCapability(user, canManageDailyOperations)
+    requireCapability(user, canConfigureCompany)
     const companyId = user.companyId
 
     const formData = await request.formData()

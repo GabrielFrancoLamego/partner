@@ -3,6 +3,7 @@ import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from
 import { canManageDailyOperations } from "@/lib/permissions"
 import { awardXp } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
+import { notifyUser } from "@/lib/notifications"
 
 /** Aprovar (mantém débito), reprovar (devolve XP + estoque) ou marcar como entregue. */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -42,6 +43,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     })
 
     await logAudit({ userId: user.id, companyId, action: status, entity: "RewardRedemption", entityId: id })
+
+    if (status === "APPROVED") {
+      await notifyUser({
+        userId: redemption.employeeId,
+        type: "GENERIC",
+        title: "Resgate aprovado para troca na unidade",
+        message: `Seu resgate de "${updated.item.name}" foi aprovado — procure a gerência para retirar.`,
+        linkUrl: "/company/crescimento",
+      }).catch(() => {})
+    }
 
     return Response.json(updated)
   } catch (error) {

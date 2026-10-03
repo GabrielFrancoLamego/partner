@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, AdminCard, StatusBadge } from "@/components/admin/admin-ui"
 import { useCompanyUser } from "@/lib/company-user-context"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canManageDailyOperations, canConfigureCompany } from "@/lib/permissions"
 import { MedalGlyph, type MedalIconKey } from "@/components/shared/medal-picker"
 
 type Level = {
@@ -42,6 +42,7 @@ type Redemption = {
 export default function CompanyCrescimentoPage() {
   const user = useCompanyUser()
   const isManager = canManageDailyOperations(user.role)
+  const isMaster = canConfigureCompany(user.role)
 
   return (
     <div className="space-y-6">
@@ -50,7 +51,7 @@ export default function CompanyCrescimentoPage() {
           <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Programa de Crescimento</h1>
           <p className="text-gray-600 mt-1 text-sm">Trilha de cargos, Pts e loja de prêmios</p>
         </div>
-        {isManager && (
+        {isMaster && (
           <Button asChild variant="outline" size="sm" className="self-start sm:self-auto">
             <Link href="/company/programa-interno">
               <Settings className="h-4 w-4 mr-1.5" /> Editar Programa
