@@ -2,7 +2,27 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Users, TrendingUp, Boxes, Trophy, Star, AlertTriangle, Clock, DollarSign, Target, ReceiptText, PieChart, UserCheck, CalendarOff, Timer, ListChecks } from "lucide-react"
+import {
+  Users,
+  TrendingUp,
+  Boxes,
+  Trophy,
+  Star,
+  AlertTriangle,
+  Clock,
+  DollarSign,
+  Target,
+  ReceiptText,
+  PieChart,
+  UserCheck,
+  CalendarOff,
+  Timer,
+  ListChecks,
+  Gauge,
+  Wallet,
+  Handshake,
+  Megaphone,
+} from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { adminFetch } from "@/lib/admin-api-client"
@@ -19,7 +39,7 @@ type DashboardData = {
     pendingCommissions: { total: number; count: number }
     pendingWithdrawals: { total: number; count: number }
     topPartners: { partnerId: string; name: string; revenueGenerated: number; referralCount: number; vouchersUsed: number }[]
-  }
+  } | null
   operations: {
     totalEmployees: number
     presentToday: number
@@ -29,7 +49,17 @@ type DashboardData = {
     lateOrFailedChecklists: number
     pendingChecklists: number
     occurrencesThisMonth: number
-  }
+  } | null
+  myOperations: {
+    presences: number
+    faltas: number
+    atestados: number
+    atrasos: number
+    pendingChecklists: number
+    occurrencesCount: number
+  } | null
+  partnersSimple: { totalPartners: number; totalReferralsInPeriod: number } | null
+  efficiencySummary: { percent: number; onTime: number; late: number; notDelivered: number; extraTasks: number } | null
   me: {
     xpPoints: number
     todayXp: number
@@ -99,56 +129,70 @@ export default function CompanyDashboardPage() {
         <div className="space-y-6">
           {data.master && <MasterPanel master={data.master} />}
           {data.me && <EmployeeGamePanel me={data.me} />}
-          {(user.role === "EMPLOYEE" || user.role === "COMPANY_GERENTE") && <ConsumptionDebtCard />}
+
+          {user.role === "EMPLOYEE" ? (
+            <>
+              <MyAccountWidget />
+              {data.efficiencySummary && <EfficiencyWidget efficiency={data.efficiencySummary} />}
+              {data.myOperations && <MyOperationsCard myOperations={data.myOperations} />}
+              {data.partnersSimple && <PartnersSimpleCards partnersSimple={data.partnersSimple} />}
+            </>
+          ) : (
+            user.role === "COMPANY_GERENTE" && <ConsumptionDebtCard />
+          )}
 
           <GoalProgressWidget />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <AdminCard title="Parceiros" icon={Users}>
-              <MetricRow label="Parceiros ativos no programa" value={data.partners.activePartners} />
-              <MetricRow
-                label="Comissões pendentes"
-                value={`${currency(data.partners.pendingCommissions.total)} (${data.partners.pendingCommissions.count})`}
-              />
-              <MetricRow
-                label="Saques solicitados"
-                value={`${currency(data.partners.pendingWithdrawals.total)} (${data.partners.pendingWithdrawals.count})`}
-              />
-            </AdminCard>
+          {data.partners && data.operations && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <AdminCard title="Parceiros" icon={Users}>
+                <MetricRow label="Parceiros ativos no programa" value={data.partners.activePartners} />
+                <MetricRow
+                  label="Comissões pendentes"
+                  value={`${currency(data.partners.pendingCommissions.total)} (${data.partners.pendingCommissions.count})`}
+                />
+                <MetricRow
+                  label="Saques solicitados"
+                  value={`${currency(data.partners.pendingWithdrawals.total)} (${data.partners.pendingWithdrawals.count})`}
+                />
+              </AdminCard>
 
-            <AdminCard title="Operação & RH" icon={Boxes}>
-              <MetricRow label="Colaboradores" value={data.operations.totalEmployees} />
-              <MetricRow
-                label="Presença hoje"
-                value={`${data.operations.presentToday}/${data.operations.totalEmployees} (${data.operations.attendanceRate}%)`}
-              />
-              <MetricRow label="Checklists no prazo (mês)" value={data.operations.onTimeChecklists} />
-              <MetricRow label="Atrasados/reprovados (mês)" value={data.operations.lateOrFailedChecklists} />
-              <MetricRow label="Pendentes de execução" value={data.operations.pendingChecklists} />
-              <MetricRow label="Ocorrências no mês" value={data.operations.occurrencesThisMonth} />
-            </AdminCard>
-          </div>
+              <AdminCard title="Operação & RH" icon={Boxes}>
+                <MetricRow label="Colaboradores" value={data.operations.totalEmployees} />
+                <MetricRow
+                  label="Presença hoje"
+                  value={`${data.operations.presentToday}/${data.operations.totalEmployees} (${data.operations.attendanceRate}%)`}
+                />
+                <MetricRow label="Checklists no prazo (mês)" value={data.operations.onTimeChecklists} />
+                <MetricRow label="Atrasados/reprovados (mês)" value={data.operations.lateOrFailedChecklists} />
+                <MetricRow label="Pendentes de execução" value={data.operations.pendingChecklists} />
+                <MetricRow label="Ocorrências no mês" value={data.operations.occurrencesThisMonth} />
+              </AdminCard>
+            </div>
+          )}
 
-          <AdminCard title="Top 5 Parceiros da Empresa" icon={TrendingUp}>
-            {data.partners.topPartners.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4 text-center">Sem comissões aprovadas no período.</p>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {data.partners.topPartners.map((p, index) => (
-                  <div key={p.partnerId} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
-                    <span className="text-sm font-medium text-[#3E2415]">
-                      {index + 1}. {p.name}
-                    </span>
-                    <div className="flex items-center gap-3 text-xs text-gray-500">
-                      <span>{p.referralCount} indicação(ões)</span>
-                      <span>{p.vouchersUsed} vale(s) usado(s)</span>
-                      <span className="font-bold text-[#3E2415]">Faturamento gerado: {currency(p.revenueGenerated)}</span>
+          {data.partners && data.partners.topPartners.length >= 0 && (
+            <AdminCard title="Top 5 Parceiros da Empresa" icon={TrendingUp}>
+              {data.partners.topPartners.length === 0 ? (
+                <p className="text-sm text-gray-500 py-4 text-center">Sem comissões aprovadas no período.</p>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {data.partners.topPartners.map((p, index) => (
+                    <div key={p.partnerId} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                      <span className="text-sm font-medium text-[#3E2415]">
+                        {index + 1}. {p.name}
+                      </span>
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                        <span>{p.referralCount} indicação(ões)</span>
+                        <span>{p.vouchersUsed} vale(s) usado(s)</span>
+                        <span className="font-bold text-[#3E2415]">Faturamento gerado: {currency(p.revenueGenerated)}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </AdminCard>
+                  ))}
+                </div>
+              )}
+            </AdminCard>
+          )}
         </div>
       )}
     </div>
@@ -491,6 +535,174 @@ function XpHistoryModal({ onClose }: { onClose: () => void }) {
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** Resumo RH do próprio colaborador no período — nunca dados de outros funcionários (ver app/api/company/dashboard). */
+function MyOperationsCard({ myOperations }: { myOperations: NonNullable<DashboardData["myOperations"]> }) {
+  return (
+    <AdminCard title="Meu Resumo" icon={UserCheck}>
+      <MetricRow label="Presenças no período" value={myOperations.presences} />
+      <MetricRow label="Faltas" value={myOperations.faltas} />
+      <MetricRow label="Atestados" value={myOperations.atestados} />
+      <MetricRow label="Atrasos" value={myOperations.atrasos} />
+      <MetricRow label="Pendências de checklist hoje" value={myOperations.pendingChecklists} />
+      <MetricRow label="Ocorrências no período" value={myOperations.occurrencesCount} />
+    </AdminCard>
+  )
+}
+
+/** Métricas simplificadas de parceiros pro colaborador — sem dados financeiros, só o panorama da unidade. */
+function PartnersSimpleCards({ partnersSimple }: { partnersSimple: NonNullable<DashboardData["partnersSimple"]> }) {
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100">
+        <div className="flex items-center gap-2 mb-1">
+          <Handshake className="h-4 w-4 text-[#F58220]" />
+          <p className="text-xs text-gray-500">Parceiros da Unidade</p>
+        </div>
+        <p className="text-2xl font-bold text-[#3E2415]">{partnersSimple.totalPartners}</p>
+      </div>
+      <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100">
+        <div className="flex items-center gap-2 mb-1">
+          <Megaphone className="h-4 w-4 text-[#F58220]" />
+          <p className="text-xs text-gray-500">Indicações no Período</p>
+        </div>
+        <p className="text-2xl font-bold text-[#3E2415]">{partnersSimple.totalReferralsInPeriod}</p>
+      </div>
+    </div>
+  )
+}
+
+/** Eficiência Operacional do período — % + detalhamento de entregas de checklist. */
+function EfficiencyWidget({ efficiency }: { efficiency: NonNullable<DashboardData["efficiencySummary"]> }) {
+  return (
+    <AdminCard title="Eficiência Operacional" icon={Gauge}>
+      <div className="flex items-end gap-2 mb-4">
+        <span className="text-3xl font-bold text-[#3E2415]">{efficiency.percent}%</span>
+        <span className="text-xs text-gray-400 mb-1">de entregas no prazo</span>
+      </div>
+      <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden mb-4">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] transition-all"
+          style={{ width: `${efficiency.percent}%` }}
+        />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+        <div>
+          <p className="text-lg font-bold text-green-600">{efficiency.onTime}</p>
+          <p className="text-[11px] text-gray-500">No prazo</p>
+        </div>
+        <div>
+          <p className="text-lg font-bold text-amber-600">{efficiency.late}</p>
+          <p className="text-[11px] text-gray-500">Fora do prazo</p>
+        </div>
+        <div>
+          <p className="text-lg font-bold text-red-600">{efficiency.notDelivered}</p>
+          <p className="text-[11px] text-gray-500">Não entregues</p>
+        </div>
+        <div>
+          <p className="text-lg font-bold text-[#F58220]">{efficiency.extraTasks}</p>
+          <p className="text-[11px] text-gray-500">Tarefas extras</p>
+        </div>
+      </div>
+    </AdminCard>
+  )
+}
+
+type MyAccountBucket = { paid: number; pending: number; nextDate: string | null }
+type MyAccountData = {
+  earnings: {
+    salarioFixo: MyAccountBucket
+    taxaServico: MyAccountBucket
+    metas: MyAccountBucket
+    diarias: MyAccountBucket
+    comprasDomingo: MyAccountBucket
+    outrosAdicionais: MyAccountBucket
+  }
+  discounts: { consumoInterno: number; vales: number; descontosDiversos: number; impostos: number }
+  totals: { totalRecebidoPeriodo: number; totalAReceber: number; proximaDataPrevista: string | null }
+}
+
+const EARNINGS_LABELS: Record<keyof MyAccountData["earnings"], string> = {
+  salarioFixo: "Salário Fixo",
+  taxaServico: "Taxa de Serviço",
+  metas: "Metas",
+  diarias: "Diárias",
+  comprasDomingo: "Compras de Domingo",
+  outrosAdicionais: "Outros Adicionais",
+}
+
+/** "Sua Conta" — extrato financeiro detalhado do colaborador (substitui o antigo card só de Conta de Consumo). */
+function MyAccountWidget() {
+  const [data, setData] = useState<MyAccountData | null>(null)
+
+  useEffect(() => {
+    adminFetch<MyAccountData>("/api/company/my-account").then(setData)
+  }, [])
+
+  if (!data) return null
+
+  const earningsRows = Object.entries(data.earnings) as [keyof MyAccountData["earnings"], MyAccountBucket][]
+  const hasAnyEarnings = earningsRows.some(([, b]) => b.paid > 0 || b.pending > 0)
+  const allDiscountRows: [string, number][] = [
+    ["Conta de Consumo Interno", data.discounts.consumoInterno],
+    ["Vales/Adiantamentos", data.discounts.vales],
+    ["Descontos Diversos", data.discounts.descontosDiversos],
+    ["Impostos", data.discounts.impostos],
+  ]
+  const discountRows = allDiscountRows.filter(([, v]) => v > 0)
+
+  return (
+    <AdminCard title="Sua Conta" icon={Wallet}>
+      <div className="grid grid-cols-2 gap-4 mb-4 pb-4 border-b border-gray-100">
+        <div>
+          <p className="text-xs text-gray-500">Já recebido no período</p>
+          <p className="text-xl font-bold text-green-600">{currency(data.totals.totalRecebidoPeriodo)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500">A receber</p>
+          <p className="text-xl font-bold text-amber-600">{currency(data.totals.totalAReceber)}</p>
+          {data.totals.proximaDataPrevista && (
+            <p className="text-[11px] text-gray-400">Previsto: {new Date(data.totals.proximaDataPrevista).toLocaleDateString("pt-BR")}</p>
+          )}
+        </div>
+      </div>
+
+      <p className="text-xs font-semibold text-[#3E2415] mb-2">Ganhos / Entradas</p>
+      {!hasAnyEarnings ? (
+        <p className="text-xs text-gray-400 mb-4">Nenhum lançamento de ganhos neste período.</p>
+      ) : (
+        <div className="space-y-1.5 mb-4">
+          {earningsRows
+            .filter(([, b]) => b.paid > 0 || b.pending > 0)
+            .map(([key, b]) => (
+              <div key={key} className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">{EARNINGS_LABELS[key]}</span>
+                <span className="text-right">
+                  {b.paid > 0 && <span className="text-green-600 font-medium">{currency(b.paid)} pago</span>}
+                  {b.paid > 0 && b.pending > 0 && " · "}
+                  {b.pending > 0 && <span className="text-amber-600 font-medium">{currency(b.pending)} pendente</span>}
+                </span>
+              </div>
+            ))}
+        </div>
+      )}
+
+      {discountRows.length > 0 && (
+        <>
+          <p className="text-xs font-semibold text-[#3E2415] mb-2 pt-2 border-t border-gray-100">Descontos / Saídas</p>
+          <div className="space-y-1.5">
+            {discountRows.map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">{label}</span>
+                <span className="text-red-600 font-medium">-{currency(value)}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </AdminCard>
   )
 }
 

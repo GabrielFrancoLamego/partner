@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const companyId = user.companyId
 
     const body = await request.json()
-    const { name, kind, pointsImpact, salaryImpactType, salaryImpactValue, hoursBankImpactMinutes } = body
+    const { name, kind, pointsImpact, salaryImpactType, salaryImpactValue, hoursBankImpactMinutes, isTax } = body
 
     if (typeof name !== "string" || !name.trim()) throw new ApiError(400, "Nome é obrigatório")
     if (!IMPACT_KINDS.includes(kind)) throw new ApiError(400, "Natureza do impacto inválida")
@@ -45,6 +45,7 @@ export async function POST(request: Request) {
         salaryImpactType: kind === "SALARY" ? salaryImpactType || "DISCOUNT" : null,
         salaryImpactValue: kind === "SALARY" ? Number(salaryImpactValue) || 0 : null,
         hoursBankImpactMinutes: kind === "HOURS_BANK" ? Number(hoursBankImpactMinutes) || 0 : null,
+        isTax: kind === "SALARY" && salaryImpactType === "DISCOUNT" ? Boolean(isTax) : false,
         createdById: user.id,
       },
     })

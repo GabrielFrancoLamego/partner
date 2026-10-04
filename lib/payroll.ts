@@ -46,6 +46,32 @@ export type OvertimePreview = {
  *   valor = hora × horas extras × 1,5 (os 50% de adicional)
  * Lançado como Occurrence.type = HORA_EXTRA (ver app/api/company/occurrences).
  */
+/** 5º dia útil do mês (pula sábado/domingo) — data-padrão do Saldo da folha (ver lib/payroll-engine.ts). */
+export function get5thBusinessDay(year: number, month: number): Date {
+  let count = 0
+  let day = 1
+  let date = new Date(year, month, day)
+  while (count < 5) {
+    date = new Date(year, month, day)
+    const weekday = date.getDay()
+    if (weekday !== 0 && weekday !== 6) count++
+    if (count < 5) day++
+  }
+  return date
+}
+
+/** Dia 20 do mês de referência — data-padrão do Adiantamento da folha. */
+export function getAdvanceDate(year: number, month: number): Date {
+  return new Date(year, month, 20)
+}
+
+/** 40% Adiantamento (dia 20) / 60% Saldo (5º dia útil do mês seguinte) — regra padrão do FIXO/TEMPORARIO. */
+export function splitFixedSalary(monthlySalary: number): { advance: number; balance: number } {
+  const advance = Math.round(monthlySalary * 0.4 * 100) / 100
+  const balance = Math.round((monthlySalary - advance) * 100) / 100
+  return { advance, balance }
+}
+
 export function computeOvertimePreview(schedule: EmployeeScheduleForPayroll, hours: number, referenceDate = new Date()): OvertimePreview {
   if (!schedule.workStartTime || !schedule.workEndTime) {
     throw new Error("Colaborador sem horário de trabalho cadastrado — não é possível calcular o valor da hora")

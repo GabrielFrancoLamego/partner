@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { createClient } from "@/lib/supabase/server"
 import { recordAccess } from "@/lib/access-log"
+import { enforceEmploymentAccessRules } from "@/lib/employment-access"
 
 export async function POST(request: Request) {
   const { email, password } = await request.json()
@@ -26,7 +27,15 @@ export async function POST(request: Request) {
     return Response.json({ error: "Conta autenticada, mas sem perfil configurado na plataforma" }, { status: 403 })
   }
 
-  if (user.status !== "ACTIVE") {
+  const wasBlocked = await enforceEmploymentAccessRules({
+    id: user.id,
+    companyId: user.companyId,
+    role: user.role,
+    status: user.status,
+    employeeProfile: user.employeeProfile ? { employmentType: user.employeeProfile.employmentType, contractEndDate: user.employeeProfile.contractEndDate } : null,
+  })
+
+  if (wasBlocked || user.status !== "ACTIVE") {
     await supabase.auth.signOut()
     return Response.json({ error: "Conta inativa" }, { status: 403 })
   }

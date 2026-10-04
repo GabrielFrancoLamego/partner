@@ -25,6 +25,9 @@ const OCCURRENCE_TYPES: OccurrenceType[] = [
   "BANCO_HORAS",
   "DISPENSADO",
   "FIXADO",
+  "SALARIO",
+  "TAXA_SERVICO",
+  "COMPRA_DOMINGO",
   "CUSTOM",
 ]
 // CONSUMO/QUEBRA_CAIXA exigem a foto da comanda/registro assinado como comprovante.
@@ -50,6 +53,9 @@ const TYPE_LABELS: Record<OccurrenceType, string> = {
   BANCO_HORAS: "Banco de horas",
   DISPENSADO: "Desligamento",
   FIXADO: "Efetivação",
+  SALARIO: "Salário Fixo",
+  TAXA_SERVICO: "Taxa de Serviço",
+  COMPRA_DOMINGO: "Compra de Domingo",
   CUSTOM: "Personalizado",
 }
 

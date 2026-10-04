@@ -33,6 +33,7 @@ import { TermAcceptanceGate } from "./term-acceptance-gate"
 import { ProfileCompletionGate } from "./profile-completion-gate"
 import { NotificationBell } from "@/components/notifications/notification-bell"
 import { UserAvatarMenu } from "./user-avatar-menu"
+import { EmployeeLevelBadge } from "./employee-level-badge"
 import { MobileNavBar } from "@/components/shared/mobile-nav-bar"
 import { QuickActionBar } from "@/components/shared/quick-action-bar"
 
@@ -175,7 +176,8 @@ export function CompanyShell({
                 <img src="/brand/tribuss-icone-app.png" alt="Tribuss" className="w-8 h-8 rounded-lg object-contain flex-shrink-0" />
                 <span className="font-heading text-sm font-semibold text-[#3E2415] truncate">{user.companyName}</span>
               </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {user.role === "EMPLOYEE" && <EmployeeLevelBadge />}
                 <NotificationBell />
                 <UserAvatarMenu name={user.name} roleLabel={ROLE_LABELS[user.role]} />
               </div>
@@ -252,6 +254,7 @@ export function CompanyShell({
 
         <div className="lg:ml-[260px]">
           <div className="hidden lg:flex items-center justify-end gap-3 px-8 py-3 border-b border-[#E8E3DC] bg-white/60">
+            {user.role === "EMPLOYEE" && <EmployeeLevelBadge />}
             <NotificationBell />
             <UserAvatarMenu name={user.name} roleLabel={ROLE_LABELS[user.role]} />
           </div>

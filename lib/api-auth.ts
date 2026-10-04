@@ -5,6 +5,7 @@ import { isPlatformAdmin, isCompanyStaff, isPartner, canAccessFinanceModule } fr
 import { prisma } from "./prisma"
 import { getCompanyAccessState } from "./company-access"
 import { isTwoFactorVerified } from "./two-factor-session"
+import { enforceEmploymentAccessRules } from "./employment-access"
 
 export class ApiError extends Error {
   status: number
@@ -44,6 +45,12 @@ export async function requirePlatformAdmin(): Promise<CurrentUser> {
  * carência) — sem isso, o bloqueio era só visual: uma chamada direta à API
  * (curl/Postman) continuava funcionando normalmente para o staff de uma
  * empresa suspensa (ver lib/company-access.ts).
+ *
+ * Também repete o bloqueio individual de User.status — além de checar o
+ * status já persistido, roda a regra de bloqueio automático do TEMPORARIO
+ * (ver lib/employment-access.ts) a cada chamada, pra cortar o acesso de uma
+ * sessão já aberta no mesmo instante em que o contrato vence, sem esperar o
+ * próximo login.
  */
 export async function requireCompanyStaff(): Promise<CurrentUser & { companyId: string }> {
   const user = await requireUser()
@@ -57,6 +64,17 @@ export async function requireCompanyStaff(): Promise<CurrentUser & { companyId: 
   if (!company) throw new ApiError(403, "Empresa não encontrada")
   if (getCompanyAccessState(company).kind === "BLOCKED") {
     throw new ApiError(403, "Acesso da empresa suspenso — contate o suporte Tribuss")
+  }
+
+  const wasBlocked = await enforceEmploymentAccessRules({
+    id: user.id,
+    companyId: user.companyId,
+    role: user.role,
+    status: user.status,
+    employeeProfile: user.employeeProfile ? { employmentType: user.employeeProfile.employmentType, contractEndDate: user.employeeProfile.contractEndDate } : null,
+  })
+  if (wasBlocked || user.status !== "ACTIVE") {
+    throw new ApiError(403, "Conta inativa — contate a Gerência/Master")
   }
 
   return user as CurrentUser & { companyId: string }

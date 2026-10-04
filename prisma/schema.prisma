@@ -108,7 +108,18 @@ enum OccurrenceType {
   BANCO_HORAS // Lançamento no banco de horas
   DISPENSADO // Desligamento — exige attachmentUrl
   FIXADO // Efetivação/fixação do colaborador
+  SALARIO // Salário Fixo (Adiantamento 40%/Saldo) — gerado automaticamente pelo ciclo de folha (ver lib/payroll-engine.ts)
+  TAXA_SERVICO // Taxa de Serviço do período — lançamento mensal do Financeiro
+  COMPRA_DOMINGO // Compra de Domingo — adicional por trabalho no domingo
   CUSTOM // Tipo configurável pela empresa — ver Occurrence.customTypeId / OccurrenceTypeConfig
+}
+
+// Vínculo empregatício do colaborador — define as regras de pagamento e
+// bloqueio automático de acesso (ver lib/employment-access.ts).
+enum EmploymentType {
+  FIXO // Folha mensal: 40% Adiantamento (dia 20) + Saldo (5º dia útil)
+  TEMPORARIO // Mesmo ciclo do FIXO, mas com dataInicioContrato/dataFimContrato — acesso bloqueado automaticamente ao fim do contrato sem pendências
+  DIARISTA // Pago por diária (Occurrence.type=DIARIA) — acesso bloqueado automaticamente ao confirmar o pagamento da diária
 }
 
 // Natureza do impacto de um tipo de ocorrência configurável pela empresa (ver OccurrenceTypeConfig).
@@ -760,6 +771,12 @@ model EmployeeProfile {
   // (sem ver histórico, editar ou excluir) — concedido pelo Master/Gerente.
   canRegisterOccurrences Boolean  @default(false)
   monthlySalary          Decimal? @db.Decimal(10, 2) // usado para calcular o abate de 1 dia em FALTA sem ATESTADO
+
+  // Tipo de vínculo — define o ciclo de pagamento e a regra de bloqueio
+  // automático de acesso (ver lib/employment-access.ts e lib/payroll-engine.ts).
+  employmentType    EmploymentType @default(FIXO)
+  contractStartDate DateTime? // preenchido só para TEMPORARIO
+  contractEndDate   DateTime? // preenchido só para TEMPORARIO — bloqueia o acesso automaticamente ao vencer, se não houver pendência financeira
 
   // Setor, turno e janela de trabalho — usados para calcular o Banco de Horas
   // a cada batida de ponto fora do horário previsto (ver app/api/company/timeclock).
@@ -1725,6 +1742,10 @@ model Occurrence {
   paidById        String?
   paidBy          User?     @relation("OccurrencePaidBy", fields: [paidById], references: [id])
 
+  // Data prevista de pagamento (folha, meta, diária) — editável pelo
+  // Financeiro, exibida ao colaborador no widget "Sua Conta" enquanto PENDING.
+  expectedPaymentDate DateTime?
+
   // Preenchido só quando esta Occurrence (type=META) foi gerada pela
   // distribuição automática de prêmio de Meta batida (ver lib/goal-rewards.ts)
   // — permite que excluir a ocorrência estorne o GoalPayout correspondente.
@@ -1755,6 +1776,9 @@ model OccurrenceTypeConfig {
   salaryImpactType       OccurrenceSalaryImpactType?
   salaryImpactValue      Decimal?                    @db.Decimal(10, 2)
   hoursBankImpactMinutes Int?
+  // Classifica um desconto (salaryImpactType=DISCOUNT) como Imposto — usado
+  // pra separar "Impostos" de "Descontos Diversos" no widget "Sua Conta".
+  isTax                  Boolean                     @default(false)
 
   active      Boolean  @default(true)
   createdById String
@@ -2221,6 +2245,10 @@ model GoalPayout {
   paidAt     DateTime         @default(now())
   note       String?
   createdAt  DateTime         @default(now())
+
+  // Data prevista de pagamento enquanto status=PENDING — editável pelo
+  // Financeiro (ver widget "Sua Conta").
+  expectedPaymentDate DateTime?
 
   // Ocorrência (type=META) irmã, criada só pela distribuição automática —
   // null nos lançamentos manuais via /company/financeiro. Excluir essa

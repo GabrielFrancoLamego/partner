@@ -29,7 +29,17 @@ export async function GET() {
     const [occurrences, goalPayouts, redemptions] = await Promise.all([
       prisma.occurrence.findMany({
         where: { companyId, employeeId: { not: null }, total: { not: null } },
-        select: { id: true, employeeId: true, type: true, total: true, paymentStatus: true, date: true, description: true, paymentProofUrl: true },
+        select: {
+          id: true,
+          employeeId: true,
+          type: true,
+          total: true,
+          paymentStatus: true,
+          date: true,
+          description: true,
+          paymentProofUrl: true,
+          expectedPaymentDate: true,
+        },
         orderBy: { date: "desc" },
       }),
       prisma.goalPayout.findMany({
@@ -71,6 +81,7 @@ export async function GET() {
           date: o.date,
           description: o.description,
           paymentProofUrl: o.paymentProofUrl,
+          expectedPaymentDate: o.expectedPaymentDate,
         })),
         goalPayouts: empPayouts.map((p) => ({
           goalName: p.goal.name,

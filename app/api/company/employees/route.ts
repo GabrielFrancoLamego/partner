@@ -9,7 +9,7 @@ import { canManageDailyOperations } from "@/lib/permissions"
  * a só lançar Ocorrências (canRegisterOccurrences) recebe apenas id/nome —
  * dado sensível de colega (salário) nunca vaza para esse perfil.
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const user = await requireCompanyStaff()
     const isManager = canManageDailyOperations(user.role)
@@ -22,12 +22,20 @@ export async function GET() {
       if (!profile?.canRegisterOccurrences) throw new ApiError(403, "Sem permissão para esta ação")
     }
 
+    // ?status=ALL|INACTIVE devolve também colaboradores bloqueados (Diarista
+    // pago / Temporário com contrato vencido) — necessário pra Gerente/Master
+    // conseguirem encontrá-los e reativá-los (ver PATCH .../employees/[id]).
+    const { searchParams } = new URL(request.url)
+    const statusParam = searchParams.get("status")
+    const statusWhere = statusParam === "ALL" ? {} : statusParam === "INACTIVE" ? { status: "INACTIVE" as const } : { status: "ACTIVE" as const }
+
     const employees = await prisma.user.findMany({
-      where: { companyId: user.companyId, role: "EMPLOYEE", status: "ACTIVE" },
+      where: { companyId: user.companyId, role: "EMPLOYEE", ...statusWhere },
       select: {
         id: true,
         name: true,
         email: true,
+        status: true,
         employeeProfile: {
           select: {
             canRegisterOccurrences: true,
@@ -49,6 +57,9 @@ export async function GET() {
             isSectorCommunicationResponsible: true,
             xpPoints: true,
             currentInternalLevel: { select: { id: true, name: true } },
+            employmentType: true,
+            contractStartDate: true,
+            contractEndDate: true,
           },
         },
       },
@@ -64,6 +75,7 @@ export async function GET() {
         id: e.id,
         name: e.name,
         email: e.email,
+        status: e.status,
         canRegisterOccurrences: e.employeeProfile?.canRegisterOccurrences ?? false,
         monthlySalary: e.employeeProfile?.monthlySalary ?? null,
         sectorId: e.employeeProfile?.sectorId ?? null,
@@ -83,6 +95,9 @@ export async function GET() {
         isSectorCommunicationResponsible: e.employeeProfile?.isSectorCommunicationResponsible ?? false,
         xpPoints: e.employeeProfile?.xpPoints ?? 0,
         currentLevel: e.employeeProfile?.currentInternalLevel ?? null,
+        employmentType: e.employeeProfile?.employmentType ?? "FIXO",
+        contractStartDate: e.employeeProfile?.contractStartDate ?? null,
+        contractEndDate: e.employeeProfile?.contractEndDate ?? null,
       })),
     )
   } catch (error) {

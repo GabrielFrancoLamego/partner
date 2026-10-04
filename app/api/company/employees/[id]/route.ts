@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
 import { canManageDailyOperations } from "@/lib/permissions"
 import { logAudit } from "@/lib/audit"
+import { notifyUser } from "@/lib/notifications"
 
 function startOfDay(date: Date) {
   const d = new Date(date)
@@ -29,6 +30,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         name: true,
         email: true,
         phone: true,
+        status: true,
         consumptionDebt: true,
         employeeProfile: {
           select: {
@@ -40,6 +42,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
             weeklyDayOff: true,
             sector: { select: { id: true, name: true } },
             currentInternalLevel: { select: { id: true, name: true } },
+            employmentType: true,
+            contractStartDate: true,
+            contractEndDate: true,
           },
         },
       },
@@ -100,6 +105,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       name: employee.name,
       email: employee.email,
       phone: employee.phone,
+      status: employee.status,
       consumptionDebt: Number(employee.consumptionDebt),
       sector: employee.employeeProfile.sector,
       bankOfHoursMinutes: employee.employeeProfile.bankOfHoursMinutes,
@@ -108,6 +114,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       workEndTime: employee.employeeProfile.workEndTime,
       weeklyDayOff: employee.employeeProfile.weeklyDayOff,
       currentLevel: employee.employeeProfile.currentInternalLevel,
+      employmentType: employee.employeeProfile.employmentType,
+      contractStartDate: employee.employeeProfile.contractStartDate,
+      contractEndDate: employee.employeeProfile.contractEndDate,
       bankExtract,
       xpEntries,
       occurrences,
@@ -147,6 +156,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       hasExtraMonthlyDayOff,
       isFinanceResponsible,
       isSectorCommunicationResponsible,
+      employmentType,
+      contractStartDate,
+      contractEndDate,
+      status,
     } = body
 
     if (sectorId) {
@@ -156,6 +169,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (shiftType && shiftType !== "DAY" && shiftType !== "NIGHT") throw new ApiError(400, "Turno inválido")
     if (weeklyDayOff !== undefined && weeklyDayOff !== null && (weeklyDayOff < 0 || weeklyDayOff > 6)) {
       throw new ApiError(400, "Dia de folga semanal inválido")
+    }
+    if (employmentType !== undefined && !["FIXO", "TEMPORARIO", "DIARISTA"].includes(employmentType)) {
+      throw new ApiError(400, "Tipo de vínculo inválido")
+    }
+    if (status !== undefined && !["ACTIVE", "INACTIVE"].includes(status)) {
+      throw new ApiError(400, "Status inválido")
     }
 
     const updated = await prisma.employeeProfile.update({
@@ -178,12 +197,28 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...(isSectorCommunicationResponsible !== undefined
           ? { isSectorCommunicationResponsible: Boolean(isSectorCommunicationResponsible) }
           : {}),
+        ...(employmentType !== undefined ? { employmentType } : {}),
+        ...(contractStartDate !== undefined ? { contractStartDate: contractStartDate ? new Date(contractStartDate) : null } : {}),
+        ...(contractEndDate !== undefined ? { contractEndDate: contractEndDate ? new Date(contractEndDate) : null } : {}),
       },
     })
 
+    // Reativação ("convocar para novo turno") — só a Gerente/Master libera o
+    // acesso de um Diarista/Temporário bloqueado automaticamente (ver
+    // lib/employment-access.ts). Bloqueio manual também passa por aqui.
+    if (status !== undefined && status !== employee.status) {
+      await prisma.user.update({ where: { id }, data: { status } })
+      await notifyUser({
+        userId: id,
+        type: "GENERIC",
+        title: status === "ACTIVE" ? "Acesso liberado" : "Acesso bloqueado",
+        message: status === "ACTIVE" ? "Seu acesso à plataforma foi liberado pela Gerência." : "Seu acesso à plataforma foi bloqueado pela Gerência.",
+      }).catch(() => {})
+    }
+
     await logAudit({ userId: user.id, companyId, action: "UPDATE", entity: "EmployeeProfile", entityId: updated.id, details: body })
 
-    return Response.json(updated)
+    return Response.json({ ...updated, status: status ?? employee.status })
   } catch (error) {
     return handleApiError(error)
   }

@@ -39,6 +39,16 @@ type Employee = {
   hasExtraMonthlyDayOff: boolean
   isFinanceResponsible: boolean
   isSectorCommunicationResponsible: boolean
+  status: "ACTIVE" | "INACTIVE"
+  employmentType: "FIXO" | "TEMPORARIO" | "DIARISTA"
+  contractStartDate: string | null
+  contractEndDate: string | null
+}
+
+const EMPLOYMENT_TYPE_LABELS: Record<Employee["employmentType"], string> = {
+  FIXO: "Fixo",
+  TEMPORARIO: "Temporário",
+  DIARISTA: "Diarista",
 }
 
 const WEEKDAYS: { key: keyof WeeklySchedule; label: string; dayIndex: number }[] = [
@@ -211,24 +221,41 @@ function EmployeeScheduleTable() {
   const [sectors, setSectors] = useState<Sector[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [editing, setEditing] = useState<Employee | null>(null)
+  const [statusTab, setStatusTab] = useState<"ACTIVE" | "INACTIVE">("ACTIVE")
 
   const reload = () => {
     setIsLoading(true)
-    Promise.all([adminFetch<Employee[]>("/api/company/employees"), adminFetch<Sector[]>("/api/company/sectors")])
+    Promise.all([adminFetch<Employee[]>(`/api/company/employees?status=${statusTab}`), adminFetch<Sector[]>("/api/company/sectors")])
       .then(([e, s]) => {
         setEmployees(e)
         setSectors(s)
       })
       .finally(() => setIsLoading(false))
   }
-  useEffect(reload, [])
+  useEffect(reload, [statusTab])
+
+  const handleReactivate = async (e: Employee) => {
+    if (!confirm(`Reativar o acesso de ${e.name}? Use isso ao convocá-lo(a) para um novo turno/contrato.`)) return
+    await adminFetch(`/api/company/employees/${e.id}`, { method: "PATCH", body: JSON.stringify({ status: "ACTIVE" }) }).catch((err) =>
+      alert(err instanceof AdminApiError ? err.message : "Erro ao reativar"),
+    )
+    reload()
+  }
 
   if (isLoading) return <LoadingState />
 
   return (
     <AdminCard title="Turnos & Banco de Horas por Colaborador" icon={Clock}>
+      <div className="flex gap-2 mb-4">
+        <Button size="sm" variant={statusTab === "ACTIVE" ? "default" : "outline"} onClick={() => setStatusTab("ACTIVE")} className={statusTab === "ACTIVE" ? "bg-[#3E2415] text-white" : ""}>
+          Ativos
+        </Button>
+        <Button size="sm" variant={statusTab === "INACTIVE" ? "default" : "outline"} onClick={() => setStatusTab("INACTIVE")} className={statusTab === "INACTIVE" ? "bg-[#3E2415] text-white" : ""}>
+          Bloqueados
+        </Button>
+      </div>
       {employees.length === 0 ? (
-        <EmptyState message="Nenhum colaborador cadastrado ainda." />
+        <EmptyState message={statusTab === "ACTIVE" ? "Nenhum colaborador cadastrado ainda." : "Nenhum colaborador bloqueado."} />
       ) : (
         <>
           <TableDesktop>
@@ -236,6 +263,7 @@ function EmployeeScheduleTable() {
               <thead className="bg-gray-50 text-left text-xs text-gray-500">
                 <tr>
                   <th className="px-4 py-3 font-medium">Colaborador</th>
+                  <th className="px-4 py-3 font-medium">Vínculo</th>
                   <th className="px-4 py-3 font-medium">Setor</th>
                   <th className="px-4 py-3 font-medium">Horário</th>
                   <th className="px-4 py-3 font-medium">Folga fixa</th>
@@ -257,6 +285,7 @@ function EmployeeScheduleTable() {
                         )}
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-gray-600">{EMPLOYMENT_TYPE_LABELS[e.employmentType]}</td>
                     <td className="px-4 py-3 text-gray-600">{sectors.find((s) => s.id === e.sectorId)?.name ?? "—"}</td>
                     <td className="px-4 py-3 text-gray-600">{e.workStartTime && e.workEndTime ? `${e.workStartTime} – ${e.workEndTime}` : "—"}</td>
                     <td className="px-4 py-3 text-gray-600">{e.weeklyDayOff !== null ? WEEKDAY_SHORT[e.weeklyDayOff] : "—"}</td>
@@ -267,9 +296,15 @@ function EmployeeScheduleTable() {
                       <Button variant="ghost" size="sm" onClick={() => router.push(`/company/colaboradores/${e.id}`)}>
                         <ExternalLink className="h-3.5 w-3.5 mr-1" /> Ficha
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setEditing(e)}>
-                        Editar
-                      </Button>
+                      {statusTab === "INACTIVE" ? (
+                        <Button variant="ghost" size="sm" className="text-green-700" onClick={() => handleReactivate(e)}>
+                          Reativar/Convocar
+                        </Button>
+                      ) : (
+                        <Button variant="ghost" size="sm" onClick={() => setEditing(e)}>
+                          Editar
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -293,6 +328,7 @@ function EmployeeScheduleTable() {
                   </span>
                 }
                 fields={[
+                  { label: "Vínculo", value: EMPLOYMENT_TYPE_LABELS[e.employmentType] },
                   { label: "Horário", value: e.workStartTime && e.workEndTime ? `${e.workStartTime} – ${e.workEndTime}` : "—" },
                   { label: "Folga fixa", value: e.weeklyDayOff !== null ? WEEKDAY_SHORT[e.weeklyDayOff] : "—" },
                 ]}
@@ -301,9 +337,15 @@ function EmployeeScheduleTable() {
                     <Button variant="ghost" size="sm" onClick={() => router.push(`/company/colaboradores/${e.id}`)}>
                       <ExternalLink className="h-3.5 w-3.5 mr-1" /> Ficha
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setEditing(e)}>
-                      Editar
-                    </Button>
+                    {statusTab === "INACTIVE" ? (
+                      <Button variant="ghost" size="sm" className="text-green-700" onClick={() => handleReactivate(e)}>
+                        Reativar/Convocar
+                      </Button>
+                    ) : (
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(e)}>
+                        Editar
+                      </Button>
+                    )}
                   </>
                 }
               />
@@ -340,6 +382,9 @@ function EmployeeScheduleDialog({
 }) {
   const [sectorId, setSectorId] = useState(employee.sectorId ?? "none")
   const [tag, setTag] = useState(employee.tag ?? "")
+  const [employmentType, setEmploymentType] = useState<Employee["employmentType"]>(employee.employmentType)
+  const [contractStartDate, setContractStartDate] = useState(employee.contractStartDate?.slice(0, 10) ?? "")
+  const [contractEndDate, setContractEndDate] = useState(employee.contractEndDate?.slice(0, 10) ?? "")
   const [shiftType, setShiftType] = useState(employee.shiftType ?? "DAY")
   const [workStartTime, setWorkStartTime] = useState(employee.workStartTime ?? "08:00")
   const [workEndTime, setWorkEndTime] = useState(employee.workEndTime ?? "18:00")
@@ -372,6 +417,9 @@ function EmployeeScheduleDialog({
         body: JSON.stringify({
           sectorId: sectorId === "none" ? null : sectorId,
           tag: tag.trim() || null,
+          employmentType,
+          contractStartDate: employmentType === "TEMPORARIO" ? contractStartDate || null : null,
+          contractEndDate: employmentType === "TEMPORARIO" ? contractEndDate || null : null,
           shiftType,
           workStartTime,
           workEndTime,
@@ -422,6 +470,34 @@ function EmployeeScheduleDialog({
             <Input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="Ex: Cozinha, Caixa, Limpeza" />
             <p className="text-xs text-gray-400">Usada em Checklists para endereçar tarefas livres por tag, além de Setor.</p>
           </div>
+          <div className="space-y-2">
+            <Label>Tipo de Vínculo</Label>
+            <Select value={employmentType} onValueChange={(v) => setEmploymentType(v as Employee["employmentType"])}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="FIXO">Fixo (40% dia 20 + saldo no 5º dia útil)</SelectItem>
+                <SelectItem value="TEMPORARIO">Temporário (contrato com data de início/fim)</SelectItem>
+                <SelectItem value="DIARISTA">Diarista (pago por diária, acesso bloqueado após o pagamento)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {employmentType === "TEMPORARIO" && (
+            <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
+              <div className="space-y-2">
+                <Label className="text-xs">Início do contrato</Label>
+                <Input type="date" value={contractStartDate} onChange={(e) => setContractStartDate(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Fim do contrato</Label>
+                <Input type="date" value={contractEndDate} onChange={(e) => setContractEndDate(e.target.value)} />
+              </div>
+              <p className="text-[11px] text-amber-700 col-span-2">
+                Ao vencer sem pendências financeiras, o acesso é bloqueado automaticamente — reative em "Bloqueados" ao convocar de novo.
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Turno</Label>
             <Select value={shiftType} onValueChange={(v) => setShiftType(v as "DAY" | "NIGHT")}>

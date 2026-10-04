@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -34,6 +35,9 @@ const TYPE_LABELS: Record<string, string> = {
   BANCO_HORAS: "Banco de horas",
   DISPENSADO: "Desligamento",
   FIXADO: "Efetivação",
+  SALARIO: "Salário Fixo",
+  TAXA_SERVICO: "Taxa de Serviço",
+  COMPRA_DOMINGO: "Compra de Domingo",
   CUSTOM: "Personalizado",
 }
 // Mantido em sincronia com REQUIRES_ATTACHMENT em app/api/company/occurrences/route.ts
@@ -931,6 +935,7 @@ function OccurrenceTypeDialog({ onClose, onCreated }: { onClose: () => void; onC
   const [pointsImpact, setPointsImpact] = useState("")
   const [salaryImpactType, setSalaryImpactType] = useState<"DISCOUNT" | "BONUS">("DISCOUNT")
   const [salaryImpactValue, setSalaryImpactValue] = useState("")
+  const [isTax, setIsTax] = useState(false)
   const [hoursBankImpactMinutes, setHoursBankImpactMinutes] = useState("")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -948,6 +953,7 @@ function OccurrenceTypeDialog({ onClose, onCreated }: { onClose: () => void; onC
           pointsImpact: kind === "POINTS" ? Number(pointsImpact) : undefined,
           salaryImpactType: kind === "SALARY" ? salaryImpactType : undefined,
           salaryImpactValue: kind === "SALARY" ? Number(salaryImpactValue) : undefined,
+          isTax: kind === "SALARY" && salaryImpactType === "DISCOUNT" ? isTax : undefined,
           hoursBankImpactMinutes: kind === "HOURS_BANK" ? Number(hoursBankImpactMinutes) : undefined,
         }),
       })
@@ -1012,6 +1018,11 @@ function OccurrenceTypeDialog({ onClose, onCreated }: { onClose: () => void; onC
                 <Label>Valor (R$)</Label>
                 <Input type="number" step="0.01" value={salaryImpactValue} onChange={(e) => setSalaryImpactValue(e.target.value)} required />
               </div>
+              {salaryImpactType === "DISCOUNT" && (
+                <label className="flex items-center gap-2 text-sm text-gray-700 col-span-2">
+                  <Checkbox checked={isTax} onCheckedChange={(v) => setIsTax(v === true)} />É um Imposto? (separa de "Descontos Diversos" em "Sua Conta")
+                </label>
+              )}
             </div>
           )}
 

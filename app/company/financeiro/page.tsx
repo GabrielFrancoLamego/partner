@@ -369,7 +369,28 @@ function WithdrawalsList({ canApprove }: { canApprove: boolean }) {
   )
 }
 
-type ReceivableOccurrence = { id: string; type: string; total: number; status: string; date: string; description: string | null; paymentProofUrl: string | null }
+type ReceivableOccurrence = {
+  id: string
+  type: string
+  total: number
+  status: string
+  date: string
+  description: string | null
+  paymentProofUrl: string | null
+  expectedPaymentDate: string | null
+}
+
+const RECEIVABLE_TYPE_LABELS: Record<string, string> = {
+  SALARIO: "Salário Fixo",
+  TAXA_SERVICO: "Taxa de Serviço",
+  DIARIA: "Diária",
+  COMPRA_DOMINGO: "Compra de Domingo",
+  META: "Meta",
+  VALE: "Vale/Adiantamento",
+  HORA_EXTRA: "Hora Extra",
+  CONSUMO: "Consumo",
+  CUSTOM: "Lançamento",
+}
 type ReceivableRow = {
   employeeId: string
   employeeName: string
@@ -385,6 +406,7 @@ function ReceivablesList() {
   const [isLoading, setIsLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [paying, setPaying] = useState<ReceivableOccurrence | null>(null)
+  const [rescheduling, setRescheduling] = useState<ReceivableOccurrence | null>(null)
 
   const reload = () => {
     setIsLoading(true)
@@ -420,7 +442,10 @@ function ReceivablesList() {
                   {r.occurrences.map((o) => (
                     <div key={o.id} className="flex items-center justify-between gap-2 text-xs flex-wrap">
                       <span className="text-gray-600">
-                        {o.type} {o.description && `— ${o.description}`} · {new Date(o.date).toLocaleDateString("pt-BR")}
+                        {RECEIVABLE_TYPE_LABELS[o.type] ?? o.type} {o.description && `— ${o.description}`} · {new Date(o.date).toLocaleDateString("pt-BR")}
+                        {o.status === "PENDING" && o.expectedPaymentDate && (
+                          <> · previsto {new Date(o.expectedPaymentDate).toLocaleDateString("pt-BR")}</>
+                        )}
                       </span>
                       <div className="flex items-center gap-2">
                         {o.paymentProofUrl && (
@@ -432,9 +457,14 @@ function ReceivablesList() {
                           {currency(String(o.total))} ({o.status === "PAID" ? "Pago" : "Pendente"})
                         </span>
                         {o.status === "PENDING" && (
-                          <Button size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => setPaying(o)}>
-                            Marcar como Pago
-                          </Button>
+                          <>
+                            <Button size="sm" variant="ghost" className="h-6 text-[11px] px-2" onClick={() => setRescheduling(o)}>
+                              Alterar Data
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => setPaying(o)}>
+                              Marcar como Pago
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -472,7 +502,65 @@ function ReceivablesList() {
           }}
         />
       )}
+      {rescheduling && (
+        <RescheduleOccurrenceDialog
+          occurrence={rescheduling}
+          onClose={() => setRescheduling(null)}
+          onDone={() => {
+            setRescheduling(null)
+            reload()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+function RescheduleOccurrenceDialog({ occurrence, onClose, onDone }: { occurrence: ReceivableOccurrence; onClose: () => void; onDone: () => void }) {
+  const [date, setDate] = useState(occurrence.expectedPaymentDate ? occurrence.expectedPaymentDate.slice(0, 10) : "")
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!date) {
+      setError("Informe a nova data prevista")
+      return
+    }
+    setIsSubmitting(true)
+    setError("")
+    try {
+      await adminFetch(`/api/company/occurrences/${occurrence.id}/mark-paid`, { method: "PATCH", body: JSON.stringify({ expectedPaymentDate: date }) })
+      onDone()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao alterar a data")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Alterar Data Prevista de Pagamento</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="space-y-1.5">
+            <Label>Nova data prevista</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSubmit} disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+            Salvar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

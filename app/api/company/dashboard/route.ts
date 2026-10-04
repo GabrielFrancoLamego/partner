@@ -40,77 +40,175 @@ export async function GET(request: Request) {
     startOfToday.setHours(0, 0, 0, 0)
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
-    const [
-      activePartnerIds,
-      pendingCommissions,
-      pendingWithdrawals,
-      topPartnersRaw,
-      totalEmployees,
-      presentTodayIds,
-      checklistRows,
-      occurrencesThisMonth,
-      company,
-    ] = await Promise.all([
-      prisma.commission.findMany({
-        where: { companyId, ...dateWhere("date"), partner: { status: "ACTIVE" } },
-        select: { partnerId: true },
-        distinct: ["partnerId"],
-      }),
-      prisma.commission.aggregate({
-        where: { companyId, status: "PENDING" },
-        _sum: { commissionValue: true },
-        _count: true,
-      }),
-      prisma.withdrawal.aggregate({
-        where: { companyId, status: "PENDING" },
-        _sum: { amount: true },
-        _count: true,
-      }),
-      prisma.commission.groupBy({
-        by: ["partnerId"],
-        where: { companyId, status: { in: ["APPROVED", "PAID"] }, ...dateWhere("date") },
-        _sum: { commissionValue: true, amount: true },
-        // `_count.promotionId` conta só os registros com promotionId preenchido —
-        // ou seja, indicações atreladas a um Vale Retorno/promoção específica.
-        _count: { _all: true, promotionId: true },
-        // Ranking pelo que o parceiro gerou pra empresa (faturamento), não pelo
-        // valor pago a ele — esse card não mostra mais a comissão paga.
-        orderBy: { _sum: { amount: "desc" } },
-        take: 5,
-      }),
-      prisma.user.count({ where: { companyId, role: "EMPLOYEE" } }),
-      prisma.timeEntry.findMany({
-        where: { companyId, type: "CHECK_IN", createdAt: { gte: startOfToday } },
-        select: { userId: true },
-        distinct: ["userId"],
-      }),
-      prisma.checklist.findMany({
-        where: { companyId, createdAt: { gte: startOfMonth } },
-        select: { status: true, dueAt: true, approvedAt: true },
-      }),
-      prisma.occurrence.count({ where: { companyId, date: { gte: startOfMonth } } }),
-      prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { name: true } }),
-    ])
+    const isManager = canManageDailyOperations(user.role)
 
-    const topPartners = await Promise.all(
-      topPartnersRaw.map(async (row) => {
-        const partner = await prisma.user.findUnique({ where: { id: row.partnerId }, select: { id: true, name: true } })
-        return {
-          partnerId: row.partnerId,
-          name: partner?.name ?? "—",
-          revenueGenerated: Number(row._sum.amount ?? 0),
-          referralCount: row._count._all,
-          vouchersUsed: row._count.promotionId,
-        }
-      }),
-    )
+    const [company] = await Promise.all([prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { name: true } })])
 
-    const executedChecklists = checklistRows.filter((c) => c.status !== "PENDING").length
-    const onTimeChecklists = checklistRows.filter(
-      (c) => c.status === "APPROVED" && (!c.dueAt || (c.approvedAt && c.approvedAt <= c.dueAt)),
-    ).length
-    const lateOrFailedChecklists = executedChecklists - onTimeChecklists
-    const pendingChecklists = checklistRows.filter((c) => c.status === "PENDING").length
+    // Dados company-wide (Parceiros/financeiro + Operação/RH agregada) — só
+    // pra quem gerencia a operação. Colaborador vê o próprio resumo (abaixo,
+    // `myOperations`/`partnersSimple`/`efficiencySummary`), nunca dados de
+    // outros funcionários nem o financeiro de parceiros (pedido explícito).
+    let partners: {
+      activePartners: number
+      pendingCommissions: { total: number; count: number }
+      pendingWithdrawals: { total: number; count: number }
+      topPartners: { partnerId: string; name: string; revenueGenerated: number; referralCount: number; vouchersUsed: number }[]
+    } | null = null
+    let operations: {
+      totalEmployees: number
+      presentToday: number
+      attendanceRate: number
+      executedChecklists: number
+      onTimeChecklists: number
+      lateOrFailedChecklists: number
+      pendingChecklists: number
+      occurrencesThisMonth: number
+    } | null = null
+    let myOperations: {
+      presences: number
+      faltas: number
+      atestados: number
+      atrasos: number
+      pendingChecklists: number
+      occurrencesCount: number
+    } | null = null
+    let partnersSimple: { totalPartners: number; totalReferralsInPeriod: number } | null = null
+    let efficiencySummary: { percent: number; onTime: number; late: number; notDelivered: number; extraTasks: number } | null = null
+
+    if (isManager) {
+      const [
+        activePartnerIds,
+        pendingCommissions,
+        pendingWithdrawals,
+        topPartnersRaw,
+        totalEmployees,
+        presentTodayIds,
+        checklistRows,
+        occurrencesThisMonth,
+      ] = await Promise.all([
+        prisma.commission.findMany({
+          where: { companyId, ...dateWhere("date"), partner: { status: "ACTIVE" } },
+          select: { partnerId: true },
+          distinct: ["partnerId"],
+        }),
+        prisma.commission.aggregate({
+          where: { companyId, status: "PENDING" },
+          _sum: { commissionValue: true },
+          _count: true,
+        }),
+        prisma.withdrawal.aggregate({
+          where: { companyId, status: "PENDING" },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        prisma.commission.groupBy({
+          by: ["partnerId"],
+          where: { companyId, status: { in: ["APPROVED", "PAID"] }, ...dateWhere("date") },
+          _sum: { commissionValue: true, amount: true },
+          // `_count.promotionId` conta só os registros com promotionId preenchido —
+          // ou seja, indicações atreladas a um Vale Retorno/promoção específica.
+          _count: { _all: true, promotionId: true },
+          // Ranking pelo que o parceiro gerou pra empresa (faturamento), não pelo
+          // valor pago a ele — esse card não mostra mais a comissão paga.
+          orderBy: { _sum: { amount: "desc" } },
+          take: 5,
+        }),
+        prisma.user.count({ where: { companyId, role: "EMPLOYEE" } }),
+        prisma.timeEntry.findMany({
+          where: { companyId, type: "CHECK_IN", createdAt: { gte: startOfToday } },
+          select: { userId: true },
+          distinct: ["userId"],
+        }),
+        prisma.checklist.findMany({
+          where: { companyId, createdAt: { gte: startOfMonth } },
+          select: { status: true, dueAt: true, approvedAt: true },
+        }),
+        prisma.occurrence.count({ where: { companyId, date: { gte: startOfMonth } } }),
+      ])
+
+      const topPartners = await Promise.all(
+        topPartnersRaw.map(async (row) => {
+          const partner = await prisma.user.findUnique({ where: { id: row.partnerId }, select: { id: true, name: true } })
+          return {
+            partnerId: row.partnerId,
+            name: partner?.name ?? "—",
+            revenueGenerated: Number(row._sum.amount ?? 0),
+            referralCount: row._count._all,
+            vouchersUsed: row._count.promotionId,
+          }
+        }),
+      )
+
+      const executedChecklists = checklistRows.filter((c) => c.status !== "PENDING").length
+      const onTimeChecklists = checklistRows.filter(
+        (c) => c.status === "APPROVED" && (!c.dueAt || (c.approvedAt && c.approvedAt <= c.dueAt)),
+      ).length
+      const lateOrFailedChecklists = executedChecklists - onTimeChecklists
+      const pendingChecklists = checklistRows.filter((c) => c.status === "PENDING").length
+
+      partners = {
+        activePartners: activePartnerIds.length,
+        pendingCommissions: { total: Number(pendingCommissions._sum.commissionValue ?? 0), count: pendingCommissions._count },
+        pendingWithdrawals: { total: Number(pendingWithdrawals._sum.amount ?? 0), count: pendingWithdrawals._count },
+        topPartners,
+      }
+      operations = {
+        totalEmployees,
+        presentToday: presentTodayIds.length,
+        attendanceRate: totalEmployees > 0 ? Math.round((presentTodayIds.length / totalEmployees) * 1000) / 10 : 0,
+        executedChecklists,
+        onTimeChecklists,
+        lateOrFailedChecklists,
+        pendingChecklists,
+        occurrencesThisMonth,
+      }
+    }
+
+    if (user.role === "EMPLOYEE") {
+      const [presences, faltas, atestados, atrasos, pendingChecklistsCount, occurrencesCount, activePartners, referralsInPeriod, myChecklists] =
+        await Promise.all([
+          prisma.timeEntry.count({ where: { companyId, userId: user.id, type: "CHECK_IN", ...dateWhere("createdAt") } }),
+          prisma.occurrence.count({ where: { companyId, employeeId: user.id, type: "FALTA", ...dateWhere("date") } }),
+          prisma.occurrence.count({ where: { companyId, employeeId: user.id, type: "ATESTADO", ...dateWhere("date") } }),
+          prisma.timeclockAdjustmentReview.count({
+            where: { companyId, employeeId: user.id, kind: "LATE_CHECKIN", applied: true, ...dateWhere("date") },
+          }),
+          prisma.checklist.count({ where: { companyId, employeeId: user.id, forDate: startOfToday, status: "PENDING" } }),
+          prisma.occurrence.count({ where: { companyId, employeeId: user.id, ...dateWhere("date") } }),
+          prisma.commission.findMany({ where: { companyId, partner: { status: "ACTIVE" } }, select: { partnerId: true }, distinct: ["partnerId"] }),
+          prisma.referral.count({ where: { companyId, ...(start ? { indicatedAt: { gte: start } } : {}) } }),
+          prisma.checklist.findMany({
+            where: { companyId, employeeId: user.id, ...dateWhere("createdAt") },
+            select: { status: true, dueAt: true, approvedAt: true, isExtraTask: true },
+          }),
+        ])
+
+      myOperations = {
+        presences,
+        faltas,
+        atestados,
+        atrasos,
+        pendingChecklists: pendingChecklistsCount,
+        occurrencesCount,
+      }
+      partnersSimple = { totalPartners: activePartners.length, totalReferralsInPeriod: referralsInPeriod }
+
+      const regularTasks = myChecklists.filter((c) => !c.isExtraTask)
+      const extraTasks = myChecklists.filter((c) => c.isExtraTask && c.status === "APPROVED").length
+      const onTime = regularTasks.filter((c) => c.status === "APPROVED" && (!c.dueAt || (c.approvedAt && c.approvedAt <= c.dueAt))).length
+      const late = regularTasks.filter((c) => c.status === "APPROVED" && c.dueAt && c.approvedAt && c.approvedAt > c.dueAt).length
+      const notDelivered = regularTasks.filter(
+        (c) => c.status === "REJECTED" || (c.status === "PENDING" && c.dueAt && c.dueAt < now),
+      ).length
+      const denominator = onTime + late + notDelivered
+      efficiencySummary = {
+        percent: denominator > 0 ? Math.round((onTime / denominator) * 100) : 100,
+        onTime,
+        late,
+        notDelivered,
+        extraTasks,
+      }
+    }
 
     let me: {
       xpPoints: number
@@ -349,22 +447,11 @@ export async function GET(request: Request) {
 
     return Response.json({
       companyName: company.name,
-      partners: {
-        activePartners: activePartnerIds.length,
-        pendingCommissions: { total: Number(pendingCommissions._sum.commissionValue ?? 0), count: pendingCommissions._count },
-        pendingWithdrawals: { total: Number(pendingWithdrawals._sum.amount ?? 0), count: pendingWithdrawals._count },
-        topPartners,
-      },
-      operations: {
-        totalEmployees,
-        presentToday: presentTodayIds.length,
-        attendanceRate: totalEmployees > 0 ? Math.round((presentTodayIds.length / totalEmployees) * 1000) / 10 : 0,
-        executedChecklists,
-        onTimeChecklists,
-        lateOrFailedChecklists,
-        pendingChecklists,
-        occurrencesThisMonth,
-      },
+      partners,
+      operations,
+      myOperations,
+      partnersSimple,
+      efficiencySummary,
       me,
       master,
     })
