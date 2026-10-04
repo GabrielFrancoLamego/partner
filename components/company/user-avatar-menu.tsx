@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Bell, ChevronDown, Eye, EyeOff, Lock, LogOut, UserCircle2 } from "lucide-react"
+import { Bell, ChevronDown, Eye, EyeOff, Lock, LogOut, UserCircle2, Wallet } from "lucide-react"
+import { adminFetch } from "@/lib/admin-api-client"
+import { useCompanyUser } from "@/lib/company-user-context"
+import { LoadingState } from "@/components/admin/admin-ui"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,8 +37,10 @@ function initials(name: string) {
  */
 export function UserAvatarMenu({ name, roleLabel }: { name: string; roleLabel: string }) {
   const router = useRouter()
+  const user = useCompanyUser()
   const [securityOpen, setSecurityOpen] = useState(false)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
+  const [walletOpen, setWalletOpen] = useState(false)
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
@@ -70,6 +75,11 @@ export function UserAvatarMenu({ name, roleLabel }: { name: string; roleLabel: s
           <DropdownMenuItem onClick={() => setSecurityOpen(true)} className="cursor-pointer">
             <Lock className="h-4 w-4 mr-2" /> Segurança (Alterar Senha)
           </DropdownMenuItem>
+          {user.role === "EMPLOYEE" && (
+            <DropdownMenuItem onClick={() => setWalletOpen(true)} className="cursor-pointer">
+              <Wallet className="h-4 w-4 mr-2" /> Sua Carteira / Financeiro
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => setPreferencesOpen(true)} className="cursor-pointer">
             <Bell className="h-4 w-4 mr-2" /> Preferências de Notificação
           </DropdownMenuItem>
@@ -82,7 +92,69 @@ export function UserAvatarMenu({ name, roleLabel }: { name: string; roleLabel: s
 
       {securityOpen && <SecurityDialog onClose={() => setSecurityOpen(false)} />}
       {preferencesOpen && <PreferencesDialog onClose={() => setPreferencesOpen(false)} />}
+      {walletOpen && <WalletDialog onClose={() => setWalletOpen(false)} />}
     </>
+  )
+}
+
+type WalletSummary = {
+  totals: { totalRecebidoPeriodo: number; totalAReceber: number; proximaDataPrevista: string | null }
+  discounts: { consumoInterno: number; vales: number; descontosDiversos: number; impostos: number }
+}
+const currency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+
+/** "Sua Carteira / Financeiro" — extrato simplificado no formato carteira de banco, exclusivo do colaborador (ver /api/company/my-account, sem dados de parceiros). */
+function WalletDialog({ onClose }: { onClose: () => void }) {
+  const [data, setData] = useState<WalletSummary | null>(null)
+
+  useEffect(() => {
+    adminFetch<WalletSummary>("/api/company/my-account").then(setData)
+  }, [])
+
+  const saldoAcumulado = data
+    ? data.totals.totalRecebidoPeriodo -
+      (data.discounts.consumoInterno + data.discounts.vales + data.discounts.descontosDiversos + data.discounts.impostos)
+    : 0
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Sua Carteira</DialogTitle>
+        </DialogHeader>
+        {!data ? (
+          <LoadingState />
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-2xl p-5 text-white">
+              <p className="text-xs opacity-90">Saldo Acumulado (recebido no período)</p>
+              <p className="text-3xl font-bold">{currency(saldoAcumulado)}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-gray-100 p-3">
+                <p className="text-xs text-gray-500">Ganhos Passados</p>
+                <p className="text-lg font-bold text-green-600">{currency(data.totals.totalRecebidoPeriodo)}</p>
+              </div>
+              <div className="rounded-xl border border-gray-100 p-3">
+                <p className="text-xs text-gray-500">Recebimentos Futuros</p>
+                <p className="text-lg font-bold text-amber-600">{currency(data.totals.totalAReceber)}</p>
+                {data.totals.proximaDataPrevista && (
+                  <p className="text-[11px] text-gray-400">Previsto: {new Date(data.totals.proximaDataPrevista).toLocaleDateString("pt-BR")}</p>
+                )}
+              </div>
+            </div>
+            <Link href="/company" onClick={onClose} className="block text-xs text-center text-[#F58220] underline">
+              Ver extrato completo em "Sua Conta" →
+            </Link>
+          </div>
+        )}
+        <DialogFooter>
+          <Button type="button" onClick={onClose} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+            Fechar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

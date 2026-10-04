@@ -99,7 +99,7 @@ export async function uploadAvatar(ownerType: AvatarOwnerType, ownerId: string, 
 const EMPLOYEE_DOCS_BUCKET = "employee-documents"
 const ALLOWED_DOC_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "application/pdf"]
 
-export type EmployeeDocField = "cpfDocUrl" | "rgDocUrl" | "proofOfResidenceUrl"
+export type EmployeeDocField = "cpfDocUrl" | "rgDocUrl" | "proofOfResidenceUrl" | "voterCardDocUrl" | "militaryCertificateDocUrl" | "pisDocUrl"
 
 /**
  * Sobe um documento de RH do colaborador (CPF, RG/CNH, comprovante de

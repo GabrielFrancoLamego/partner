@@ -25,9 +25,18 @@ export async function GET(request: Request) {
     // ?status=ALL|INACTIVE devolve também colaboradores bloqueados (Diarista
     // pago / Temporário com contrato vencido) — necessário pra Gerente/Master
     // conseguirem encontrá-los e reativá-los (ver PATCH .../employees/[id]).
+    // ?status=DELETION_REQUESTED lista quem pediu exclusão da conta, pro
+    // Master decidir (arquivar via PATCH status=ARCHIVED).
     const { searchParams } = new URL(request.url)
     const statusParam = searchParams.get("status")
-    const statusWhere = statusParam === "ALL" ? {} : statusParam === "INACTIVE" ? { status: "INACTIVE" as const } : { status: "ACTIVE" as const }
+    const statusWhere =
+      statusParam === "ALL"
+        ? {}
+        : statusParam === "INACTIVE"
+          ? { status: "INACTIVE" as const }
+          : statusParam === "DELETION_REQUESTED"
+            ? { accountDeletionStatus: "ACCOUNT_DELETION_REQUESTED" as const }
+            : { status: "ACTIVE" as const }
 
     const employees = await prisma.user.findMany({
       where: { companyId: user.companyId, role: "EMPLOYEE", ...statusWhere },
@@ -36,6 +45,9 @@ export async function GET(request: Request) {
         name: true,
         email: true,
         status: true,
+        accountDeletionStatus: true,
+        accountDeletionRequestedAt: true,
+        accountDeletionReason: true,
         employeeProfile: {
           select: {
             canRegisterOccurrences: true,
@@ -76,6 +88,9 @@ export async function GET(request: Request) {
         name: e.name,
         email: e.email,
         status: e.status,
+        accountDeletionStatus: e.accountDeletionStatus,
+        accountDeletionRequestedAt: e.accountDeletionRequestedAt,
+        accountDeletionReason: e.accountDeletionReason,
         canRegisterOccurrences: e.employeeProfile?.canRegisterOccurrences ?? false,
         monthlySalary: e.employeeProfile?.monthlySalary ?? null,
         sectorId: e.employeeProfile?.sectorId ?? null,

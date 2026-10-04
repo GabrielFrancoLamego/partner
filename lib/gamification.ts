@@ -204,6 +204,7 @@ export type InternalProgramRules = {
   pointsChecklistOnTime: number
   pointsChecklistLate: number
   pointsChecklistFail: number
+  pointsChecklistPartial: number
   pointsChecklistExtraTask: number
   pointsAbsenceJustified: number
   pointsAbsenceUnjustified: number
@@ -219,6 +220,7 @@ const DEFAULT_INTERNAL_PROGRAM_RULES: InternalProgramRules = {
   pointsChecklistOnTime: 5,
   pointsChecklistLate: -3,
   pointsChecklistFail: -5,
+  pointsChecklistPartial: -2,
   pointsChecklistExtraTask: 8,
   pointsAbsenceJustified: 0,
   pointsAbsenceUnjustified: -15,
@@ -250,6 +252,7 @@ export async function getInternalProgramRules(companyId: string): Promise<Intern
     pointsChecklistOnTime: program.pointsChecklistOnTime,
     pointsChecklistLate: program.pointsChecklistLate,
     pointsChecklistFail: program.pointsChecklistFail,
+    pointsChecklistPartial: program.pointsChecklistPartial,
     pointsChecklistExtraTask: program.pointsChecklistExtraTask,
     pointsAbsenceJustified: program.pointsAbsenceJustified,
     pointsAbsenceUnjustified: program.pointsAbsenceUnjustified,

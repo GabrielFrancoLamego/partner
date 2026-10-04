@@ -1,7 +1,8 @@
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { requireUser, handleApiError, ApiError } from "@/lib/api-auth"
-import { notifyPlatformAdmins } from "@/lib/notifications"
+import { notifyPlatformAdmins, notifyCompanyManagement } from "@/lib/notifications"
+import { isCompanyStaff } from "@/lib/permissions"
 
 /**
  * Botão obrigatório de exclusão de conta (Apple App Store Guideline 5.1.1(v)
@@ -49,6 +50,18 @@ export async function POST(request: Request) {
       },
       select: { accountDeletionStatus: true, accountDeletionRequestedAt: true },
     })
+
+    // Colaborador/Staff de empresa: quem decide é o Master da própria empresa
+    // (vira ARCHIVED ao aceitar, ver app/api/company/employees/[id]) — Admin
+    // da plataforma só fica em cópia para auditoria geral.
+    if (user.companyId && isCompanyStaff(user.role)) {
+      await notifyCompanyManagement(user.companyId, {
+        type: "ACCOUNT_DELETION_REQUESTED",
+        title: "Solicitação de exclusão de conta",
+        message: `${user.name} solicitou a exclusão da própria conta.${parsed.data.reason ? ` Motivo: ${parsed.data.reason}` : ""}`,
+        linkUrl: "/company/colaboradores",
+      })
+    }
 
     await notifyPlatformAdmins({
       type: "ACCOUNT_DELETION_REQUESTED",

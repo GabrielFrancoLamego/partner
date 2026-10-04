@@ -35,8 +35,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     const body = await request.json()
-    const { status, note } = body as { status: "APPROVED" | "RETURNED" | "REJECTED"; note?: string }
+    const { status, note, rejectionKind } = body as {
+      status: "APPROVED" | "RETURNED" | "REJECTED"
+      note?: string
+      rejectionKind?: "FRAUD" | "PARTIAL"
+    }
     if (!["APPROVED", "RETURNED", "REJECTED"].includes(status)) throw new ApiError(400, "Status inválido")
+    if (rejectionKind && !["FRAUD", "PARTIAL"].includes(rejectionKind)) throw new ApiError(400, "Classificação de recusa inválida")
 
     const isReopeningApproved = status === "RETURNED" && checklist.status === "APPROVED"
 
@@ -60,9 +65,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       status,
       note,
       reviewerId: user.id,
+      rejectionKind: status === "REJECTED" ? rejectionKind : undefined,
     })
 
-    await logAudit({ userId: user.id, companyId, action: status, entity: "Checklist", entityId: id, details: { onTime, note, reopened: isReopeningApproved } })
+    await logAudit({
+      userId: user.id,
+      companyId,
+      action: status,
+      entity: "Checklist",
+      entityId: id,
+      details: { onTime, note, reopened: isReopeningApproved, rejectionKind },
+    })
 
     return Response.json(updated)
   } catch (error) {

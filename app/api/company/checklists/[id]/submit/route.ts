@@ -6,12 +6,13 @@ import { logAudit } from "@/lib/audit"
 import { applyChecklistReview } from "@/lib/checklist-review"
 
 /**
- * Colaborador entrega (com foto, se o template exigir) ou marca como não
- * executada (com justificativa) uma instância já atribuída a ele — vai para
- * SUBMITTED nos dois casos, aguardando o double-check da Gerente (que decide
- * Aprovar/Devolver/Marcar como não entregue de fato). Só quem é o responsável
- * ATUAL da instância (employeeId) pode submeter — inclui quem recebeu por
- * reassumpção automática.
+ * Colaborador entrega (com foto, se o template exigir) uma instância já
+ * atribuída a ele — vai para SUBMITTED, aguardando o double-check da
+ * Gerente (Aprovar/Devolver/Recusar). Só quem é o responsável ATUAL da
+ * instância (employeeId) pode submeter — inclui quem recebeu por
+ * reassumpção automática. Não há mais opção manual de "Não Executada" — uma
+ * tarefa que nunca é entregue assume esse status automaticamente só no
+ * fechamento do expediente (ver app/api/company/shift-closing).
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -31,30 +32,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const formData = await request.formData()
     const action = formData.get("action")
     const notes = formData.get("notes")
-    const justification = formData.get("justification")
     const file = formData.get("file")
-
-    if (action === "NOT_EXECUTED") {
-      const reason = typeof justification === "string" ? justification.trim() : ""
-      if (!reason) throw new ApiError(400, "Justifique por que a tarefa não foi executada")
-
-      let updated = await prisma.checklist.update({
-        where: { id },
-        data: { status: "SUBMITTED", submittedAt: new Date(), rejectionReason: reason, photoUrl: null },
-      })
-      await logAudit({ userId: user.id, companyId, action: "SUBMIT_NOT_EXECUTED", entity: "Checklist", entityId: id, details: { reason } })
-
-      // Mesma regra do COMPLETE: sem exigência de aprovação, a tarefa já
-      // nasce finalizada (aqui, REJECTED) — não fica parada esperando um
-      // double-check que o template dispensou.
-      if (!checklist.requiresApproval) {
-        const review = await applyChecklistReview({ checklistId: id, companyId, status: "REJECTED", note: reason, reviewerId: user.id })
-        updated = review.updated
-        await logAudit({ userId: user.id, companyId, action: "REJECTED", entity: "Checklist", entityId: id, details: { autoApproved: true } })
-      }
-
-      return Response.json(updated)
-    }
 
     if (action === "COMPLETE") {
       const requiresPhoto = checklist.template?.requiresPhoto ?? true

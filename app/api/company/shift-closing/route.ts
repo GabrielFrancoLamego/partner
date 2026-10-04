@@ -7,6 +7,7 @@ import { awardXp, getInternalProgramRules } from "@/lib/gamification"
 import { notifyUser } from "@/lib/notifications"
 import { computePendingTimeclockAdjustments } from "@/lib/timeclock-adjustments"
 import { maybeDistributeGoalReward } from "@/lib/goal-rewards"
+import { isCompanyClosedOn } from "@/lib/company-calendar"
 
 /** Avisa todo Master da empresa quando a Gerente fecha o expediente atrasado (depois do shiftClosingDeadline). */
 async function notifyMastersOfLateClosing(companyId: string, closedByName: string, date: Date) {
@@ -264,20 +265,28 @@ export async function POST(request: Request) {
     // Colaborador com FALTA ou uso de BANCO_HORAS registrado hoje fica isento
     // — não é penalizado por não cumprir checklist numa ausência já autorizada.
     const dayEnd = new Date(date.getTime() + 24 * 60 * 60 * 1000)
+    const companyClosedToday = await isCompanyClosedOn(companyId, date)
     const exemptOccurrences = await prisma.occurrence.findMany({
       where: { companyId, date: { gte: date, lt: dayEnd }, type: { in: ["FALTA", "BANCO_HORAS"] }, employeeId: { not: null } },
       select: { employeeId: true },
     })
     const exemptEmployeeIds = new Set(exemptOccurrences.map((o) => o.employeeId!))
 
+    // Dia CLOSED do Calendário Operacional (ver /company/configuracoes) — a
+    // empresa não abriu, então nenhuma tarefa pendente é penalizada por "não
+    // entrega" (ensureTodayChecklistInstances já nem gera instâncias novas
+    // nesses dias, mas um dia que virou CLOSED depois de já ter instâncias
+    // criadas precisa dessa segunda camada de proteção).
     // Tarefa compartilhada (FREE/SECTOR/TAG) que ninguém reservou não tem um
     // responsável pra penalizar/notificar — ainda assim fica marcada REJECTED
     // pra não ficar PENDING pra sempre, só sem XP nem notificação.
-    const strandedChecklists = (
-      await prisma.checklist.findMany({
-        where: { companyId, forDate: date, status: "PENDING" },
-      })
-    ).filter((c) => c.employeeId === null || !exemptEmployeeIds.has(c.employeeId))
+    const strandedChecklists = companyClosedToday
+      ? []
+      : (
+          await prisma.checklist.findMany({
+            where: { companyId, forDate: date, status: "PENDING" },
+          })
+        ).filter((c) => c.employeeId === null || !exemptEmployeeIds.has(c.employeeId))
     if (strandedChecklists.length > 0) {
       const rules = await getInternalProgramRules(companyId)
       await prisma.$transaction(async (tx) => {

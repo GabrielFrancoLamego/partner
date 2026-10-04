@@ -1,6 +1,7 @@
 import "server-only"
 import type { ChecklistTemplate } from "@prisma/client"
 import { prisma } from "./prisma"
+import { isCompanyClosedOn } from "./company-calendar"
 
 export function startOfDay(date: Date) {
   const d = new Date(date)
@@ -201,7 +202,13 @@ async function ensureTodaySharedChecklistInstances(companyId: string) {
   }
 }
 
+/**
+ * Num dia CLOSED do Calendário Operacional (ver /company/configuracoes), a
+ * empresa nem abre — não gera nenhuma instância, pra não penalizar
+ * frequência/checklist por algo que não é culpa do colaborador.
+ */
 export async function ensureTodayChecklistInstances(companyId: string) {
+  if (await isCompanyClosedOn(companyId, new Date())) return
   await ensureTodaySpecificChecklistInstances(companyId)
   await ensureTodaySharedChecklistInstances(companyId)
 }

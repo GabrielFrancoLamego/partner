@@ -18,6 +18,7 @@ type Post = {
   content: string
   imageUrl: string | null
   videoUrl: string | null
+  attachmentUrls: string[]
   status: "PENDING_APPROVAL" | "PUBLISHED" | "REJECTED"
   rejectionReason: string | null
   createdAt: string
@@ -163,13 +164,16 @@ export default function CompanyMuralPage() {
 }
 
 function PostComposer({ onCreated }: { onCreated: () => void }) {
+  const user = useCompanyUser()
+  const isManager = canManageDailyOperations(user.role)
   const [content, setContent] = useState("")
   const [title, setTitle] = useState("")
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<File[]>([])
   const [videoUrl, setVideoUrl] = useState("")
   const [showVideoField, setShowVideoField] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
+  const [moderationNotice, setModerationNotice] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleSubmit = async () => {
@@ -180,14 +184,15 @@ function PostComposer({ onCreated }: { onCreated: () => void }) {
       const body = new FormData()
       if (title.trim()) body.append("title", title.trim())
       body.append("content", content.trim())
-      if (file) body.append("file", file)
+      files.forEach((f) => body.append("files", f))
       if (videoUrl.trim()) body.append("videoUrl", videoUrl.trim())
       await adminFetch("/api/company/posts", { method: "POST", body })
       setContent("")
       setTitle("")
-      setFile(null)
+      setFiles([])
       setVideoUrl("")
       setShowVideoField(false)
+      if (!isManager) setModerationNotice(true)
       onCreated()
     } catch (e) {
       setError(e instanceof AdminApiError ? e.message : "Erro ao publicar")
@@ -198,6 +203,12 @@ function PostComposer({ onCreated }: { onCreated: () => void }) {
 
   return (
     <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100 space-y-3">
+      {moderationNotice && (
+        <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
+          <Clock className="h-4 w-4 flex-shrink-0" />
+          Sua postagem foi enviada para aprovação e será analisada em até 24h.
+        </div>
+      )}
       <Input placeholder="Título (opcional)" value={title} onChange={(e) => setTitle(e.target.value)} />
       <Textarea
         placeholder="Compartilhe uma novidade com a equipe..."
@@ -218,17 +229,18 @@ function PostComposer({ onCreated }: { onCreated: () => void }) {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            multiple
+            accept="image/*,video/mp4,application/pdf,.doc,.docx"
             className="hidden"
             onChange={(e) => {
-              setFile(e.target.files?.[0] ?? null)
+              setFiles(Array.from(e.target.files ?? []))
               setShowVideoField(false)
               setVideoUrl("")
             }}
           />
           <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
             <ImagePlus className="h-4 w-4 mr-1.5" />
-            {file ? file.name.slice(0, 16) : "Imagem"}
+            {files.length > 0 ? `${files.length} anexo(s)` : "Anexos"}
           </Button>
           <Button
             type="button"
@@ -236,11 +248,11 @@ function PostComposer({ onCreated }: { onCreated: () => void }) {
             size="sm"
             onClick={() => {
               setShowVideoField((v) => !v)
-              setFile(null)
+              setFiles([])
             }}
           >
             <Video className="h-4 w-4 mr-1.5" />
-            Vídeo
+            Vídeo (link)
           </Button>
         </div>
         <Button
@@ -309,6 +321,24 @@ function PostCard({
       {post.videoUrl && (
         <div className="aspect-video w-full">
           <iframe src={post.videoUrl} className="w-full h-full" allowFullScreen title={post.title ?? "Vídeo"} />
+        </div>
+      )}
+      {post.attachmentUrls.length > 0 && (
+        <div className="space-y-1 p-2">
+          {post.attachmentUrls.map((url) => {
+            const ext = url.split(".").pop()?.toLowerCase() ?? ""
+            if (["png", "jpg", "jpeg", "webp", "gif"].includes(ext)) {
+              return <img key={url} src={url} alt={post.title ?? ""} className="w-full max-h-72 object-cover rounded-lg" />
+            }
+            if (ext === "mp4") {
+              return <video key={url} src={url} controls className="w-full max-h-72 rounded-lg" />
+            }
+            return (
+              <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="block text-sm text-[#F58220] underline px-2">
+                Abrir anexo ({ext.toUpperCase()})
+              </a>
+            )
+          })}
         </div>
       )}
       <div className="p-4 space-y-3">

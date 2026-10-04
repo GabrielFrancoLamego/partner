@@ -95,6 +95,8 @@ type Template = {
   requiresPhoto: boolean
   requiresApproval: boolean
   active: boolean
+  instructionPhotoUrl: string | null
+  instructionVideoUrl: string | null
   unit: { id: string; name: string } | null
   assignmentType: "SPECIFIC" | "FREE" | "SECTOR" | "TAG"
   primaryEmployee: Employee | null
@@ -121,7 +123,14 @@ type ChecklistInstance = {
   requiresApproval: boolean
   rejectionReason: string | null
   employee: { id: string; name: string; role: string; employeeProfile: { sectorId: string | null } | null } | null
-  template: { id: string; title: string; requiresPhoto: boolean; recurrence?: string } | null
+  template: {
+    id: string
+    title: string
+    requiresPhoto: boolean
+    recurrence?: string
+    instructionPhotoUrl?: string | null
+    instructionVideoUrl?: string | null
+  } | null
 }
 
 type PreviewRow = {
@@ -241,9 +250,10 @@ function PersonalChecklistView() {
   const [isLoading, setIsLoading] = useState(true)
   const [isCreatingAdhoc, setIsCreatingAdhoc] = useState(false)
   const [submitting, setSubmitting] = useState<ChecklistInstance | null>(null)
-  const [markingNotExecuted, setMarkingNotExecuted] = useState<ChecklistInstance | null>(null)
+  const [viewingInfo, setViewingInfo] = useState<ChecklistInstance | null>(null)
   const [volunteering, setVolunteering] = useState<string | null>(null)
   const [claiming, setClaiming] = useState<string | null>(null)
+  const [quickCompleting, setQuickCompleting] = useState<string | null>(null)
   const [error, setError] = useState("")
 
   const reload = () => {
@@ -270,6 +280,22 @@ function PersonalChecklistView() {
       alert(e instanceof AdminApiError ? e.message : "Erro ao se voluntariar")
     } finally {
       setVolunteering(null)
+    }
+  }
+
+  const handleQuickComplete = async (checklist: ChecklistInstance) => {
+    setError("")
+    setQuickCompleting(checklist.id)
+    try {
+      const body = new FormData()
+      body.append("action", "COMPLETE")
+      await adminFetch(`/api/company/checklists/${checklist.id}/submit`, { method: "POST", body })
+      reload()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao concluir tarefa")
+      setTimeout(() => setError(""), 4000)
+    } finally {
+      setQuickCompleting(null)
     }
   }
 
@@ -314,7 +340,9 @@ function PersonalChecklistView() {
               return (
                 <div key={i.id} className={`p-3 rounded-xl border ${CHECKLIST_URGENCY_CLASSES[urgency]}`}>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-medium text-[#3E2415] text-sm">{i.title}</p>
+                    <button type="button" onClick={() => setViewingInfo(i)} className="font-medium text-[#3E2415] text-sm underline decoration-dotted text-left">
+                      {i.title}
+                    </button>
                     <StatusBadge status={i.priority} />
                     {i.isAutoReassigned && (
                       <span className="text-[10px] font-medium text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">
@@ -342,16 +370,24 @@ function PersonalChecklistView() {
                     </p>
                   )}
                   <div className="flex flex-wrap gap-2 mt-2">
-                    <Button
-                      size="sm"
-                      onClick={() => setSubmitting(i)}
-                      className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white text-xs font-bold"
-                    >
-                      <Camera className="h-3.5 w-3.5 mr-1" /> Concluir
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setMarkingNotExecuted(i)} className="text-xs text-red-600 border-red-200">
-                      Não executado
-                    </Button>
+                    {(i.template?.requiresPhoto ?? true) ? (
+                      <Button
+                        size="sm"
+                        onClick={() => setSubmitting(i)}
+                        className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white text-xs font-bold"
+                      >
+                        <Camera className="h-3.5 w-3.5 mr-1" /> Concluir
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        disabled={quickCompleting === i.id}
+                        onClick={() => handleQuickComplete(i)}
+                        className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white text-xs font-bold"
+                      >
+                        <Check className="h-3.5 w-3.5 mr-1" /> Concluir
+                      </Button>
+                    )}
                   </div>
                 </div>
               )
@@ -489,17 +525,34 @@ function PersonalChecklistView() {
         />
       )}
 
-      {markingNotExecuted && (
-        <SubmitNotExecutedDialog
-          checklist={markingNotExecuted}
-          onClose={() => setMarkingNotExecuted(null)}
-          onDone={() => {
-            setMarkingNotExecuted(null)
-            reload()
-          }}
-        />
-      )}
+      {viewingInfo && <TaskInfoDialog checklist={viewingInfo} onClose={() => setViewingInfo(null)} />}
     </div>
+  )
+}
+
+/** Modal de instruções — abre ao clicar no título da tarefa, mostra a descrição e a mídia explicativa cadastrada no template (foto/vídeo), sem exigir nenhuma ação. */
+function TaskInfoDialog({ checklist, onClose }: { checklist: ChecklistInstance; onClose: () => void }) {
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{checklist.title}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {checklist.notes ? (
+            <p className="text-sm text-gray-700 whitespace-pre-wrap">{checklist.notes}</p>
+          ) : (
+            <p className="text-sm text-gray-400">Sem instruções detalhadas cadastradas.</p>
+          )}
+          {checklist.template?.instructionPhotoUrl && (
+            <img src={checklist.template.instructionPhotoUrl} alt="Foto explicativa" className="w-full rounded-xl border border-gray-100" />
+          )}
+          {checklist.template?.instructionVideoUrl && (
+            <video src={checklist.template.instructionVideoUrl} controls className="w-full rounded-xl border border-gray-100" />
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -559,58 +612,6 @@ function SubmitCompleteDialog({ checklist, onClose, onDone }: { checklist: Check
             </Button>
             <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
               Enviar
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function SubmitNotExecutedDialog({ checklist, onClose, onDone }: { checklist: ChecklistInstance; onClose: () => void; onDone: () => void }) {
-  const [justification, setJustification] = useState("")
-  const [error, setError] = useState("")
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-    if (!justification.trim()) {
-      setError("Justifique por que a tarefa não foi executada")
-      return
-    }
-    setIsSubmitting(true)
-    try {
-      const body = new FormData()
-      body.append("action", "NOT_EXECUTED")
-      body.append("justification", justification)
-      await adminFetch(`/api/company/checklists/${checklist.id}/submit`, { method: "POST", body })
-      onDone()
-    } catch (e) {
-      setError(e instanceof AdminApiError ? e.message : "Erro ao registrar")
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Não executado: "{checklist.title}"</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <div className="space-y-2">
-            <Label>Justificativa *</Label>
-            <Textarea value={justification} onChange={(e) => setJustification(e.target.value)} required />
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={isSubmitting} className="bg-red-600 hover:bg-red-700 text-white">
-              Enviar justificativa
             </Button>
           </DialogFooter>
         </form>
@@ -1175,6 +1176,25 @@ function TemplateDialog({
   const [targetTag, setTargetTag] = useState(template?.targetTag ?? "")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [instructionPhotoUrl, setInstructionPhotoUrl] = useState(template?.instructionPhotoUrl ?? null)
+  const [instructionVideoUrl, setInstructionVideoUrl] = useState(template?.instructionVideoUrl ?? null)
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false)
+
+  const handleMediaUpload = async (field: "photo" | "video", file: File) => {
+    if (!template) return
+    setIsUploadingMedia(true)
+    try {
+      const body = new FormData()
+      body.append(field, file)
+      const updated = await adminFetch<Template>(`/api/company/checklists/templates/${template.id}/media`, { method: "POST", body })
+      setInstructionPhotoUrl(updated.instructionPhotoUrl)
+      setInstructionVideoUrl(updated.instructionVideoUrl)
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao enviar mídia")
+    } finally {
+      setIsUploadingMedia(false)
+    }
+  }
 
   const showWeekday = recurrence === "WEEKLY" || recurrence === "FORTNIGHTLY"
   const showMonthDay = ["MONTHLY", "BIMONTHLY", "TRIMONTHLY", "SEMIANNUAL", "ANNUAL"].includes(recurrence)
@@ -1239,6 +1259,51 @@ function TemplateDialog({
             <Label>Descrição</Label>
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
+
+          {template && (
+            <div className="space-y-2 p-3 rounded-lg bg-gray-50 border border-gray-100">
+              <Label className="text-xs">Foto/Vídeo explicativo (modal de instruções, opcional)</Label>
+              <div className="flex flex-wrap gap-3">
+                <div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    id="template-instruction-photo"
+                    className="hidden"
+                    disabled={isUploadingMedia}
+                    onChange={(e) => e.target.files?.[0] && handleMediaUpload("photo", e.target.files[0])}
+                  />
+                  <label htmlFor="template-instruction-photo" className="text-xs cursor-pointer text-[#F58220] underline">
+                    {instructionPhotoUrl ? "Trocar foto" : "Enviar foto"}
+                  </label>
+                  {instructionPhotoUrl && (
+                    <a href={instructionPhotoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 ml-2 underline">
+                      Ver atual
+                    </a>
+                  )}
+                </div>
+                <div>
+                  <input
+                    type="file"
+                    accept="video/mp4,video/quicktime"
+                    id="template-instruction-video"
+                    className="hidden"
+                    disabled={isUploadingMedia}
+                    onChange={(e) => e.target.files?.[0] && handleMediaUpload("video", e.target.files[0])}
+                  />
+                  <label htmlFor="template-instruction-video" className="text-xs cursor-pointer text-[#F58220] underline">
+                    {instructionVideoUrl ? "Trocar vídeo" : "Enviar vídeo"}
+                  </label>
+                  {instructionVideoUrl && (
+                    <a href={instructionVideoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 ml-2 underline">
+                      Ver atual
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Recorrência</Label>
@@ -1453,7 +1518,7 @@ function ReviewTab() {
   const [instances, setInstances] = useState<ChecklistInstance[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [returning, setReturning] = useState<ChecklistInstance | null>(null)
-  const [rejecting, setRejecting] = useState<ChecklistInstance | null>(null)
+  const [rejecting, setRejecting] = useState<{ checklist: ChecklistInstance; kind: "FRAUD" | "PARTIAL" } | null>(null)
 
   // Tarefa escalada para a própria Gerente só pode ser avaliada pelo Master (ver app/api/company/checklists/[id]).
   const canReview = (i: ChecklistInstance) => !(user.role === "COMPANY_GERENTE" && i.employee?.role === "COMPANY_GERENTE")
@@ -1503,7 +1568,8 @@ function ReviewTab() {
                   <>
                     <MobileCardAction icon={Check} label="Aprovar" onClick={() => handleApprove(i)} />
                     <MobileCardAction icon={Undo2} label="Devolver" onClick={() => setReturning(i)} />
-                    <MobileCardAction icon={X} label="Não entregue" tone="danger" onClick={() => setRejecting(i)} />
+                    <MobileCardAction icon={X} label="Fraude/Não Executada" tone="danger" onClick={() => setRejecting({ checklist: i, kind: "FRAUD" })} />
+                    <MobileCardAction icon={Minimize2} label="Parcialmente Executada" tone="danger" onClick={() => setRejecting({ checklist: i, kind: "PARTIAL" })} />
                   </>
                 ) : (
                   <span className="text-xs text-gray-400">Só o Master avalia</span>
@@ -1554,8 +1620,23 @@ function ReviewTab() {
                       <Button variant="ghost" size="icon" className="text-amber-600" onClick={() => setReturning(i)} title="Devolver">
                         <Undo2 className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="text-red-600" onClick={() => setRejecting(i)} title="Não entregue">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-600"
+                        onClick={() => setRejecting({ checklist: i, kind: "FRAUD" })}
+                        title="Fraude / Não Executada"
+                      >
                         <X className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-600"
+                        onClick={() => setRejecting({ checklist: i, kind: "PARTIAL" })}
+                        title="Parcialmente Executada"
+                      >
+                        <Minimize2 className="h-4 w-4" />
                       </Button>
                     </div>
                   ) : (
@@ -1583,10 +1664,11 @@ function ReviewTab() {
       )}
       {rejecting && (
         <ReviewNoteDialog
-          checklist={rejecting}
-          title="Marcar como não entregue"
+          checklist={rejecting.checklist}
+          title={rejecting.kind === "FRAUD" ? "Fraude / Não Executada" : "Parcialmente Executada"}
           confirmLabel="Confirmar"
           status="REJECTED"
+          rejectionKind={rejecting.kind}
           onClose={() => setRejecting(null)}
           onDone={() => {
             setRejecting(null)
@@ -1603,6 +1685,7 @@ function ReviewNoteDialog({
   title,
   confirmLabel,
   status,
+  rejectionKind,
   onClose,
   onDone,
 }: {
@@ -1610,6 +1693,7 @@ function ReviewNoteDialog({
   title: string
   confirmLabel: string
   status: "RETURNED" | "REJECTED"
+  rejectionKind?: "FRAUD" | "PARTIAL"
   onClose: () => void
   onDone: () => void
 }) {
@@ -1626,7 +1710,7 @@ function ReviewNoteDialog({
     }
     setIsSubmitting(true)
     try {
-      await adminFetch(`/api/company/checklists/${checklist.id}`, { method: "PATCH", body: JSON.stringify({ status, note }) })
+      await adminFetch(`/api/company/checklists/${checklist.id}`, { method: "PATCH", body: JSON.stringify({ status, note, rejectionKind }) })
       onDone()
     } catch (e) {
       setError(e instanceof AdminApiError ? e.message : "Erro")
@@ -1645,6 +1729,16 @@ function ReviewNoteDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <p className="text-sm text-red-600">{error}</p>}
+          {rejectionKind === "FRAUD" && (
+            <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-2">
+              Aplica a penalidade cheia configurada no Programa Interno (não entregue/fraude).
+            </p>
+          )}
+          {rejectionKind === "PARTIAL" && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">
+              Aplica a penalidade reduzida de execução parcial configurada no Programa Interno.
+            </p>
+          )}
           <div className="space-y-2">
             <Label>Motivo *</Label>
             <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ex: Limpeza incompleta, refazer" required />

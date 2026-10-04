@@ -4,6 +4,7 @@ import { awardXp, getInternalProgramRules } from "./gamification"
 import { notifyUser } from "./notifications"
 
 type ReviewStatus = "APPROVED" | "RETURNED" | "REJECTED"
+type RejectionKind = "NOT_DELIVERED" | "FRAUD" | "PARTIAL"
 
 /**
  * Aplica a transição de revisão de um Checklist — reaproveitado em 3 lugares:
@@ -21,8 +22,10 @@ export async function applyChecklistReview(params: {
   status: ReviewStatus
   note?: string | null
   reviewerId: string | null
+  /** Só relevante quando status=REJECTED — distingue Fraude (penalidade cheia) de Execução Parcial (penalidade reduzida) da auditoria manual da Gerente/Master. Default NOT_DELIVERED (sweep automático/ação sem distinção). */
+  rejectionKind?: RejectionKind
 }) {
-  const { checklistId: id, companyId, status, note, reviewerId } = params
+  const { checklistId: id, companyId, status, note, reviewerId, rejectionKind } = params
   const checklist = await prisma.checklist.findUniqueOrThrow({ where: { id } })
   const wasApproved = checklist.status === "APPROVED"
 
@@ -60,7 +63,7 @@ export async function applyChecklistReview(params: {
         status,
         approvedById: reviewerId,
         approvedAt: now,
-        ...(status === "REJECTED" ? { rejectionReason: note?.trim() || null } : {}),
+        ...(status === "REJECTED" ? { rejectionReason: note?.trim() || null, rejectionKind: rejectionKind ?? "NOT_DELIVERED" } : {}),
       },
       include: { employee: { select: { id: true, name: true } } },
     })
@@ -75,7 +78,9 @@ export async function applyChecklistReview(params: {
         ? onTime
           ? rules.pointsChecklistOnTime
           : rules.pointsChecklistLate
-        : rules.pointsChecklistFail
+        : rejectionKind === "PARTIAL"
+          ? rules.pointsChecklistPartial
+          : rules.pointsChecklistFail
     appliedPoints = points
     if (points !== 0) {
       const hasEmployeeProfile = await tx.employeeProfile.findUnique({ where: { userId: checklist.employeeId } })
@@ -93,7 +98,11 @@ export async function applyChecklistReview(params: {
                 ? onTime
                   ? "No prazo"
                   : "Fora do prazo"
-                : "Não entregue",
+                : rejectionKind === "FRAUD"
+                  ? "Fraude / não executada de fato"
+                  : rejectionKind === "PARTIAL"
+                    ? "Execução parcial"
+                    : "Não entregue",
           },
           tx,
         )
@@ -115,10 +124,16 @@ export async function applyChecklistReview(params: {
         linkUrl: "/company/checklists",
       }).catch(() => {})
     } else if (status === "REJECTED") {
+      const rejectionTitle =
+        rejectionKind === "FRAUD"
+          ? `Checklist recusado — fraude/não executada: "${updated.title}"`
+          : rejectionKind === "PARTIAL"
+            ? `Checklist recusado — execução parcial: "${updated.title}"`
+            : `Checklist marcado como não entregue: "${updated.title}"`
       await notifyUser({
         userId: checklist.employeeId,
         type: "GENERIC",
-        title: `Checklist marcado como não entregue: "${updated.title}"`,
+        title: rejectionTitle,
         message: `Motivo: ${note?.trim() || "—"}${appliedPoints !== 0 ? ` — ${appliedPoints} pontos.` : ""}`,
         linkUrl: "/company/checklists",
       }).catch(() => {})

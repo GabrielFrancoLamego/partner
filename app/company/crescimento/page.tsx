@@ -350,6 +350,7 @@ function EmployeeGrowthView() {
   const { summary, isLoading, reload } = useSummary()
   const [rewards, setRewards] = useState<Reward[]>([])
   const [redemptions, setRedemptions] = useState<Redemption[]>([])
+  const [showRegulamento, setShowRegulamento] = useState(false)
 
   const reloadRewards = () => {
     adminFetch<Reward[]>("/api/company/gamification/rewards").then(setRewards)
@@ -391,11 +392,16 @@ function EmployeeGrowthView() {
         </div>
       )}
       <div className="bg-white rounded-2xl p-5 shadow-md border border-gray-100">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-lg flex items-center justify-center">
-            <Rocket className="w-4 h-4 text-white" />
+        <div className="flex items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-gradient-to-br from-[#F2680C] via-[#FB9C08] to-[#FFC800] rounded-lg flex items-center justify-center">
+              <Rocket className="w-4 h-4 text-white" />
+            </div>
+            <h3 className="text-base font-bold text-[#3E2415]">Mapa de Evolução</h3>
           </div>
-          <h3 className="text-base font-bold text-[#3E2415]">Mapa de Evolução</h3>
+          <Button variant="outline" size="sm" onClick={() => setShowRegulamento(true)}>
+            Ver Regulamento do Programa
+          </Button>
         </div>
         <p className="text-2xl font-bold text-[#3E2415]">{me?.currentLevel?.name ?? "Sem nível ainda"}</p>
         <p className="text-sm text-gray-500 mb-4">{me?.xpPoints ?? 0} Pts acumulados</p>
@@ -429,10 +435,8 @@ function EmployeeGrowthView() {
 
       <OccurrenceHistoryTable />
 
-      <AdminCard title="Loja de Prêmios" icon={Gift}>
-        {rewards.length === 0 ? (
-          <p className="text-sm text-gray-500 py-4 text-center">Nenhum prêmio disponível no momento.</p>
-        ) : (
+      {rewards.length > 0 && (
+        <AdminCard title="Loja de Prêmios" icon={Gift}>
           <div className="grid sm:grid-cols-2 gap-3">
             {rewards.map((r) => (
               <div key={r.id} className="border border-gray-100 rounded-xl p-3 flex items-center justify-between gap-3">
@@ -451,13 +455,11 @@ function EmployeeGrowthView() {
               </div>
             ))}
           </div>
-        )}
-      </AdminCard>
+        </AdminCard>
+      )}
 
-      <AdminCard title="Meus Resgates">
-        {redemptions.length === 0 ? (
-          <p className="text-sm text-gray-500 py-4 text-center">Nenhum resgate ainda.</p>
-        ) : (
+      {redemptions.length > 0 && (
+        <AdminCard title="Meus Resgates">
           <div className="space-y-2">
             {redemptions.map((r) => (
               <div key={r.id} className="flex items-center justify-between text-sm">
@@ -466,9 +468,45 @@ function EmployeeGrowthView() {
               </div>
             ))}
           </div>
-        )}
-      </AdminCard>
+        </AdminCard>
+      )}
+
+      {showRegulamento && <RegulamentoDialog onClose={() => setShowRegulamento(false)} />}
     </div>
+  )
+}
+
+type InternalProgramRegulamento = { title: string; termsContent: string | null; pdfUrl: string | null }
+
+function RegulamentoDialog({ onClose }: { onClose: () => void }) {
+  const [program, setProgram] = useState<InternalProgramRegulamento | null>(null)
+
+  useEffect(() => {
+    adminFetch<InternalProgramRegulamento>("/api/company/internal-program").then(setProgram)
+  }, [])
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Regulamento do Programa{program ? `: ${program.title}` : ""}</DialogTitle>
+        </DialogHeader>
+        {!program ? (
+          <LoadingState />
+        ) : program.termsContent || program.pdfUrl ? (
+          <div className="space-y-4">
+            {program.termsContent && <div className="text-sm text-gray-700 whitespace-pre-wrap">{program.termsContent}</div>}
+            {program.pdfUrl && (
+              <a href={program.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-[#F58220] underline">
+                Abrir regulamento em PDF →
+              </a>
+            )}
+          </div>
+        ) : (
+          <EmptyState message="Nenhum regulamento cadastrado ainda." />
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

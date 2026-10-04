@@ -1,12 +1,23 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Camera, CheckCircle, XCircle, Loader2, Upload } from "lucide-react"
+import { Camera, CheckCircle, XCircle, Loader2, Upload, Gift } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
+
+type VoucherBenefit = {
+  clientName: string | null
+  promotion: { title: string; description: string; bannerUrl: string | null; offerType: string; creditAmount: string | null }
+}
+const OFFER_TYPE_LABELS: Record<string, string> = {
+  DISCOUNT: "Desconto",
+  FREE_GIFT: "Brinde",
+  DOUBLE_BENEFIT: "Pediu 1, levou 2",
+  CASH_CREDIT: "Crédito na comanda",
+}
 
 const READER_ELEMENT_ID = "scanner-camera-reader"
 
@@ -114,6 +125,26 @@ function RedeemForm({ qrPayload, onDone }: { qrPayload: string; onDone: () => vo
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState<string | null>(null)
+  const [benefit, setBenefit] = useState<VoucherBenefit | null>(null)
+  const [lookupError, setLookupError] = useState("")
+  const [isLookingUp, setIsLookingUp] = useState(true)
+
+  const code = qrPayload.match(/^tribuss:voucher:(.+)$/)?.[1]
+
+  useEffect(() => {
+    if (!code) {
+      setIsLookingUp(false)
+      return
+    }
+    adminFetch<VoucherBenefit>(`/api/company/scanner/vouchers/lookup?code=${encodeURIComponent(code)}`)
+      .then((b) => {
+        setBenefit(b)
+        if (b.clientName) setClientName(b.clientName)
+      })
+      .catch((e) => setLookupError(e instanceof AdminApiError ? e.message : "Erro ao consultar o Vale Retorno"))
+      .finally(() => setIsLookingUp(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code])
 
   const isZero = amount !== "" && Number(amount) === 0
   const canSubmit = amount !== "" && Number(amount) >= 0 && (!isZero || justification.trim())
@@ -164,9 +195,44 @@ function RedeemForm({ qrPayload, onDone }: { qrPayload: string; onDone: () => vo
     )
   }
 
+  if (isLookingUp) {
+    return (
+      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      </div>
+    )
+  }
+
+  if (lookupError) {
+    return (
+      <div className="bg-white rounded-2xl shadow-md border border-red-200 p-6 text-center space-y-3">
+        <XCircle className="w-12 h-12 mx-auto text-red-600" />
+        <p className="font-bold text-red-800">{lookupError}</p>
+        <Button variant="outline" onClick={onDone}>
+          Tentar novamente
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6 space-y-4">
       <p className="font-bold text-[#3E2415]">QR Code lido — confirme os dados do resgate</p>
+
+      {benefit && (
+        <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+          <Gift className="w-6 h-6 text-green-600 flex-shrink-0" />
+          <div>
+            <p className="font-bold text-green-800">{benefit.promotion.title}</p>
+            <p className="text-xs text-green-700">
+              {OFFER_TYPE_LABELS[benefit.promotion.offerType] ?? benefit.promotion.offerType}
+              {benefit.promotion.offerType === "CASH_CREDIT" && benefit.promotion.creditAmount ? `: R$ ${benefit.promotion.creditAmount}` : ""}
+            </p>
+            {benefit.promotion.description && <p className="text-xs text-gray-600 mt-1">{benefit.promotion.description}</p>}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-2">
         <Label>Nome do cliente (opcional)</Label>
         <Input value={clientName} onChange={(e) => setClientName(e.target.value)} />
@@ -198,7 +264,7 @@ function RedeemForm({ qrPayload, onDone }: { qrPayload: string; onDone: () => vo
           className="flex-1 bg-gradient-to-r from-green-500 to-green-600 text-white"
         >
           {isSubmitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />}
-          Confirmar Resgate
+          Usar Voucher
         </Button>
         <Button variant="outline" onClick={onDone}>
           Cancelar

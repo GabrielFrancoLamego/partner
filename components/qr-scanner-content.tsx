@@ -255,7 +255,7 @@ function RegistrationFlow({ mode, onBack }: { mode: Mode; onBack: () => void }) 
         </div>
         {!createdCommission && !deniedMessage && (
           <Button variant="outline" size="sm" onClick={onBack}>
-            Trocar
+            Voltar
           </Button>
         )}
       </div>

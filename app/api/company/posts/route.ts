@@ -67,6 +67,18 @@ export async function GET(request: Request) {
   }
 }
 
+const ALLOWED_ATTACHMENT_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "video/mp4",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]
+const MAX_ATTACHMENTS = 5
+
 export async function POST(request: Request) {
   try {
     const user = await requireCompanyStaff()
@@ -75,7 +87,7 @@ export async function POST(request: Request) {
     const formData = await request.formData()
     const title = formData.get("title")
     const content = formData.get("content")
-    const file = formData.get("file")
+    const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0)
     const videoUrlRaw = formData.get("videoUrl")
 
     if (typeof content !== "string" || !content.trim()) throw new ApiError(400, "Conteúdo é obrigatório")
@@ -86,17 +98,19 @@ export async function POST(request: Request) {
       videoUrl = toEmbedUrl(videoUrlRaw.trim())
     }
 
-    let imageUrl: string | null = null
-    if (file instanceof File && file.size > 0) {
-      if (file.size > 8 * 1024 * 1024) throw new ApiError(400, "Imagem excede 8MB")
-      if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
-        throw new ApiError(400, "Formato não suportado — envie uma imagem (JPG/PNG/WEBP/GIF)")
+    if (files.length > MAX_ATTACHMENTS) throw new ApiError(400, `Máximo de ${MAX_ATTACHMENTS} anexos por publicação`)
+    for (const f of files) {
+      if (f.size > 20 * 1024 * 1024) throw new ApiError(400, `Arquivo "${f.name}" excede 20MB`)
+      if (!ALLOWED_ATTACHMENT_MIME_TYPES.includes(f.type)) {
+        throw new ApiError(400, `Formato não suportado em "${f.name}" — envie imagem, vídeo (.mp4), PDF ou Word`)
       }
-      try {
-        imageUrl = await uploadImage("posts", file)
-      } catch {
-        throw new ApiError(502, "Falha ao enviar a imagem para o servidor de mídia. Tente novamente em instantes.")
-      }
+    }
+
+    let attachmentUrls: string[] = []
+    try {
+      attachmentUrls = await Promise.all(files.map((f) => uploadImage("posts", f)))
+    } catch {
+      throw new ApiError(502, "Falha ao enviar os anexos para o servidor de mídia. Tente novamente em instantes.")
     }
 
     const isManager = canManageDailyOperations(user.role)
@@ -108,7 +122,7 @@ export async function POST(request: Request) {
         authorId: user.id,
         title: typeof title === "string" && title.trim() ? title.trim() : null,
         content: content.trim(),
-        imageUrl,
+        attachmentUrls,
         videoUrl,
         status: isManager ? "PUBLISHED" : "PENDING_APPROVAL",
         publishedAt: isManager ? now : null,

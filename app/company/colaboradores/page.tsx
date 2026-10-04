@@ -15,7 +15,7 @@ import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, AdminCard } from "@/components/admin/admin-ui"
 import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canManageDailyOperations, canConfigureCompany } from "@/lib/permissions"
 
 type Sector = { id: string; name: string; description: string | null; _count: { employees: number } }
 
@@ -39,7 +39,10 @@ type Employee = {
   hasExtraMonthlyDayOff: boolean
   isFinanceResponsible: boolean
   isSectorCommunicationResponsible: boolean
-  status: "ACTIVE" | "INACTIVE"
+  status: "ACTIVE" | "INACTIVE" | "ARCHIVED"
+  accountDeletionStatus: "NONE" | "ACCOUNT_DELETION_REQUESTED"
+  accountDeletionRequestedAt: string | null
+  accountDeletionReason: string | null
   employmentType: "FIXO" | "TEMPORARIO" | "DIARISTA"
   contractStartDate: string | null
   contractEndDate: string | null
@@ -217,11 +220,13 @@ function SectorsDialog({ onClose }: { onClose: () => void }) {
 
 function EmployeeScheduleTable() {
   const router = useRouter()
+  const user = useCompanyUser()
+  const isMaster = canConfigureCompany(user.role)
   const [employees, setEmployees] = useState<Employee[]>([])
   const [sectors, setSectors] = useState<Sector[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [editing, setEditing] = useState<Employee | null>(null)
-  const [statusTab, setStatusTab] = useState<"ACTIVE" | "INACTIVE">("ACTIVE")
+  const [statusTab, setStatusTab] = useState<"ACTIVE" | "INACTIVE" | "DELETION_REQUESTED">("ACTIVE")
 
   const reload = () => {
     setIsLoading(true)
@@ -242,19 +247,59 @@ function EmployeeScheduleTable() {
     reload()
   }
 
+  const handleArchive = async (e: Employee) => {
+    if (!confirm(`Aceitar a exclusão da conta de ${e.name}? O histórico fica salvo, mas o login é bloqueado definitivamente. Não pode ser desfeito por aqui.`)) return
+    await adminFetch(`/api/company/employees/${e.id}`, { method: "PATCH", body: JSON.stringify({ status: "ARCHIVED" }) }).catch((err) =>
+      alert(err instanceof AdminApiError ? err.message : "Erro ao arquivar"),
+    )
+    reload()
+  }
+
   if (isLoading) return <LoadingState />
 
   return (
     <AdminCard title="Turnos & Banco de Horas por Colaborador" icon={Clock}>
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 flex-wrap">
         <Button size="sm" variant={statusTab === "ACTIVE" ? "default" : "outline"} onClick={() => setStatusTab("ACTIVE")} className={statusTab === "ACTIVE" ? "bg-[#3E2415] text-white" : ""}>
           Ativos
         </Button>
         <Button size="sm" variant={statusTab === "INACTIVE" ? "default" : "outline"} onClick={() => setStatusTab("INACTIVE")} className={statusTab === "INACTIVE" ? "bg-[#3E2415] text-white" : ""}>
           Bloqueados
         </Button>
+        {isMaster && (
+          <Button
+            size="sm"
+            variant={statusTab === "DELETION_REQUESTED" ? "default" : "outline"}
+            onClick={() => setStatusTab("DELETION_REQUESTED")}
+            className={statusTab === "DELETION_REQUESTED" ? "bg-red-700 text-white" : "text-red-700 border-red-200"}
+          >
+            Exclusão Solicitada
+          </Button>
+        )}
       </div>
-      {employees.length === 0 ? (
+
+      {statusTab === "DELETION_REQUESTED" ? (
+        employees.length === 0 ? (
+          <EmptyState message="Nenhuma solicitação de exclusão de conta pendente." />
+        ) : (
+          <div className="grid gap-2">
+            {employees.map((e) => (
+              <div key={e.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-red-100 bg-red-50/40">
+                <div>
+                  <p className="text-sm font-medium text-[#3E2415]">{e.name}</p>
+                  <p className="text-xs text-gray-500">
+                    Solicitado em {e.accountDeletionRequestedAt ? new Date(e.accountDeletionRequestedAt).toLocaleDateString("pt-BR") : "—"}
+                    {e.accountDeletionReason && ` · Motivo: ${e.accountDeletionReason}`}
+                  </p>
+                </div>
+                <Button size="sm" variant="destructive" onClick={() => handleArchive(e)} className="flex-shrink-0">
+                  Aceitar (Arquivar Conta)
+                </Button>
+              </div>
+            ))}
+          </div>
+        )
+      ) : employees.length === 0 ? (
         <EmptyState message={statusTab === "ACTIVE" ? "Nenhum colaborador cadastrado ainda." : "Nenhum colaborador bloqueado."} />
       ) : (
         <>

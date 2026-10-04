@@ -52,7 +52,7 @@ export async function GET(request: Request) {
       include: {
         employee: { select: { id: true, name: true, role: true, employeeProfile: { select: { sectorId: true } } } },
         unit: { select: { id: true, name: true } },
-        template: { select: { id: true, title: true, recurrence: true, requiresPhoto: true } },
+        template: { select: { id: true, title: true, recurrence: true, requiresPhoto: true, instructionPhotoUrl: true, instructionVideoUrl: true } },
       },
       orderBy: { createdAt: "desc" },
       take: 200,

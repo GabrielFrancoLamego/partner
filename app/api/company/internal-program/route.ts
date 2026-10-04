@@ -38,6 +38,7 @@ export async function PATCH(request: Request) {
     const pointsChecklistOnTime = formData.get("pointsChecklistOnTime")
     const pointsChecklistLate = formData.get("pointsChecklistLate")
     const pointsChecklistFail = formData.get("pointsChecklistFail")
+    const pointsChecklistPartial = formData.get("pointsChecklistPartial")
     const pointsAbsenceJustified = formData.get("pointsAbsenceJustified")
     const pointsAbsenceUnjustified = formData.get("pointsAbsenceUnjustified")
     const pointsOccurrence = formData.get("pointsOccurrence")
@@ -67,6 +68,7 @@ export async function PATCH(request: Request) {
       ...(pointsChecklistOnTime ? { pointsChecklistOnTime: Number(pointsChecklistOnTime) } : {}),
       ...(pointsChecklistLate ? { pointsChecklistLate: Number(pointsChecklistLate) } : {}),
       ...(pointsChecklistFail ? { pointsChecklistFail: Number(pointsChecklistFail) } : {}),
+      ...(pointsChecklistPartial ? { pointsChecklistPartial: Number(pointsChecklistPartial) } : {}),
       ...(pointsAbsenceJustified ? { pointsAbsenceJustified: Number(pointsAbsenceJustified) } : {}),
       ...(pointsAbsenceUnjustified ? { pointsAbsenceUnjustified: Number(pointsAbsenceUnjustified) } : {}),
       ...(pointsOccurrence ? { pointsOccurrence: Number(pointsOccurrence) } : {}),

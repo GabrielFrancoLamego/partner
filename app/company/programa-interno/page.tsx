@@ -36,6 +36,7 @@ type InternalProgram = {
   pointsChecklistOnTime: number
   pointsChecklistLate: number
   pointsChecklistFail: number
+  pointsChecklistPartial: number
   pointsAbsenceJustified: number
   pointsAbsenceUnjustified: number
   pointsOccurrence: number
@@ -105,6 +106,7 @@ function ConfigTab() {
   const [pointsChecklistOnTime, setPointsChecklistOnTime] = useState("5")
   const [pointsChecklistLate, setPointsChecklistLate] = useState("-3")
   const [pointsChecklistFail, setPointsChecklistFail] = useState("-5")
+  const [pointsChecklistPartial, setPointsChecklistPartial] = useState("-2")
   const [pointsAbsenceJustified, setPointsAbsenceJustified] = useState("0")
   const [pointsAbsenceUnjustified, setPointsAbsenceUnjustified] = useState("-15")
   const [pointsOccurrence, setPointsOccurrence] = useState("-10")
@@ -130,6 +132,7 @@ function ConfigTab() {
           setPointsChecklistOnTime(String(p.pointsChecklistOnTime))
           setPointsChecklistLate(String(p.pointsChecklistLate))
           setPointsChecklistFail(String(p.pointsChecklistFail))
+          setPointsChecklistPartial(String(p.pointsChecklistPartial))
           setPointsAbsenceJustified(String(p.pointsAbsenceJustified))
           setPointsAbsenceUnjustified(String(p.pointsAbsenceUnjustified))
           setPointsOccurrence(String(p.pointsOccurrence))
@@ -163,6 +166,7 @@ function ConfigTab() {
       body.append("pointsChecklistOnTime", pointsChecklistOnTime)
       body.append("pointsChecklistLate", pointsChecklistLate)
       body.append("pointsChecklistFail", pointsChecklistFail)
+      body.append("pointsChecklistPartial", pointsChecklistPartial)
       body.append("pointsAbsenceJustified", pointsAbsenceJustified)
       body.append("pointsAbsenceUnjustified", pointsAbsenceUnjustified)
       body.append("pointsOccurrence", pointsOccurrence)
@@ -272,8 +276,12 @@ function ConfigTab() {
               <Input type="number" value={pointsChecklistLate} onChange={(e) => setPointsChecklistLate(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Checklist incompleto/reprovado</Label>
+              <Label>Checklist não entregue/fraude</Label>
               <Input type="number" value={pointsChecklistFail} onChange={(e) => setPointsChecklistFail(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Checklist parcialmente executado</Label>
+              <Input type="number" value={pointsChecklistPartial} onChange={(e) => setPointsChecklistPartial(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Falta com atestado</Label>

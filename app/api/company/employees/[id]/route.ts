@@ -1,7 +1,7 @@
 import type { ShiftType } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canManageDailyOperations, canConfigureCompany } from "@/lib/permissions"
 import { logAudit } from "@/lib/audit"
 import { notifyUser } from "@/lib/notifications"
 
@@ -173,9 +173,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (employmentType !== undefined && !["FIXO", "TEMPORARIO", "DIARISTA"].includes(employmentType)) {
       throw new ApiError(400, "Tipo de vínculo inválido")
     }
-    if (status !== undefined && !["ACTIVE", "INACTIVE"].includes(status)) {
+    if (status !== undefined && !["ACTIVE", "INACTIVE", "ARCHIVED"].includes(status)) {
       throw new ApiError(400, "Status inválido")
     }
+    // Arquivar (aceitar a solicitação de exclusão de conta) preserva todo o
+    // histórico e bloqueia novos logins — ação sensível e irreversível por
+    // aqui, exclusiva do Master/Admin (Gerente não decide isso).
+    if (status === "ARCHIVED") requireCapability(user, canConfigureCompany)
 
     const updated = await prisma.employeeProfile.update({
       where: { userId: id },
@@ -207,13 +211,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     // acesso de um Diarista/Temporário bloqueado automaticamente (ver
     // lib/employment-access.ts). Bloqueio manual também passa por aqui.
     if (status !== undefined && status !== employee.status) {
-      await prisma.user.update({ where: { id }, data: { status } })
-      await notifyUser({
-        userId: id,
-        type: "GENERIC",
-        title: status === "ACTIVE" ? "Acesso liberado" : "Acesso bloqueado",
-        message: status === "ACTIVE" ? "Seu acesso à plataforma foi liberado pela Gerência." : "Seu acesso à plataforma foi bloqueado pela Gerência.",
-      }).catch(() => {})
+      await prisma.user.update({
+        where: { id },
+        data: { status, ...(status === "ARCHIVED" ? { accountDeletionStatus: "ACCOUNT_DELETION_REQUESTED" } : {}) },
+      })
+      if (status !== "ARCHIVED") {
+        await notifyUser({
+          userId: id,
+          type: "GENERIC",
+          title: status === "ACTIVE" ? "Acesso liberado" : "Acesso bloqueado",
+          message: status === "ACTIVE" ? "Seu acesso à plataforma foi liberado pela Gerência." : "Seu acesso à plataforma foi bloqueado pela Gerência.",
+        }).catch(() => {})
+      }
+      // Arquivada (exclusão aceita): sem notificação em-app, já que o login
+      // fica bloqueado a partir de agora — o e-mail de confirmação, se
+      // necessário, é tratado fora da plataforma.
     }
 
     await logAudit({ userId: user.id, companyId, action: "UPDATE", entity: "EmployeeProfile", entityId: updated.id, details: body })

@@ -23,6 +23,7 @@ enum PartnerType {
 enum Status {
   ACTIVE
   INACTIVE
+  ARCHIVED // exclusão de conta solicitada pelo próprio usuário e aceita pelo Master — histórico preservado, login bloqueado (ver AccountDeletionStatus)
 }
 
 // Solicitação de exclusão/arquivamento de conta feita pelo próprio usuário
@@ -182,6 +183,13 @@ enum ChecklistStatus {
   APPROVED
   RETURNED
   REJECTED
+}
+
+// Classificação de uma entrega REJECTED (ver Checklist.rejectionKind).
+enum ChecklistRejectionKind {
+  NOT_DELIVERED // sweep automático do fechamento — nunca chegou a ser entregue
+  FRAUD // Gerente/Master recusou uma entrega SUBMITTED como fraudulenta/não executada de fato
+  PARTIAL // Gerente/Master recusou uma entrega SUBMITTED por execução parcial/má qualidade
 }
 
 // Destinatário de um ChecklistTemplate — SPECIFIC usa primary/secondaryEmployeeId
@@ -554,9 +562,37 @@ model Company {
   internalMessages           InternalMessage[]
   goalPayouts                GoalPayout[]
   timeclockAdjustmentReviews TimeclockAdjustmentReview[]
+  calendarEvents             CompanyCalendarEvent[]
 
   @@index([affiliateId])
   @@index([status])
+}
+
+// Feriado ou dia em que o estabelecimento fica fechado — cadastrado pelo
+// Master em /company/configuracoes. Num dia CLOSED, o motor de checklist
+// (lib/checklist-engine.ts) não gera instâncias e o fechamento não penaliza
+// o colaborador por "não entrega", já que a empresa nem abriu.
+enum CompanyCalendarEventKind {
+  HOLIDAY
+  CLOSED
+}
+
+model CompanyCalendarEvent {
+  id        String                   @id @default(cuid())
+  companyId String
+  company   Company                  @relation(fields: [companyId], references: [id])
+  date      DateTime // dia (00:00)
+  kind      CompanyCalendarEventKind
+  // "Compra de Feriado" — a empresa opera no feriado e paga o adicional ao
+  // colaborador, em vez de dar o dia de descanso (só relevante em HOLIDAY).
+  isPaidHoliday Boolean @default(false)
+  label         String? // ex: "Natal", "Reforma do telhado"
+  createdById   String
+  createdBy     User     @relation("CompanyCalendarEventCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@unique([companyId, date])
+  @@index([companyId])
 }
 
 // Licença SaaS da empresa dentro do grupo — hoje uso interno (Nomad's Jeri,
@@ -662,6 +698,7 @@ model User {
   occurrencesCreated           Occurrence[]                @relation("OccurrenceCreatedBy")
   occurrencesPaid              Occurrence[]                @relation("OccurrencePaidBy")
   occurrenceTypeConfigsMade    OccurrenceTypeConfig[]      @relation("OccurrenceTypeConfigCreatedBy")
+  calendarEventsCreated        CompanyCalendarEvent[]      @relation("CompanyCalendarEventCreatedBy")
   dailyEvaluationsReceived     DailyEvaluation[]           @relation("DailyEvaluationEmployee")
   dailyEvaluationsGiven        DailyEvaluation[]           @relation("DailyEvaluationEvaluator")
   xpEntries                    XpEntry[]                   @relation("XpEntryEmployee")
@@ -855,11 +892,15 @@ model EmployeeProfile {
   accountNumber String?
   pixKey        String?
 
-  // Documentação (URLs de Storage)
-  cpfDocUrl           String?
-  rgDocUrl            String?
-  proofOfResidenceUrl String?
-  photoUrl            String?
+  // Documentação (URLs de Storage) — seção "Documentos Pessoais" em /company/perfil
+  cpfDocUrl                 String?
+  rgDocUrl                  String?
+  proofOfResidenceUrl       String?
+  voterCardDocUrl           String? // Título de Eleitor
+  militaryCertificateDocUrl String? // Reservista
+  pis                       String? // PIS/PASEP (número)
+  pisDocUrl                 String?
+  photoUrl                  String?
 }
 
 model ActivityLog {
@@ -1319,6 +1360,11 @@ model ChecklistTemplate {
   priority              ChecklistPriority   @default(MEDIUM)
   dueTime               String // horário limite diário de conclusão, formato "HH:mm"
   requiresPhoto         Boolean             @default(true)
+  // Mídia explicativa exibida no modal de instruções ao clicar no título da
+  // tarefa (ver app/company/checklists) — opcional, nenhuma delas é exigida
+  // do colaborador para concluir a tarefa (isso é só requiresPhoto).
+  instructionPhotoUrl   String?
+  instructionVideoUrl   String?
   active                Boolean             @default(true)
   createdById           String
   createdBy             User                @relation("ChecklistTemplateCreatedBy", fields: [createdById], references: [id])
@@ -1397,6 +1443,12 @@ model Checklist {
   // (ver lib/gamification.ts InternalProgram.pointsChecklistExtraTask).
   isExtraTask      Boolean            @default(false)
   rejectionReason  String? // motivo de "Devolver" ou "Não Entregue"
+  // Classificação de uma REJECTED — NOT_DELIVERED é o padrão (sweep automático
+  // do fechamento, ver app/api/company/shift-closing); FRAUD/PARTIAL só vêm da
+  // auditoria manual da Gerente/Master sobre uma entrega SUBMITTED (ver
+  // app/api/company/checklists/[id] PATCH), com penalidades distintas
+  // (InternalProgram.pointsChecklistFail vs pointsChecklistPartial).
+  rejectionKind    ChecklistRejectionKind?
   approvedById     String?
   approvedBy       User?              @relation("ChecklistApprover", fields: [approvedById], references: [id])
   approvedAt       DateTime?
@@ -1641,8 +1693,9 @@ model Post {
   author          User       @relation("PostAuthor", fields: [authorId], references: [id])
   title           String?
   content         String     @db.Text
-  imageUrl        String?
-  videoUrl        String? // link externo (YouTube/Vimeo) — mutuamente exclusivo com imageUrl na prática, mas não travado no schema
+  imageUrl        String? // legado — novos anexos vão em attachmentUrls
+  videoUrl        String? // link externo (YouTube/Vimeo) embedado — distinto de um .mp4 enviado (esse vai em attachmentUrls)
+  attachmentUrls  String[]   @default([]) // imagens/.mp4/PDF/Word enviados ao Supabase Storage (ver lib/storage.ts)
   status          PostStatus @default(PENDING_APPROVAL)
   reviewedById    String?
   reviewedBy      User?      @relation("PostReviewedBy", fields: [reviewedById], references: [id])
@@ -1838,7 +1891,8 @@ model InternalProgram {
   pointsPunctualEntry      Int @default(5) // GPS/ponto batido dentro do horário
   pointsChecklistOnTime    Int @default(5)
   pointsChecklistLate      Int @default(-3) // entregue, porém fora do prazo
-  pointsChecklistFail      Int @default(-5) // devolvido/reprovado ou não entregue
+  pointsChecklistFail      Int @default(-5) // devolvido/reprovado, não entregue ou Fraude (ver Checklist.rejectionKind)
+  pointsChecklistPartial   Int @default(-2) // Gerente/Master marcou como "Parcialmente Executada" (má execução, não fraude)
   pointsChecklistExtraTask Int @default(8) // secundário ajudou numa tarefa do principal presente (bônus, ver Checklist.isExtraTask)
   pointsAbsenceJustified   Int @default(0) // FALTA abonada por ATESTADO em até 24h
   pointsAbsenceUnjustified Int @default(-15) // FALTA sem ATESTADO

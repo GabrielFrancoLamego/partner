@@ -132,7 +132,7 @@ export default function CompanyDashboardPage() {
 
           {user.role === "EMPLOYEE" ? (
             <>
-              <MyAccountWidget />
+              <MyAccountWidget period={period} />
               {data.efficiencySummary && <EfficiencyWidget efficiency={data.efficiencySummary} />}
               {data.myOperations && <MyOperationsCard myOperations={data.myOperations} />}
               {data.partnersSimple && <PartnersSimpleCards partnersSimple={data.partnersSimple} />}
@@ -453,9 +453,7 @@ function EmployeeGamePanel({ me }: { me: NonNullable<DashboardData["me"]> }) {
           </div>
           <div>
             <p className="text-xs text-gray-500">Ranking interno</p>
-            <p className="text-sm font-bold text-[#3E2415]">
-              #{me.rank} de {me.totalRanked}
-            </p>
+            <p className="text-sm font-bold text-[#3E2415]">{me.rank}º Lugar</p>
           </div>
         </div>
 
@@ -634,12 +632,12 @@ const EARNINGS_LABELS: Record<keyof MyAccountData["earnings"], string> = {
 }
 
 /** "Sua Conta" — extrato financeiro detalhado do colaborador (substitui o antigo card só de Conta de Consumo). */
-function MyAccountWidget() {
+function MyAccountWidget({ period }: { period: string }) {
   const [data, setData] = useState<MyAccountData | null>(null)
 
   useEffect(() => {
-    adminFetch<MyAccountData>("/api/company/my-account").then(setData)
-  }, [])
+    adminFetch<MyAccountData>(`/api/company/my-account?period=${period}`).then(setData)
+  }, [period])
 
   if (!data) return null
 

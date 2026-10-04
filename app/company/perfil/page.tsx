@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { UserCircle2 } from "lucide-react"
+import { UserCircle2, FileText, Upload, Eye, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,6 +10,16 @@ import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, AdminCard } from "@/components/admin/admin-ui"
 import { AccountDeletionRequest } from "@/components/account-deletion-request"
 import { formatCpfCnpj, formatCep, isValidCpf, isValidCep, onlyDigits } from "@/lib/validators"
+
+type DocField = "cpfDocUrl" | "rgDocUrl" | "proofOfResidenceUrl" | "voterCardDocUrl" | "militaryCertificateDocUrl" | "pisDocUrl"
+const DOCUMENT_FIELDS: { field: DocField; label: string }[] = [
+  { field: "rgDocUrl", label: "RG" },
+  { field: "cpfDocUrl", label: "CPF" },
+  { field: "proofOfResidenceUrl", label: "Comprovante de Endereço" },
+  { field: "voterCardDocUrl", label: "Título de Eleitor" },
+  { field: "militaryCertificateDocUrl", label: "Reservista" },
+  { field: "pisDocUrl", label: "PIS/PASEP" },
+]
 
 type EmployeeProfile = {
   fullName: string
@@ -264,7 +274,123 @@ export default function CompanyProfilePage() {
         </form>
       </AdminCard>
 
+      <DocumentsCard />
+
       <AccountDeletionRequest />
     </div>
+  )
+}
+
+/** Documentos Pessoais — upload do próprio colaborador (bucket privado, URL assinada sob demanda). Ver app/api/company/perfil/documents. */
+function DocumentsCard() {
+  const [uploaded, setUploaded] = useState<Record<DocField, boolean>>({
+    cpfDocUrl: false,
+    rgDocUrl: false,
+    proofOfResidenceUrl: false,
+    voterCardDocUrl: false,
+    militaryCertificateDocUrl: false,
+    pisDocUrl: false,
+  })
+  const [pis, setPis] = useState("")
+  const [uploadingField, setUploadingField] = useState<DocField | null>(null)
+  const [viewingField, setViewingField] = useState<DocField | null>(null)
+  const [error, setError] = useState("")
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+
+  useEffect(() => {
+    adminFetch<Record<string, unknown>>("/api/company/my-profile").then((p) => {
+      setUploaded({
+        cpfDocUrl: Boolean(p.cpfDocUrl),
+        rgDocUrl: Boolean(p.rgDocUrl),
+        proofOfResidenceUrl: Boolean(p.proofOfResidenceUrl),
+        voterCardDocUrl: Boolean(p.voterCardDocUrl),
+        militaryCertificateDocUrl: Boolean(p.militaryCertificateDocUrl),
+        pisDocUrl: Boolean(p.pisDocUrl),
+      })
+      setPis((p.pis as string) ?? "")
+    })
+  }, [])
+
+  const handleUpload = async (field: DocField, file: File | undefined) => {
+    if (!file) return
+    setError("")
+    setUploadingField(field)
+    try {
+      const body = new FormData()
+      body.append("file", file)
+      body.append("field", field)
+      await adminFetch("/api/company/perfil/documents", { method: "POST", body })
+      setUploaded((u) => ({ ...u, [field]: true }))
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao enviar arquivo")
+    } finally {
+      setUploadingField(null)
+    }
+  }
+
+  const handleView = async (field: DocField) => {
+    setError("")
+    setViewingField(field)
+    try {
+      const { url } = await adminFetch<{ url: string }>(`/api/company/perfil/documents/url?field=${field}`)
+      window.open(url, "_blank", "noopener,noreferrer")
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao gerar link do documento")
+    } finally {
+      setViewingField(null)
+    }
+  }
+
+  const handlePisBlur = async () => {
+    await adminFetch("/api/company/perfil/pis", { method: "PATCH", body: JSON.stringify({ pis }) }).catch(() => {})
+  }
+
+  return (
+    <AdminCard title="Documentos Pessoais" icon={FileText}>
+      <p className="text-xs text-gray-500 mb-4">Envie uma foto ou PDF de cada documento — ficam guardados com segurança, visíveis só para você e a Gerência/Master da empresa.</p>
+      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+      <div className="space-y-2 mb-4">
+        <Label>Número do PIS/PASEP</Label>
+        <Input value={pis} onChange={(e) => setPis(e.target.value)} onBlur={handlePisBlur} placeholder="000.00000.00-0" />
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-2">
+        {DOCUMENT_FIELDS.map(({ field, label }) => {
+          const isUploading = uploadingField === field
+          const isViewing = viewingField === field
+          return (
+            <div key={field} className="flex items-center justify-between gap-2 p-3 rounded-xl border border-gray-100">
+              <span className="text-sm text-[#3E2415]">{label}</span>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <input
+                  ref={(el) => {
+                    fileInputRefs.current[field] = el
+                  }}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  onChange={(e) => handleUpload(field, e.target.files?.[0])}
+                />
+                {uploaded[field] && (
+                  <Button variant="ghost" size="icon" disabled={isViewing} onClick={() => handleView(field)} title="Visualizar">
+                    {isViewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={isUploading}
+                  onClick={() => fileInputRefs.current[field]?.click()}
+                  title={uploaded[field] ? "Trocar" : "Enviar"}
+                >
+                  {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </AdminCard>
   )
 }
