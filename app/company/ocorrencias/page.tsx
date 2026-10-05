@@ -38,6 +38,8 @@ const TYPE_LABELS: Record<string, string> = {
   SALARIO: "Salário Fixo",
   TAXA_SERVICO: "Taxa de Serviço",
   COMPRA_DOMINGO: "Compra de Domingo",
+  BONUS_ESPECIAL: "Bônus Especial",
+  DESCONTO_ESPECIAL: "Desconto Especial",
   CUSTOM: "Personalizado",
 }
 // Mantido em sincronia com REQUIRES_ATTACHMENT em app/api/company/occurrences/route.ts
@@ -96,7 +98,7 @@ const monthNow = () => new Date().toISOString().slice(0, 7)
 
 export default function CompanyOcorrenciasPage() {
   const user = useCompanyUser()
-  const isManager = canManageOccurrences(user.role)
+  const isManager = canManageOccurrences({ role: user.role, employeeProfile: { isFinanceResponsible: user.isFinanceResponsible } })
 
   return (
     <div className="space-y-6">
@@ -674,7 +676,9 @@ function OccurrenceForm({
           </SelectTrigger>
           <SelectContent>
             {Object.entries(TYPE_LABELS)
-              .filter(([v]) => v !== "CUSTOM")
+              // Bônus/Desconto Especial são exclusivos do Master, lançados
+              // direto na Ficha do Colaborador — não aparecem neste formulário genérico.
+              .filter(([v]) => v !== "CUSTOM" && v !== "BONUS_ESPECIAL" && v !== "DESCONTO_ESPECIAL")
               .map(([v, label]) => (
                 <SelectItem key={v} value={v}>
                   {label}

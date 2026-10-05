@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, Clock, Trophy, AlertTriangle, ListChecks, TrendingUp, Pencil, ArrowUpCircle } from "lucide-react"
+import { ArrowLeft, Clock, Trophy, AlertTriangle, ListChecks, TrendingUp, Pencil, ArrowUpCircle, DollarSign } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -73,6 +74,7 @@ export default function EmployeeDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [isPromoteOpen, setIsPromoteOpen] = useState(false)
+  const [isBonusDescontoOpen, setIsBonusDescontoOpen] = useState(false)
   const isManager = canManageDailyOperations(user.role)
   const isMaster = canConfigureCompany(user.role)
 
@@ -110,11 +112,16 @@ export default function EmployeeDetailPage() {
             {data.weeklyDayOff !== null && ` · Folga: ${WEEKDAY_SHORT[data.weeklyDayOff]}`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {isMaster && (
-            <Button variant="outline" onClick={() => setIsPromoteOpen(true)}>
-              <ArrowUpCircle className="h-4 w-4 mr-1.5" /> Promoção Forçada
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setIsPromoteOpen(true)}>
+                <ArrowUpCircle className="h-4 w-4 mr-1.5" /> Promoção Forçada
+              </Button>
+              <Button variant="outline" onClick={() => setIsBonusDescontoOpen(true)}>
+                <DollarSign className="h-4 w-4 mr-1.5" /> Bônus/Desconto Especial
+              </Button>
+            </>
           )}
           <Button variant="outline" onClick={() => router.push("/company/colaboradores")}>
             <Pencil className="h-4 w-4 mr-1.5" /> Editar Setor/Horário
@@ -123,14 +130,23 @@ export default function EmployeeDetailPage() {
       </div>
 
       {isMaster && (
-        <ForcedPromotionDialog
-          open={isPromoteOpen}
-          onOpenChange={setIsPromoteOpen}
-          employeeId={data.id}
-          employeeName={data.name}
-          currentLevelName={data.currentLevel?.name ?? "Sem cargo"}
-          onPromoted={reload}
-        />
+        <>
+          <ForcedPromotionDialog
+            open={isPromoteOpen}
+            onOpenChange={setIsPromoteOpen}
+            employeeId={data.id}
+            employeeName={data.name}
+            currentLevelName={data.currentLevel?.name ?? "Sem cargo"}
+            onPromoted={reload}
+          />
+          <BonusDescontoDialog
+            open={isBonusDescontoOpen}
+            onOpenChange={setIsBonusDescontoOpen}
+            employeeId={data.id}
+            employeeName={data.name}
+            onSaved={reload}
+          />
+        </>
       )}
 
       <div className="grid sm:grid-cols-3 gap-4">
@@ -337,6 +353,100 @@ function ForcedPromotionDialog({
           </Button>
           <Button onClick={handleSubmit} disabled={isSubmitting} variant="brand">
             Confirmar alteração
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Lançamento avulso do Master — Bônus/Desconto Especial direto na Ficha do Colaborador, compõe a folha do mês (ver /company/folha-pagamento). */
+function BonusDescontoDialog({
+  open,
+  onOpenChange,
+  employeeId,
+  employeeName,
+  onSaved,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  employeeId: string
+  employeeName: string
+  onSaved: () => void
+}) {
+  const [kind, setKind] = useState<"BONUS_ESPECIAL" | "DESCONTO_ESPECIAL">("BONUS_ESPECIAL")
+  const [value, setValue] = useState("")
+  const [description, setDescription] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    if (!open) return
+    setKind("BONUS_ESPECIAL")
+    setValue("")
+    setDescription("")
+    setError("")
+  }, [open])
+
+  const handleSubmit = async () => {
+    if (!value || Number(value) <= 0) {
+      setError("Informe um valor maior que zero")
+      return
+    }
+    setIsSubmitting(true)
+    setError("")
+    try {
+      const body = new FormData()
+      body.append("employeeId", employeeId)
+      body.append("type", kind)
+      body.append("value", value)
+      if (description.trim()) body.append("description", description.trim())
+      await adminFetch("/api/company/occurrences", { method: "POST", body })
+      onOpenChange(false)
+      onSaved()
+    } catch (e) {
+      setError(e instanceof AdminApiError ? e.message : "Erro ao lançar")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Bônus/Desconto Especial — {employeeName}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">Lançamento avulso que compõe a folha de pagamento do mês (ver Folha de Pagamento).</p>
+          <div className="space-y-1.5">
+            <Label>Tipo</Label>
+            <Select value={kind} onValueChange={(v) => setKind(v as typeof kind)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="BONUS_ESPECIAL">Bônus Especial (crédito)</SelectItem>
+                <SelectItem value="DESCONTO_ESPECIAL">Desconto Especial (débito)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Valor (R$)</Label>
+            <Input type="number" step="0.01" min="0.01" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0,00" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Motivo (opcional)</Label>
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+          </div>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSubmit} disabled={isSubmitting} variant="brand">
+            Lançar
           </Button>
         </DialogFooter>
       </DialogContent>

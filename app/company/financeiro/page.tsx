@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Check, X, Banknote, Paperclip, ExternalLink, Loader2, Wallet, ClipboardCheck } from "lucide-react"
+import Link from "next/link"
+import { Check, X, Banknote, Paperclip, ExternalLink, Loader2, Wallet, ClipboardCheck, CalendarClock, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -41,13 +42,12 @@ const currency = (value: string | null) => (value === null ? "—" : Number(valu
 export default function CompanyFinanceiroPage() {
   const user = useCompanyUser()
   // Gerente também acessa (visualiza ocorrências financeiras + quita, ver
-  // ReceivablesList) — aprovar Comissão/Saque PIX de Parceiro continua
-  // exclusivo do Financeiro/Master (canApproveFinance abaixo). Delegação a um
-  // Colaborador específico (isFinanceResponsible) foi retirada — dados de
-  // parceiros/financeiro da plataforma não são mais expostos a um Colaborador
-  // comum, só a quem tem o papel COMPANY_FINANCE.
-  const allowed = canManageFinance(user.role) || canManageDailyOperations(user.role)
-  const canApproveFinance = canManageFinance(user.role)
+  // ReceivablesList) — aprovar Comissão/Saque PIX de Parceiro é do
+  // Financeiro/Master/Colaborador responsavelFinanceiro (canApproveFinance
+  // abaixo); esse Colaborador mantém acesso integral às telas normais e
+  // ganha este módulo extra, sem trocar de papel na plataforma.
+  const allowed = canManageFinance(user.role) || canManageDailyOperations(user.role) || user.isFinanceResponsible
+  const canApproveFinance = canManageFinance(user.role) || user.isFinanceResponsible
 
   if (!allowed) {
     return <EmptyState message="Acesso restrito ao Master, Gerente e ao Responsável pelo Financeiro." />
@@ -55,18 +55,30 @@ export default function CompanyFinanceiroPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Financeiro</h1>
-        <p className="text-gray-600 mt-1 text-sm">Comissões, saques, recebíveis e quitações de {user.companyName}</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Financeiro</h1>
+          <p className="text-gray-600 mt-1 text-sm">Contas a pagar, comissões, saques, recebíveis e quitações de {user.companyName}</p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="self-start sm:self-auto">
+          <Link href="/company/financeiro/relatorios">
+            <BarChart3 className="h-4 w-4 mr-1.5" /> Relatórios
+          </Link>
+        </Button>
       </div>
 
-      <Tabs defaultValue="commissions">
+      <Tabs defaultValue="payables">
         <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <TabsTrigger value="payables" className="flex-shrink-0">Contas a Pagar</TabsTrigger>
           <TabsTrigger value="commissions" className="flex-shrink-0">Comissões & Saques</TabsTrigger>
           <TabsTrigger value="receivables" className="flex-shrink-0">Recebíveis dos Colaboradores</TabsTrigger>
+          <TabsTrigger value="payment-order" className="flex-shrink-0">Ordem de Pagamento</TabsTrigger>
           <TabsTrigger value="payouts" className="flex-shrink-0">Registro de Quitação</TabsTrigger>
         </TabsList>
         <div className="mt-4">
+          <TabsContent value="payables">
+            <PayablesList />
+          </TabsContent>
           <TabsContent value="commissions">
             <Tabs defaultValue="commissions-sub">
               <TabsList>
@@ -86,11 +98,141 @@ export default function CompanyFinanceiroPage() {
           <TabsContent value="receivables">
             <ReceivablesList />
           </TabsContent>
+          <TabsContent value="payment-order">
+            <PaymentOrderList />
+          </TabsContent>
           <TabsContent value="payouts">
             <GoalPayoutsPanel />
           </TabsContent>
         </div>
       </Tabs>
+    </div>
+  )
+}
+
+type PayableRow = {
+  id: string
+  kind: "WITHDRAWAL" | "OCCURRENCE" | "GOAL_PAYOUT"
+  recipientType: "PARTNER" | "EMPLOYEE"
+  recipientId: string
+  recipientName: string
+  label: string
+  amount: number
+  dueDate: string
+}
+const currencyNum = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+
+/** Contas a Pagar — todos os compromissos financeiros pendentes da empresa, consolidados por data prevista. */
+function PayablesList() {
+  const [rows, setRows] = useState<PayableRow[] | null>(null)
+
+  useEffect(() => {
+    adminFetch<PayableRow[]>("/api/company/finance/payables").then(setRows)
+  }, [])
+
+  if (!rows) return <LoadingState />
+  if (rows.length === 0) return <EmptyState message="Nenhuma conta a pagar pendente." />
+
+  const total = rows.reduce((sum, r) => sum + r.amount, 0)
+
+  return (
+    <div className="space-y-4">
+      <AdminCard title="Total pendente" icon={CalendarClock}>
+        <p className="text-2xl font-bold text-[#3E2415]">{currencyNum(total)}</p>
+        <p className="text-xs text-gray-500 mt-1">{rows.length} compromisso(s) aguardando pagamento</p>
+      </AdminCard>
+      <div className="grid gap-2">
+        {rows.map((r) => (
+          <div key={`${r.kind}-${r.id}`} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-white flex-wrap">
+            <div>
+              <p className="text-sm font-medium text-[#3E2415]">
+                {r.recipientName} <span className="text-xs text-gray-400">({r.recipientType === "PARTNER" ? "Parceiro" : "Colaborador"})</span>
+              </p>
+              <p className="text-xs text-gray-500">
+                {r.label} · Previsto: {new Date(r.dueDate).toLocaleDateString("pt-BR")}
+              </p>
+            </div>
+            <span className="text-sm font-bold text-[#3E2415]">{currencyNum(r.amount)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+type PaymentOrderRow = {
+  recipientType: "PARTNER" | "EMPLOYEE"
+  recipientId: string
+  name: string
+  document: string | null
+  bankName: string | null
+  accountType: string | null
+  agency: string | null
+  accountNumber: string | null
+  pixKey: string | null
+  totalAmount: number
+  reasons: string[]
+}
+
+/** Ordem de Pagamento — 1 linha por destinatário com os dados bancários/PIX prontos pro Internet Banking. */
+function PaymentOrderList() {
+  const [rows, setRows] = useState<PaymentOrderRow[] | null>(null)
+
+  useEffect(() => {
+    adminFetch<PaymentOrderRow[]>("/api/company/finance/payment-order").then(setRows)
+  }, [])
+
+  if (!rows) return <LoadingState />
+  if (rows.length === 0) return <EmptyState message="Nenhum pagamento pendente." />
+
+  return (
+    <div className="space-y-4">
+      <MobileCardList>
+        {rows.map((r) => (
+          <MobileCard
+            key={`${r.recipientType}-${r.recipientId}`}
+            title={r.name}
+            subtitle={r.document ?? "Sem CPF/CNPJ cadastrado"}
+            badges={<span className="text-sm font-bold text-[#3E2415]">{currencyNum(r.totalAmount)}</span>}
+            fields={[
+              { label: "Banco", value: r.bankName ?? "—" },
+              { label: "Agência/Conta", value: r.agency && r.accountNumber ? `${r.agency} / ${r.accountNumber}` : "—" },
+              { label: "Chave PIX", value: r.pixKey ?? "—" },
+              { label: "Motivo", value: r.reasons.join(", ") },
+            ]}
+          />
+        ))}
+      </MobileCardList>
+      <TableDesktop>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs text-gray-500">
+            <tr>
+              <th className="px-4 py-3 font-medium">Nome</th>
+              <th className="px-4 py-3 font-medium">CPF/CNPJ</th>
+              <th className="px-4 py-3 font-medium">Banco</th>
+              <th className="px-4 py-3 font-medium">Agência/Conta</th>
+              <th className="px-4 py-3 font-medium">Chave PIX</th>
+              <th className="px-4 py-3 font-medium">Valor Líquido</th>
+              <th className="px-4 py-3 font-medium">Motivo/Origem</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {rows.map((r) => (
+              <tr key={`${r.recipientType}-${r.recipientId}`} className="hover:bg-gray-50">
+                <td className="px-4 py-3 font-semibold text-[#3E2415]">
+                  {r.name} <span className="text-xs text-gray-400">({r.recipientType === "PARTNER" ? "Parceiro" : "Colaborador"})</span>
+                </td>
+                <td className="px-4 py-3 text-gray-600">{r.document ?? "—"}</td>
+                <td className="px-4 py-3 text-gray-600">{r.bankName ?? "—"}</td>
+                <td className="px-4 py-3 text-gray-600">{r.agency && r.accountNumber ? `${r.agency} / ${r.accountNumber}` : "—"}</td>
+                <td className="px-4 py-3 text-gray-600">{r.pixKey ?? "—"}</td>
+                <td className="px-4 py-3 font-bold text-[#3E2415]">{currencyNum(r.totalAmount)}</td>
+                <td className="px-4 py-3 text-gray-500 text-xs">{r.reasons.join(", ")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableDesktop>
     </div>
   )
 }

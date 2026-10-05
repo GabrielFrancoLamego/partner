@@ -112,6 +112,8 @@ enum OccurrenceType {
   SALARIO // Salário Fixo (Adiantamento 40%/Saldo) — gerado automaticamente pelo ciclo de folha (ver lib/payroll-engine.ts)
   TAXA_SERVICO // Taxa de Serviço do período — lançamento mensal do Financeiro
   COMPRA_DOMINGO // Compra de Domingo — adicional por trabalho no domingo
+  BONUS_ESPECIAL // Lançamento avulso do Master direto na Ficha do Colaborador — compõe a folha do mês
+  DESCONTO_ESPECIAL // Lançamento avulso do Master direto na Ficha do Colaborador — compõe a folha do mês
   CUSTOM // Tipo configurável pela empresa — ver Occurrence.customTypeId / OccurrenceTypeConfig
 }
 

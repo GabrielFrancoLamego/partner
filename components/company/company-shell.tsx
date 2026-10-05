@@ -24,6 +24,7 @@ import {
   UserCheck,
   Grid3x3,
   Settings2,
+  FileSpreadsheet,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Role } from "@prisma/client"
@@ -113,7 +114,13 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/company/programas", label: "Programa de Parceria", shortLabel: "Parceria", icon: Award, show: (u) => canConfigureCompany(u.role) },
   { href: "/company/promocoes", label: "Promoções", icon: Gift, show: (u) => canConfigureCompany(u.role) },
   { href: "/company/comunicacao", label: "Comunicação", icon: MessagesSquare, show: () => true },
-  { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: (u) => canManageFinance(u.role) },
+  // Exclusivo do Master/Admin/COMPANY_FINANCE por papel, OU do Colaborador
+  // marcado com responsavelFinanceiro (EmployeeProfile.isFinanceResponsible)
+  // — esse Colaborador mantém TODOS os itens normais de Colaborador abaixo
+  // (Dashboard, Checklists, Ponto, Mural, Crescimento, Ocorrências) e ganha
+  // este item extra, sem trocar de papel na plataforma.
+  { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: (u) => canManageFinance(u.role) || u.isFinanceResponsible },
+  { href: "/company/folha-pagamento", label: "Folha de Pagamento", icon: FileSpreadsheet, show: (u) => canManageDailyOperations(u.role) },
   { href: "/company/configuracoes", label: "Configurações", icon: Settings2, show: (u) => canConfigureCompany(u.role) },
 ]
 

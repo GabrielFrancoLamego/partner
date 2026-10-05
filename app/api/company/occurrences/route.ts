@@ -1,7 +1,7 @@
 import type { OccurrenceType, OccurrencePaymentMethod, OccurrencePaymentStatus, Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageOccurrences } from "@/lib/permissions"
+import { canManageOccurrences, canConfigureCompany } from "@/lib/permissions"
 import { uploadImage } from "@/lib/storage"
 import { awardXp, getInternalProgramRules } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
@@ -28,8 +28,12 @@ const OCCURRENCE_TYPES: OccurrenceType[] = [
   "SALARIO",
   "TAXA_SERVICO",
   "COMPRA_DOMINGO",
+  "BONUS_ESPECIAL",
+  "DESCONTO_ESPECIAL",
   "CUSTOM",
 ]
+// Lançamento avulso direto na Ficha do Colaborador — exclusivo do Master (ver app/company/colaboradores/[id]).
+const MASTER_ONLY_TYPES: OccurrenceType[] = ["BONUS_ESPECIAL", "DESCONTO_ESPECIAL"]
 // CONSUMO/QUEBRA_CAIXA exigem a foto da comanda/registro assinado como comprovante.
 const REQUIRES_ATTACHMENT: OccurrenceType[] = ["ADVERTENCIA", "ATESTADO", "DISPENSADO", "CONSUMO", "QUEBRA_CAIXA"]
 const PAYMENT_METHODS: OccurrencePaymentMethod[] = ["DINHEIRO", "PIX", "TRABALHO", "FOLGA_ADICIONAL", "CONSUMO"]
@@ -56,6 +60,8 @@ const TYPE_LABELS: Record<OccurrenceType, string> = {
   SALARIO: "Salário Fixo",
   TAXA_SERVICO: "Taxa de Serviço",
   COMPRA_DOMINGO: "Compra de Domingo",
+  BONUS_ESPECIAL: "Bônus Especial",
+  DESCONTO_ESPECIAL: "Desconto Especial",
   CUSTOM: "Personalizado",
 }
 
@@ -75,7 +81,7 @@ export async function GET(request: Request) {
   try {
     const user = await requireCompanyStaff()
     const companyId = user.companyId
-    const isManager = canManageOccurrences(user.role)
+    const isManager = canManageOccurrences(user)
 
     const { searchParams } = new URL(request.url)
     const month = searchParams.get("month") // "2026-09"
@@ -126,11 +132,12 @@ export async function POST(request: Request) {
   try {
     const user = await requireCompanyStaff()
     const companyId = user.companyId
-    const isManager = canManageOccurrences(user.role)
+    const isManager = canManageOccurrences(user)
 
-    // Lançar ocorrências é exclusivo de Gerente/Master/Admin e do papel
-    // Financeiro — a delegação a um Colaborador específico (CREATE_ONLY,
-    // EmployeeProfile.canRegisterOccurrences) foi retirada.
+    // Lançar ocorrências é exclusivo de Gerente/Master/Admin, do papel
+    // Financeiro e do Colaborador com responsavelFinanceiro — o antigo modo
+    // CREATE_ONLY por flag separada (EmployeeProfile.canRegisterOccurrences)
+    // continua retirado.
     if (!isManager) throw new ApiError(403, "Sem permissão para registrar ocorrências")
 
     const formData = await request.formData()
@@ -148,6 +155,9 @@ export async function POST(request: Request) {
 
     if (typeof type !== "string" || !OCCURRENCE_TYPES.includes(type as OccurrenceType)) {
       throw new ApiError(400, "Tipo de ocorrência inválido")
+    }
+    if (MASTER_ONLY_TYPES.includes(type as OccurrenceType) && !canConfigureCompany(user.role)) {
+      throw new ApiError(403, "Bônus/Desconto Especial é exclusivo do Master")
     }
 
     let customType: { id: string; kind: string; pointsImpact: number | null; salaryImpactType: string | null; salaryImpactValue: Prisma.Decimal | null; hoursBankImpactMinutes: number | null } | null = null
@@ -200,6 +210,10 @@ export async function POST(request: Request) {
     }
     if (type === "PAGAMENTO_CONSUMO" && resolvedValue === null) {
       throw new ApiError(400, "Informe o valor pago pelo colaborador")
+    }
+    if (MASTER_ONLY_TYPES.includes(type as OccurrenceType)) {
+      if (resolvedValue === null) throw new ApiError(400, "Informe o valor do lançamento")
+      resolvedValue = type === "DESCONTO_ESPECIAL" ? -Math.abs(resolvedValue) : Math.abs(resolvedValue)
     }
     const total = resolvedValue !== null ? Math.round(resolvedValue * quantity * 100) / 100 : null
 

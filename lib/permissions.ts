@@ -71,17 +71,18 @@ export function isPartner(role: Role) {
 }
 
 /**
- * Acesso ao Módulo Financeiro unificado (/company/financeiro) — estritamente
- * por papel (Master/Admin/COMPANY_FINANCE). A delegação a um Colaborador
- * específico (EmployeeProfile.isFinanceResponsible) foi retirada — um
- * Colaborador comum não deve ver dados financeiros da plataforma/parceiros;
- * quem precisa desse acesso deve ter o papel COMPANY_FINANCE.
+ * Acesso ao Módulo Financeiro unificado (/company/financeiro) — Master/Admin/
+ * COMPANY_FINANCE por papel, OU um Colaborador marcado com a flag
+ * `responsavelFinanceiro` (EmployeeProfile.isFinanceResponsible). Esse
+ * Colaborador mantém acesso integral às telas normais de Colaborador
+ * (Dashboard, Checklists, Ponto, Mural, Crescimento, Ocorrências das
+ * próprias) E ganha o módulo Financeiro — não troca de papel na plataforma.
  */
 export function canAccessFinanceModule(user: { role: Role; employeeProfile?: { isFinanceResponsible: boolean } | null }) {
-  return canManageFinance(user.role)
+  return canManageFinance(user.role) || Boolean(user.employeeProfile?.isFinanceResponsible)
 }
 
-/** Lançar/ver Ocorrências — Master/Gerente/Admin (operação diária) OU o papel Financeiro (lança, vê de todos e dá baixa em pagamentos). */
-export function canManageOccurrences(role: Role) {
-  return canManageDailyOperations(role) || canManageFinance(role)
+/** Lançar/ver todas as Ocorrências e dar baixa em pagamentos — Master/Gerente/Admin (operação diária) OU quem acessa o Módulo Financeiro (papel COMPANY_FINANCE ou Colaborador com responsavelFinanceiro). Editar/excluir um lançamento já existente continua exclusivo de Gerente/Master/Admin (ver app/api/company/occurrences/[id]/route.ts). */
+export function canManageOccurrences(user: { role: Role; employeeProfile?: { isFinanceResponsible: boolean } | null }) {
+  return canManageDailyOperations(user.role) || canAccessFinanceModule(user)
 }

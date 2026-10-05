@@ -13,7 +13,7 @@ import { canManageOccurrences } from "@/lib/permissions"
 export async function GET(request: Request) {
   try {
     const user = await requireCompanyStaff()
-    const isManager = canManageOccurrences(user.role)
+    const isManager = canManageOccurrences(user)
 
     // ?status=ALL|INACTIVE devolve também colaboradores bloqueados (Diarista
     // pago / Temporário com contrato vencido) — necessário pra Gerente/Master

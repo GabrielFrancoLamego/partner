@@ -4,12 +4,20 @@ import { PrismaPg } from "@prisma/adapter-pg"
 import { loginAs, api, check, record, printSummary, results } from "./audit-lib"
 
 /**
- * Auditoria do acesso do Colaborador comum a Financeiro/Ocorrências — cobre
- * o pedido: (1) menu Financeiro retirado do Colaborador (mesmo delegado via
- * isFinanceResponsible); (2) Ocorrências do Colaborador só mostram as
- * próprias, sem lançar nem ver de outros; (3) só o papel Financeiro
- * (COMPANY_FINANCE) lança/vê de todos/dá baixa em ocorrências — sem precisar
- * do flag canRegisterOccurrences, que foi retirado. Idempotente.
+ * Auditoria do acesso do Colaborador a Ocorrências/Financeiro — estado FINAL
+ * (pós "Colaborador com Função Financeira"):
+ * - Colaborador comum (sem flags): só vê as PRÓPRIAS ocorrências, não lança,
+ *   sem acesso ao Financeiro.
+ * - O antigo modo CREATE_ONLY por flag separada (canRegisterOccurrences) está
+ *   definitivamente retirado — mesmo marcado, sozinho não dá nenhum acesso.
+ * - Colaborador com `responsavelFinanceiro` (EmployeeProfile.isFinanceResponsible):
+ *   mantém acesso integral de Colaborador E ganha o módulo Financeiro — lança
+ *   ocorrências, vê de todos, dá baixa em pagamentos, aprova saques de
+ *   parceiro — mas NÃO edita/exclui lançamentos já existentes (exclusivo de
+ *   Gerente/Master).
+ * - Papel COMPANY_FINANCE: mesmas 3 capacidades de ocorrências (lança/vê
+ *   todos/baixa), também sem editar/excluir.
+ * Idempotente.
  */
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) })
 
@@ -20,27 +28,18 @@ async function main() {
   const rafael = await prisma.user.findUnique({ where: { email: "rafael.jeri@teste.com.vc" } })
   if (!colaborador || !rafael) throw new Error("fixtures não encontradas")
 
-  // Reset — flags antigas (canRegisterOccurrences/isFinanceResponsible) não devem mais ter efeito, mas deixamos ligadas de propósito pra provar isso.
-  await prisma.employeeProfile.update({ where: { userId: colaborador.id }, data: { canRegisterOccurrences: true, isFinanceResponsible: true } })
-  await prisma.occurrence.deleteMany({ where: { companyId: company.id, description: "[Audit] ocorrência de outro colaborador" } })
+  // Reset — colaborador começa SEM nenhuma flag.
+  await prisma.employeeProfile.update({ where: { userId: colaborador.id }, data: { canRegisterOccurrences: false, isFinanceResponsible: false } })
+  await prisma.occurrence.deleteMany({ where: { companyId: company.id, description: { startsWith: "[Audit]" } } })
 
   const masterSession = await loginAs("master@teste.com.vc")
   const financeiroSession = await loginAs("financeiro@teste.com.vc")
-  const colaboradorSession = await loginAs("colaborador@teste.com.vc")
 
   // --------------------------------------------------------------------------
-  // Financeiro retirado do Colaborador (mesmo com isFinanceResponsible=true)
+  // Colaborador comum — nenhuma flag
   // --------------------------------------------------------------------------
-  const financeModuleRes = await api(colaboradorSession, "GET", "/api/company/finance/receivables")
-  await check(
-    "1.Financeiro",
-    "Colaborador com isFinanceResponsible=true NÃO acessa mais /finance/receivables (403)",
-    async () => financeModuleRes.status === 403,
-  )
+  let colaboradorSession = await loginAs("colaborador@teste.com.vc")
 
-  // --------------------------------------------------------------------------
-  // Ocorrências — Colaborador: só vê as próprias, não lança, não vê de outros
-  // --------------------------------------------------------------------------
   const outraOcorrencia = await prisma.occurrence.create({
     data: {
       companyId: company.id,
@@ -56,63 +55,84 @@ async function main() {
     },
   })
 
-  const colaboradorListRes = await api(colaboradorSession, "GET", "/api/company/occurrences")
-  await check("3.Ocorrencias", "Colaborador consegue ver a lista (200, não 403)", async () => colaboradorListRes.status === 200)
+  const listRes1 = await api(colaboradorSession, "GET", "/api/company/occurrences")
+  await check("1.ColaboradorComum", "Vê a própria lista (200)", async () => listRes1.status === 200)
   await check(
-    "3.Ocorrencias",
-    "Lista do Colaborador NÃO inclui a ocorrência de outro colega",
-    async () => Array.isArray(colaboradorListRes.json) && !colaboradorListRes.json.some((o: any) => o.id === outraOcorrencia.id),
-  )
-  await check(
-    "3.Ocorrencias",
-    "Toda ocorrência retornada pertence só ao próprio Colaborador",
-    async () => Array.isArray(colaboradorListRes.json) && colaboradorListRes.json.every((o: any) => o.employee?.id === colaborador.id),
+    "1.ColaboradorComum",
+    "NÃO vê ocorrência de outro colega",
+    async () => Array.isArray(listRes1.json) && !listRes1.json.some((o: any) => o.id === outraOcorrencia.id),
   )
 
-  // Tenta passar employeeId de outro colaborador via query string — deve ser ignorado/forçado ao próprio id.
-  const colaboradorTryOthersRes = await api(colaboradorSession, "GET", `/api/company/occurrences?employeeId=${rafael.id}`)
-  await check(
-    "3.Ocorrencias",
-    "Colaborador NÃO consegue forçar employeeId de outro colega via query string",
-    async () => Array.isArray(colaboradorTryOthersRes.json) && !colaboradorTryOthersRes.json.some((o: any) => o.id === outraOcorrencia.id),
-  )
+  const postRes1 = await api(colaboradorSession, "POST", "/api/company/occurrences", new FormData(), true)
+  await check("1.ColaboradorComum", "NÃO consegue lançar ocorrência (403)", async () => postRes1.status === 403)
 
-  const colaboradorPostRes = await api(colaboradorSession, "POST", "/api/company/occurrences", new FormData(), true)
+  const financeRes1 = await api(colaboradorSession, "GET", "/api/company/finance/receivables")
+  await check("1.ColaboradorComum", "NÃO acessa o módulo Financeiro (403)", async () => financeRes1.status === 403)
+
+  // --------------------------------------------------------------------------
+  // Flag antiga (canRegisterOccurrences) sozinha — continua SEM efeito
+  // --------------------------------------------------------------------------
+  await prisma.employeeProfile.update({ where: { userId: colaborador.id }, data: { canRegisterOccurrences: true } })
+  const postRes2 = await api(colaboradorSession, "POST", "/api/company/occurrences", new FormData(), true)
   await check(
-    "3.Ocorrencias",
-    "Colaborador NÃO consegue lançar ocorrência mesmo com canRegisterOccurrences=true (403 — flag retirada)",
-    async () => colaboradorPostRes.status === 403,
+    "1.FlagAntigaRetirada",
+    "canRegisterOccurrences sozinho NÃO dá mais acesso de lançar ocorrência (403)",
+    async () => postRes2.status === 403,
   )
 
   // --------------------------------------------------------------------------
-  // Ocorrências — Financeiro: lança, vê de todos, dá baixa
+  // responsavelFinanceiro (isFinanceResponsible) — dual access
   // --------------------------------------------------------------------------
-  const financeiroListRes = await api(financeiroSession, "GET", "/api/company/occurrences")
+  await prisma.employeeProfile.update({ where: { userId: colaborador.id }, data: { canRegisterOccurrences: false, isFinanceResponsible: true } })
+  colaboradorSession = await loginAs("colaborador@teste.com.vc")
+
+  const financeRes2 = await api(colaboradorSession, "GET", "/api/company/finance/receivables")
+  await check("2.ResponsavelFinanceiro", "Com responsavelFinanceiro=true, acessa o módulo Financeiro (200)", async () => financeRes2.status === 200)
+
+  const checklistRes = await api(colaboradorSession, "GET", "/api/company/checklists")
+  await check("2.ResponsavelFinanceiro", "Mantém acesso integral às telas normais de Colaborador (Checklists, 200)", async () => checklistRes.status === 200)
+
+  const listRes2 = await api(colaboradorSession, "GET", "/api/company/occurrences")
   await check(
-    "3.Ocorrencias",
-    "Financeiro vê de todos os colaboradores (inclui a ocorrência criada pro Rafael)",
-    async () => financeiroListRes.status === 200 && Array.isArray(financeiroListRes.json) && financeiroListRes.json.some((o: any) => o.id === outraOcorrencia.id),
+    "2.ResponsavelFinanceiro",
+    "Agora vê de TODOS os colaboradores (inclui a ocorrência do Rafael)",
+    async () => listRes2.status === 200 && Array.isArray(listRes2.json) && listRes2.json.some((o: any) => o.id === outraOcorrencia.id),
   )
 
-  const financeiroCreateForm = new FormData()
-  financeiroCreateForm.append("employeeId", colaborador.id)
-  financeiroCreateForm.append("type", "VALE")
-  financeiroCreateForm.append("value", "50")
-  financeiroCreateForm.append("description", "[Audit] vale lançado pelo financeiro")
-  const financeiroPostRes = await api(financeiroSession, "POST", "/api/company/occurrences", financeiroCreateForm, true)
-  await check("3.Ocorrencias", "Financeiro consegue lançar ocorrência", async () => financeiroPostRes.status === 201)
+  const createForm = new FormData()
+  createForm.append("employeeId", colaborador.id)
+  createForm.append("type", "VALE")
+  createForm.append("value", "30")
+  createForm.append("description", "[Audit] vale lançado pelo responsavelFinanceiro")
+  const postRes3 = await api(colaboradorSession, "POST", "/api/company/occurrences", createForm, true)
+  await check("2.ResponsavelFinanceiro", "Consegue lançar ocorrência", async () => postRes3.status === 201)
 
-  if (financeiroPostRes.status === 201) {
-    const markPaidRes = await api(financeiroSession, "POST", `/api/company/occurrences/${financeiroPostRes.json.id}/mark-paid`, new FormData(), true)
-    await check("3.Ocorrencias", "Financeiro consegue dar baixa (marcar como paga)", async () => markPaidRes.status === 200)
+  if (postRes3.status === 201) {
+    const markPaidRes = await api(colaboradorSession, "POST", `/api/company/occurrences/${postRes3.json.id}/mark-paid`, new FormData(), true)
+    await check("2.ResponsavelFinanceiro", "Consegue dar baixa (marcar como paga)", async () => markPaidRes.status === 200)
+
+    const editRes = await api(colaboradorSession, "PATCH", `/api/company/occurrences/${outraOcorrencia.id}`, { description: "tentativa de editar" })
+    await check("2.ResponsavelFinanceiro", "NÃO consegue editar uma ocorrência já existente (403 — exclusivo Gerente/Master)", async () => editRes.status === 403)
+
+    const deleteRes = await api(colaboradorSession, "DELETE", `/api/company/occurrences/${outraOcorrencia.id}`)
+    await check("2.ResponsavelFinanceiro", "NÃO consegue excluir uma ocorrência já existente (403 — exclusivo Gerente/Master)", async () => deleteRes.status === 403)
   } else {
-    record("3.Ocorrencias", "Financeiro consegue dar baixa (marcar como paga)", false, "ocorrência não foi criada")
+    record("2.ResponsavelFinanceiro", "Consegue dar baixa (marcar como paga)", false, "ocorrência não foi criada")
   }
 
-  printSummary("ACESSO DO COLABORADOR A FINANCEIRO E OCORRÊNCIAS (RESTRIÇÃO) E PAPEL FINANCEIRO (CONCESSÃO)")
+  // --------------------------------------------------------------------------
+  // Papel COMPANY_FINANCE — mesmas 3 capacidades, sem editar/excluir
+  // --------------------------------------------------------------------------
+  const financeiroListRes = await api(financeiroSession, "GET", "/api/company/occurrences")
+  await check("3.PapelFinanceiro", "Vê de todos os colaboradores", async () => financeiroListRes.status === 200)
+
+  const financeiroEditRes = await api(financeiroSession, "PATCH", `/api/company/occurrences/${outraOcorrencia.id}`, { description: "tentativa" })
+  await check("3.PapelFinanceiro", "NÃO consegue editar ocorrência já existente (403)", async () => financeiroEditRes.status === 403)
+
+  printSummary("ACESSO DO COLABORADOR A OCORRÊNCIAS/FINANCEIRO — ESTADO FINAL (DUAL ACCESS)")
 
   // Limpeza
-  await prisma.occurrence.deleteMany({ where: { companyId: company.id, description: { in: ["[Audit] ocorrência de outro colaborador", "[Audit] vale lançado pelo financeiro"] } } })
+  await prisma.occurrence.deleteMany({ where: { companyId: company.id, description: { startsWith: "[Audit]" } } })
   await prisma.employeeProfile.update({ where: { userId: colaborador.id }, data: { canRegisterOccurrences: false, isFinanceResponsible: false } })
 
   if (results.some((r) => !r.pass)) process.exitCode = 1

@@ -325,6 +325,9 @@ function EmployeeScheduleTable() {
                         {e.hasExtraMonthlyDayOff && (
                           <span className="text-[10px] font-medium text-purple-700 bg-purple-50 rounded-full px-2 py-0.5">Folga extra/mês</span>
                         )}
+                        {e.isFinanceResponsible && (
+                          <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 rounded-full px-2 py-0.5">Financeiro</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{EMPLOYMENT_TYPE_LABELS[e.employmentType]}</td>
@@ -437,6 +440,7 @@ function EmployeeScheduleDialog({
   const [weeklySchedule, setWeeklySchedule] = useState<WeeklySchedule>(employee.weeklySchedule ?? {})
   const [weeklyDayOff, setWeeklyDayOff] = useState(employee.weeklyDayOff !== null ? String(employee.weeklyDayOff) : "none")
   const [hasExtraMonthlyDayOff, setHasExtraMonthlyDayOff] = useState(employee.hasExtraMonthlyDayOff)
+  const [isFinanceResponsible, setIsFinanceResponsible] = useState(employee.isFinanceResponsible)
   const [isSectorCommunicationResponsible, setIsSectorCommunicationResponsible] = useState(employee.isSectorCommunicationResponsible)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
@@ -470,6 +474,7 @@ function EmployeeScheduleDialog({
           weeklySchedule: useWeeklySchedule ? weeklySchedule : null,
           weeklyDayOff: weeklyDayOff === "none" ? null : Number(weeklyDayOff),
           hasExtraMonthlyDayOff,
+          isFinanceResponsible,
           isSectorCommunicationResponsible,
         }),
       })
@@ -631,6 +636,13 @@ function EmployeeScheduleDialog({
 
           <div className="space-y-3 pt-2 border-t border-gray-100">
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Papéis especiais</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="font-normal">Responsável Financeiro</Label>
+                <p className="text-[11px] text-gray-400">Ganha acesso ao módulo Financeiro — lança ocorrências, aprova/paga saques de parceiros e emite relatórios, sem perder as telas normais de Colaborador.</p>
+              </div>
+              <Switch checked={isFinanceResponsible} onCheckedChange={setIsFinanceResponsible} />
+            </div>
             <div className="flex items-center justify-between">
               <Label className="font-normal">Responsável por Comunicações do Setor</Label>
               <Switch checked={isSectorCommunicationResponsible} onCheckedChange={setIsSectorCommunicationResponsible} />
