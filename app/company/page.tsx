@@ -143,31 +143,35 @@ export default function CompanyDashboardPage() {
 
           <GoalProgressWidget />
 
-          {data.partners && data.operations && (
+          {(data.partners || data.operations) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <AdminCard title="Parceiros" icon={Users}>
-                <MetricRow label="Parceiros ativos no programa" value={data.partners.activePartners} />
-                <MetricRow
-                  label="Comissões pendentes"
-                  value={`${currency(data.partners.pendingCommissions.total)} (${data.partners.pendingCommissions.count})`}
-                />
-                <MetricRow
-                  label="Saques solicitados"
-                  value={`${currency(data.partners.pendingWithdrawals.total)} (${data.partners.pendingWithdrawals.count})`}
-                />
-              </AdminCard>
+              {data.partners && (
+                <AdminCard title="Parceiros" icon={Users}>
+                  <MetricRow label="Parceiros ativos no programa" value={data.partners.activePartners} />
+                  <MetricRow
+                    label="Comissões pendentes"
+                    value={`${currency(data.partners.pendingCommissions.total)} (${data.partners.pendingCommissions.count})`}
+                  />
+                  <MetricRow
+                    label="Saques solicitados"
+                    value={`${currency(data.partners.pendingWithdrawals.total)} (${data.partners.pendingWithdrawals.count})`}
+                  />
+                </AdminCard>
+              )}
 
-              <AdminCard title="Operação & RH" icon={Boxes}>
-                <MetricRow label="Colaboradores" value={data.operations.totalEmployees} />
-                <MetricRow
-                  label="Presença hoje"
-                  value={`${data.operations.presentToday}/${data.operations.totalEmployees} (${data.operations.attendanceRate}%)`}
-                />
-                <MetricRow label="Checklists no prazo (mês)" value={data.operations.onTimeChecklists} />
-                <MetricRow label="Atrasados/reprovados (mês)" value={data.operations.lateOrFailedChecklists} />
-                <MetricRow label="Pendentes de execução" value={data.operations.pendingChecklists} />
-                <MetricRow label="Ocorrências no mês" value={data.operations.occurrencesThisMonth} />
-              </AdminCard>
+              {data.operations && (
+                <AdminCard title="Operação & RH" icon={Boxes}>
+                  <MetricRow label="Colaboradores" value={data.operations.totalEmployees} />
+                  <MetricRow
+                    label="Presença hoje"
+                    value={`${data.operations.presentToday}/${data.operations.totalEmployees} (${data.operations.attendanceRate}%)`}
+                  />
+                  <MetricRow label="Checklists no prazo (mês)" value={data.operations.onTimeChecklists} />
+                  <MetricRow label="Atrasados/reprovados (mês)" value={data.operations.lateOrFailedChecklists} />
+                  <MetricRow label="Pendentes de execução" value={data.operations.pendingChecklists} />
+                  <MetricRow label="Ocorrências no mês" value={data.operations.occurrencesThisMonth} />
+                </AdminCard>
+              )}
             </div>
           )}
 

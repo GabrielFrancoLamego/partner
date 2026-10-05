@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, handleApiError } from "@/lib/api-auth"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canManageDailyOperations, canManageFinance } from "@/lib/permissions"
 import { periodStart } from "@/lib/period-range"
 import { resolveCareerProgress, getMonthlyScore, computeDailyEfficiency, type EfficiencyMedal } from "@/lib/gamification"
 import { computePendingTimeclockAdjustments } from "@/lib/timeclock-adjustments"
@@ -41,6 +41,11 @@ export async function GET(request: Request) {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
     const isManager = canManageDailyOperations(user.role)
+    // Painel de Parceiros (comissões/saques pendentes) interessa a quem
+    // gerencia a operação E ao papel Financeiro puro (COMPANY_FINANCE) — é
+    // justamente o que ele aprova/paga. Sem isso, a conta Financeiro caía
+    // num dashboard inteiramente vazio (nenhum bloco liberado pro papel).
+    const canSeePartnersPanel = isManager || canManageFinance(user.role)
 
     const [company] = await Promise.all([prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { name: true } })])
 
@@ -75,17 +80,8 @@ export async function GET(request: Request) {
     let partnersSimple: { totalPartners: number; totalReferralsInPeriod: number } | null = null
     let efficiencySummary: { percent: number; onTime: number; late: number; notDelivered: number; extraTasks: number } | null = null
 
-    if (isManager) {
-      const [
-        activePartnerIds,
-        pendingCommissions,
-        pendingWithdrawals,
-        topPartnersRaw,
-        totalEmployees,
-        presentTodayIds,
-        checklistRows,
-        occurrencesThisMonth,
-      ] = await Promise.all([
+    if (canSeePartnersPanel) {
+      const [activePartnerIds, pendingCommissions, pendingWithdrawals, topPartnersRaw] = await Promise.all([
         prisma.commission.findMany({
           where: { companyId, ...dateWhere("date"), partner: { status: "ACTIVE" } },
           select: { partnerId: true },
@@ -113,17 +109,6 @@ export async function GET(request: Request) {
           orderBy: { _sum: { amount: "desc" } },
           take: 5,
         }),
-        prisma.user.count({ where: { companyId, role: "EMPLOYEE" } }),
-        prisma.timeEntry.findMany({
-          where: { companyId, type: "CHECK_IN", createdAt: { gte: startOfToday } },
-          select: { userId: true },
-          distinct: ["userId"],
-        }),
-        prisma.checklist.findMany({
-          where: { companyId, createdAt: { gte: startOfMonth } },
-          select: { status: true, dueAt: true, approvedAt: true },
-        }),
-        prisma.occurrence.count({ where: { companyId, date: { gte: startOfMonth } } }),
       ])
 
       const topPartners = await Promise.all(
@@ -139,6 +124,29 @@ export async function GET(request: Request) {
         }),
       )
 
+      partners = {
+        activePartners: activePartnerIds.length,
+        pendingCommissions: { total: Number(pendingCommissions._sum.commissionValue ?? 0), count: pendingCommissions._count },
+        pendingWithdrawals: { total: Number(pendingWithdrawals._sum.amount ?? 0), count: pendingWithdrawals._count },
+        topPartners,
+      }
+    }
+
+    if (isManager) {
+      const [totalEmployees, presentTodayIds, checklistRows, occurrencesThisMonth] = await Promise.all([
+        prisma.user.count({ where: { companyId, role: "EMPLOYEE" } }),
+        prisma.timeEntry.findMany({
+          where: { companyId, type: "CHECK_IN", createdAt: { gte: startOfToday } },
+          select: { userId: true },
+          distinct: ["userId"],
+        }),
+        prisma.checklist.findMany({
+          where: { companyId, createdAt: { gte: startOfMonth } },
+          select: { status: true, dueAt: true, approvedAt: true },
+        }),
+        prisma.occurrence.count({ where: { companyId, date: { gte: startOfMonth } } }),
+      ])
+
       const executedChecklists = checklistRows.filter((c) => c.status !== "PENDING").length
       const onTimeChecklists = checklistRows.filter(
         (c) => c.status === "APPROVED" && (!c.dueAt || (c.approvedAt && c.approvedAt <= c.dueAt)),
@@ -146,12 +154,6 @@ export async function GET(request: Request) {
       const lateOrFailedChecklists = executedChecklists - onTimeChecklists
       const pendingChecklists = checklistRows.filter((c) => c.status === "PENDING").length
 
-      partners = {
-        activePartners: activePartnerIds.length,
-        pendingCommissions: { total: Number(pendingCommissions._sum.commissionValue ?? 0), count: pendingCommissions._count },
-        pendingWithdrawals: { total: Number(pendingWithdrawals._sum.amount ?? 0), count: pendingWithdrawals._count },
-        topPartners,
-      }
       operations = {
         totalEmployees,
         presentToday: presentTodayIds.length,
