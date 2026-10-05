@@ -1,26 +1,19 @@
 import { prisma } from "@/lib/prisma"
-import { requireCompanyStaff, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { requireCompanyStaff, handleApiError } from "@/lib/api-auth"
+import { canManageOccurrences } from "@/lib/permissions"
 
 /**
  * Lista colaboradores (role EMPLOYEE) da própria empresa — usado em seletores
- * das telas de RH/Ocorrências/Ponto. Gerente/Master recebem o pacote completo
- * (inclusive salário-base e permissão CREATE_ONLY); um colaborador autorizado
- * a só lançar Ocorrências (canRegisterOccurrences) recebe apenas id/nome —
- * dado sensível de colega (salário) nunca vaza para esse perfil.
+ * das telas de RH/Ocorrências/Ponto/Comunicação. Gerente/Master/Financeiro
+ * (canManageOccurrences) recebem o pacote completo (inclusive salário-base);
+ * qualquer outro staff autenticado (ex: Colaborador escolhendo um colega pra
+ * mandar uma Comunicação Interna) recebe só id/nome — dado sensível de colega
+ * (salário) nunca vaza para esse perfil.
  */
 export async function GET(request: Request) {
   try {
     const user = await requireCompanyStaff()
-    const isManager = canManageDailyOperations(user.role)
-
-    if (!isManager) {
-      const profile = await prisma.employeeProfile.findUnique({
-        where: { userId: user.id },
-        select: { canRegisterOccurrences: true },
-      })
-      if (!profile?.canRegisterOccurrences) throw new ApiError(403, "Sem permissão para esta ação")
-    }
+    const isManager = canManageOccurrences(user.role)
 
     // ?status=ALL|INACTIVE devolve também colaboradores bloqueados (Diarista
     // pago / Temporário com contrato vencido) — necessário pra Gerente/Master

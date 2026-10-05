@@ -42,9 +42,12 @@ export default function CompanyFinanceiroPage() {
   const user = useCompanyUser()
   // Gerente também acessa (visualiza ocorrências financeiras + quita, ver
   // ReceivablesList) — aprovar Comissão/Saque PIX de Parceiro continua
-  // exclusivo do Financeiro/Master (canApproveFinance abaixo).
-  const allowed = canManageFinance(user.role) || user.isFinanceResponsible || canManageDailyOperations(user.role)
-  const canApproveFinance = canManageFinance(user.role) || user.isFinanceResponsible
+  // exclusivo do Financeiro/Master (canApproveFinance abaixo). Delegação a um
+  // Colaborador específico (isFinanceResponsible) foi retirada — dados de
+  // parceiros/financeiro da plataforma não são mais expostos a um Colaborador
+  // comum, só a quem tem o papel COMPANY_FINANCE.
+  const allowed = canManageFinance(user.role) || canManageDailyOperations(user.role)
+  const canApproveFinance = canManageFinance(user.role)
 
   if (!allowed) {
     return <EmptyState message="Acesso restrito ao Master, Gerente e ao Responsável pelo Financeiro." />

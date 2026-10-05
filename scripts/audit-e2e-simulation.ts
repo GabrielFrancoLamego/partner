@@ -249,9 +249,9 @@ async function main() {
     return !leaked
   })
 
-  await check("2.Financeiro", "Colaborador delegado (isFinanceResponsible) acessa saques do módulo Financeiro", async () => {
+  await check("2.Financeiro", "Colaborador (mesmo com isFinanceResponsible) NÃO acessa mais o módulo Financeiro — delegação retirada, só o papel COMPANY_FINANCE", async () => {
     const { status } = await api(S.colaborador, "GET", "/api/company/finance/withdrawals")
-    if (status !== 200) return `status ${status} — delegação de Financeiro (EmployeeProfile.isFinanceResponsible) não está funcionando`
+    if (status !== 403) return `status ${status} — esperado 403 (delegação de Financeiro a Colaborador foi removida)`
     return true
   })
 

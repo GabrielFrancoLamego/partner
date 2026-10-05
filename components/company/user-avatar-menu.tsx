@@ -97,15 +97,33 @@ export function UserAvatarMenu({ name, roleLabel }: { name: string; roleLabel: s
   )
 }
 
+type WalletBucket = { paid: number; pending: number; nextDate: string | null }
 type WalletSummary = {
   totals: { totalRecebidoPeriodo: number; totalAReceber: number; proximaDataPrevista: string | null }
   discounts: { consumoInterno: number; vales: number; descontosDiversos: number; impostos: number }
+  earnings: {
+    salarioFixo: WalletBucket
+    taxaServico: WalletBucket
+    metas: WalletBucket
+    diarias: WalletBucket
+    comprasDomingo: WalletBucket
+    outrosAdicionais: WalletBucket
+  }
 }
 const currency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+const EARNINGS_LABELS: Record<keyof WalletSummary["earnings"], string> = {
+  salarioFixo: "Salário Fixo",
+  taxaServico: "Taxa de Serviço",
+  metas: "Metas",
+  diarias: "Diárias",
+  comprasDomingo: "Compras de Domingo",
+  outrosAdicionais: "Outros Adicionais",
+}
 
 /** "Sua Carteira / Financeiro" — extrato simplificado no formato carteira de banco, exclusivo do colaborador (ver /api/company/my-account, sem dados de parceiros). */
 function WalletDialog({ onClose }: { onClose: () => void }) {
   const [data, setData] = useState<WalletSummary | null>(null)
+  const [showFull, setShowFull] = useState(false)
 
   useEffect(() => {
     adminFetch<WalletSummary>("/api/company/my-account").then(setData)
@@ -116,9 +134,19 @@ function WalletDialog({ onClose }: { onClose: () => void }) {
       (data.discounts.consumoInterno + data.discounts.vales + data.discounts.descontosDiversos + data.discounts.impostos)
     : 0
 
+  const earningsRows = data ? (Object.entries(data.earnings) as [keyof WalletSummary["earnings"], WalletBucket][]).filter(([, b]) => b.paid > 0 || b.pending > 0) : []
+  const discountRows = data
+    ? ([
+        ["Conta de Consumo Interno", data.discounts.consumoInterno],
+        ["Vales/Adiantamentos", data.discounts.vales],
+        ["Descontos Diversos", data.discounts.descontosDiversos],
+        ["Impostos", data.discounts.impostos],
+      ] as [string, number][]).filter(([, v]) => v > 0)
+    : []
+
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Sua Carteira</DialogTitle>
         </DialogHeader>
@@ -143,9 +171,47 @@ function WalletDialog({ onClose }: { onClose: () => void }) {
                 )}
               </div>
             </div>
-            <Link href="/company" onClick={onClose} className="block text-xs text-center text-[#F58220] underline">
-              Ver extrato completo em "Sua Conta" →
-            </Link>
+
+            {!showFull ? (
+              <button type="button" onClick={() => setShowFull(true)} className="block w-full text-xs text-center text-[#F58220] underline">
+                Ver extrato completo →
+              </button>
+            ) : (
+              <div className="space-y-3 pt-2 border-t border-gray-100">
+                <div>
+                  <p className="text-xs font-semibold text-[#3E2415] mb-1.5">Ganhos / Entradas</p>
+                  {earningsRows.length === 0 ? (
+                    <p className="text-xs text-gray-400">Nenhum lançamento de ganhos neste período.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {earningsRows.map(([key, b]) => (
+                        <div key={key} className="flex items-center justify-between text-xs">
+                          <span className="text-gray-600">{EARNINGS_LABELS[key]}</span>
+                          <span className="text-right">
+                            {b.paid > 0 && <span className="text-green-600 font-medium">{currency(b.paid)} pago</span>}
+                            {b.paid > 0 && b.pending > 0 && " · "}
+                            {b.pending > 0 && <span className="text-amber-600 font-medium">{currency(b.pending)} pendente</span>}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {discountRows.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-[#3E2415] mb-1.5">Descontos / Saídas</p>
+                    <div className="space-y-1">
+                      {discountRows.map(([label, value]) => (
+                        <div key={label} className="flex items-center justify-between text-xs">
+                          <span className="text-gray-600">{label}</span>
+                          <span className="text-red-600 font-medium">-{currency(value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
         <DialogFooter>

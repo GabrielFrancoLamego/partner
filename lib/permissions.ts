@@ -71,12 +71,17 @@ export function isPartner(role: Role) {
 }
 
 /**
- * Acesso ao Módulo Financeiro unificado (/company/financeiro) — Master/Admin/
- * COMPANY_FINANCE por papel, OU qualquer Colaborador marcado como
- * "Responsável pelo Financeiro" (EmployeeProfile.isFinanceResponsible).
- * Diferente de canManageFinance (que é só por Role) porque o Financeiro pode
- * ser delegado a um EMPLOYEE específico sem trocar seu papel na plataforma.
+ * Acesso ao Módulo Financeiro unificado (/company/financeiro) — estritamente
+ * por papel (Master/Admin/COMPANY_FINANCE). A delegação a um Colaborador
+ * específico (EmployeeProfile.isFinanceResponsible) foi retirada — um
+ * Colaborador comum não deve ver dados financeiros da plataforma/parceiros;
+ * quem precisa desse acesso deve ter o papel COMPANY_FINANCE.
  */
 export function canAccessFinanceModule(user: { role: Role; employeeProfile?: { isFinanceResponsible: boolean } | null }) {
-  return canManageFinance(user.role) || Boolean(user.employeeProfile?.isFinanceResponsible)
+  return canManageFinance(user.role)
+}
+
+/** Lançar/ver Ocorrências — Master/Gerente/Admin (operação diária) OU o papel Financeiro (lança, vê de todos e dá baixa em pagamentos). */
+export function canManageOccurrences(role: Role) {
+  return canManageDailyOperations(role) || canManageFinance(role)
 }

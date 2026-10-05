@@ -94,7 +94,10 @@ const NAV_ITEMS: NavItem[] = [
     href: "/company/ocorrencias",
     label: "Ocorrências",
     icon: AlertTriangle,
-    show: (u) => canManageDailyOperations(u.role) || u.canRegisterOccurrences,
+    // Todo staff vê — Gerente/Master/Financeiro têm o painel completo
+    // (lançam, veem de todos, dão baixa); Colaborador vê só as próprias,
+    // sem poder lançar (ver app/company/ocorrencias/page.tsx).
+    show: () => true,
   },
   { href: "/company/fechamento", label: "Fechamento", icon: FileClock, show: (u) => canManageDailyOperations(u.role) },
   { href: "/company/metas", label: "Metas", icon: Target, show: () => true },
@@ -110,7 +113,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/company/programas", label: "Programa de Parceria", shortLabel: "Parceria", icon: Award, show: (u) => canConfigureCompany(u.role) },
   { href: "/company/promocoes", label: "Promoções", icon: Gift, show: (u) => canConfigureCompany(u.role) },
   { href: "/company/comunicacao", label: "Comunicação", icon: MessagesSquare, show: () => true },
-  { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: (u) => canManageFinance(u.role) || u.isFinanceResponsible },
+  { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: (u) => canManageFinance(u.role) },
   { href: "/company/configuracoes", label: "Configurações", icon: Settings2, show: (u) => canConfigureCompany(u.role) },
 ]
 

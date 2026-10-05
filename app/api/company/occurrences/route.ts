@@ -1,7 +1,7 @@
 import type { OccurrenceType, OccurrencePaymentMethod, OccurrencePaymentStatus, Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageDailyOperations } from "@/lib/permissions"
+import { canManageOccurrences } from "@/lib/permissions"
 import { uploadImage } from "@/lib/storage"
 import { awardXp, getInternalProgramRules } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
@@ -66,15 +66,16 @@ function startOfDay(date: Date) {
 }
 
 /**
- * Painel completo — exclusivo de Gerente/Master/Admin (canManageDailyOperations).
- * Colaboradores em modo CREATE_ONLY (EmployeeProfile.canRegisterOccurrences)
- * não têm acesso de leitura ao histórico, só ao POST abaixo.
+ * Painel completo — Gerente/Master/Admin (canManageDailyOperations) OU o
+ * papel Financeiro (canManageFinance), que lança/vê de todos e dá baixa em
+ * pagamentos. Um Colaborador comum (nenhum dos dois) só vê as PRÓPRIAS
+ * ocorrências, somente leitura — nunca lança nem vê de colegas.
  */
 export async function GET(request: Request) {
   try {
     const user = await requireCompanyStaff()
-    if (!canManageDailyOperations(user.role)) throw new ApiError(403, "Sem permissão para esta ação")
     const companyId = user.companyId
+    const isManager = canManageOccurrences(user.role)
 
     const { searchParams } = new URL(request.url)
     const month = searchParams.get("month") // "2026-09"
@@ -102,7 +103,8 @@ export async function GET(request: Request) {
       where: {
         companyId,
         ...(dateWhere ? { date: dateWhere } : {}),
-        ...(employeeId ? { employeeId } : {}),
+        // Colaborador comum nunca escolhe o filtro — é sempre forçado à própria identidade.
+        employeeId: isManager ? employeeId || undefined : user.id,
         ...typeWhere,
       },
       include: {
@@ -124,15 +126,12 @@ export async function POST(request: Request) {
   try {
     const user = await requireCompanyStaff()
     const companyId = user.companyId
-    const isManager = canManageDailyOperations(user.role)
+    const isManager = canManageOccurrences(user.role)
 
-    if (!isManager) {
-      const profile = await prisma.employeeProfile.findUnique({
-        where: { userId: user.id },
-        select: { canRegisterOccurrences: true },
-      })
-      if (!profile?.canRegisterOccurrences) throw new ApiError(403, "Sem permissão para registrar ocorrências")
-    }
+    // Lançar ocorrências é exclusivo de Gerente/Master/Admin e do papel
+    // Financeiro — a delegação a um Colaborador específico (CREATE_ONLY,
+    // EmployeeProfile.canRegisterOccurrences) foi retirada.
+    if (!isManager) throw new ApiError(403, "Sem permissão para registrar ocorrências")
 
     const formData = await request.formData()
     const employeeId = formData.get("employeeId")

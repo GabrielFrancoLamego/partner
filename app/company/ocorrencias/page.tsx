@@ -17,7 +17,7 @@ import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, AdminCard, StatusBadge } from "@/components/admin/admin-ui"
 import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
-import { canManageDailyOperations, isCompanyMasterOrAdmin } from "@/lib/permissions"
+import { canManageDailyOperations, canManageOccurrences, isCompanyMasterOrAdmin } from "@/lib/permissions"
 
 const TYPE_LABELS: Record<string, string> = {
   FOLGA_FERIADO: "Folga/Feriado",
@@ -96,45 +96,60 @@ const monthNow = () => new Date().toISOString().slice(0, 7)
 
 export default function CompanyOcorrenciasPage() {
   const user = useCompanyUser()
-  const isManager = canManageDailyOperations(user.role)
-
-  if (!isManager && !user.canRegisterOccurrences) {
-    return <EmptyState message="Acesso restrito à Gerente e ao Administrador da empresa." />
-  }
+  const isManager = canManageOccurrences(user.role)
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Ocorrências</h1>
         <p className="text-gray-600 mt-1 text-sm">
-          {isManager ? "Advertências, vales, folgas e pagamentos especiais" : "Registro rápido de ocorrências"}
+          {isManager ? "Advertências, vales, folgas e pagamentos especiais" : "Suas ocorrências registradas"}
         </p>
       </div>
-      {isManager ? <ManagerOccurrences /> : <QuickInsertOnly />}
+      {isManager ? <ManagerOccurrences /> : <MyOccurrencesView />}
     </div>
   )
 }
 
-/** Visão CREATE_ONLY: apenas o formulário de inclusão, sem histórico, edição ou exclusão. */
-function QuickInsertOnly() {
-  const [employees, setEmployees] = useState<Employee[]>([])
-  const [customTypes, setCustomTypes] = useState<CustomOccurrenceType[]>([])
-  const [successCount, setSuccessCount] = useState(0)
+/** Visão do Colaborador comum — só as próprias ocorrências, somente leitura (não lança, não vê de outros). */
+function MyOccurrencesView() {
+  const [occurrences, setOccurrences] = useState<Occurrence[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    adminFetch<Employee[]>("/api/company/employees").then(setEmployees)
-    adminFetch<CustomOccurrenceType[]>("/api/company/occurrence-types").then(setCustomTypes)
+    adminFetch<Occurrence[]>("/api/company/occurrences").then(setOccurrences).finally(() => setIsLoading(false))
   }, [])
 
+  if (isLoading) return <LoadingState />
+  if (occurrences.length === 0) return <EmptyState message="Nenhuma ocorrência registrada em seu nome ainda." />
+
   return (
-    <div className="space-y-4">
-      {successCount > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-sm text-green-800">
-          <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-          {successCount} ocorrência(s) registrada(s) nesta sessão.
+    <div className="grid gap-2">
+      {occurrences.map((o) => (
+        <div key={o.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-white flex-wrap">
+          <div>
+            <p className="font-medium text-[#3E2415] text-sm">
+              {occurrenceTypeLabel(o)}
+              {o.discountWaived && <span className="ml-1 text-xs text-green-600">(abonada)</span>}
+            </p>
+            <p className="text-xs text-gray-500">
+              {new Date(o.date).toLocaleDateString("pt-BR")}
+              {o.description && ` · ${o.description}`}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {o.total !== null && (
+              <span className={`text-sm font-medium ${Number(o.total) < 0 ? "text-red-600" : "text-[#3E2415]"}`}>{currency(o.total)}</span>
+            )}
+            <StatusBadge status={o.paymentStatus} />
+            {o.attachmentUrl && (
+              <a href={o.attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#F58220] underline">
+                Ver anexo
+              </a>
+            )}
+          </div>
         </div>
-      )}
-      <OccurrenceForm employees={employees} customTypes={customTypes} onCreated={() => setSuccessCount((c) => c + 1)} />
+      ))}
     </div>
   )
 }
@@ -144,6 +159,10 @@ function ManagerOccurrences() {
   const searchParams = useSearchParams()
   const user = useCompanyUser()
   const isMaster = isCompanyMasterOrAdmin(user.role)
+  // Financeiro lança e vê tudo, mas edita/exclui ocorrências só via quitação
+  // (mark-paid) — editar/excluir o lançamento em si continua exclusivo de
+  // Gerente/Master (ver app/api/company/occurrences/[id]/route.ts).
+  const canEdit = canManageDailyOperations(user.role)
   const [month, setMonth] = useState(monthNow())
   const [employeeFilter, setEmployeeFilter] = useState("")
   const [typeFilter, setTypeFilter] = useState("")
@@ -225,8 +244,12 @@ function ManagerOccurrences() {
     <Tabs defaultValue="occurrences">
       <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         <TabsTrigger value="occurrences" className="flex-shrink-0">Ocorrências</TabsTrigger>
-        <TabsTrigger value="types" className="flex-shrink-0">Tipos de Ocorrência</TabsTrigger>
-        <TabsTrigger value="access" className="flex-shrink-0">Colaboradores Autorizados</TabsTrigger>
+        {canEdit && (
+          <>
+            <TabsTrigger value="types" className="flex-shrink-0">Tipos de Ocorrência</TabsTrigger>
+            <TabsTrigger value="access" className="flex-shrink-0">Salário-base</TabsTrigger>
+          </>
+        )}
       </TabsList>
 
       <TabsContent value="occurrences" className="space-y-6 mt-4">
@@ -325,16 +348,17 @@ function ManagerOccurrences() {
                       {o.paymentStatus === "PENDING" && o.total !== null && (
                         <MobileCardAction icon={CheckCircle2} label="Marcar como pago" onClick={() => handleMarkPaid(o)} />
                       )}
-                      {isDateLocked(o.date) ? (
-                        <span className="flex items-center gap-1 text-xs text-gray-400">
-                          <Lock className="h-3 w-3" /> Expediente fechado
-                        </span>
-                      ) : (
-                        <>
-                          <MobileCardAction icon={Pencil} label="Editar" onClick={() => setEditing(o)} />
-                          <MobileCardAction icon={Trash2} label="Excluir" tone="danger" onClick={() => handleDelete(o)} />
-                        </>
-                      )}
+                      {canEdit &&
+                        (isDateLocked(o.date) ? (
+                          <span className="flex items-center gap-1 text-xs text-gray-400">
+                            <Lock className="h-3 w-3" /> Expediente fechado
+                          </span>
+                        ) : (
+                          <>
+                            <MobileCardAction icon={Pencil} label="Editar" onClick={() => setEditing(o)} />
+                            <MobileCardAction icon={Trash2} label="Excluir" tone="danger" onClick={() => handleDelete(o)} />
+                          </>
+                        ))}
                     </>
                   }
                 />
@@ -393,20 +417,21 @@ function ManagerOccurrences() {
                             <CheckCircle2 className="h-4 w-4" />
                           </Button>
                         )}
-                        {isDateLocked(o.date) ? (
-                          <span title="Expediente fechado — só o Master pode editar/excluir agora" className="text-gray-300 p-2">
-                            <Lock className="h-4 w-4" />
-                          </span>
-                        ) : (
-                          <>
-                            <Button variant="ghost" size="icon" onClick={() => setEditing(o)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(o)} className="text-red-600">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </>
-                        )}
+                        {canEdit &&
+                          (isDateLocked(o.date) ? (
+                            <span title="Expediente fechado — só o Master pode editar/excluir agora" className="text-gray-300 p-2">
+                              <Lock className="h-4 w-4" />
+                            </span>
+                          ) : (
+                            <>
+                              <Button variant="ghost" size="icon" onClick={() => setEditing(o)}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={() => handleDelete(o)} className="text-red-600">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          ))}
                       </div>
                     </td>
                   </tr>
@@ -423,7 +448,7 @@ function ManagerOccurrences() {
       </TabsContent>
 
       <TabsContent value="access" className="mt-4">
-        <AuthorizedEmployeesTab employees={employees} onChanged={reloadEmployees} />
+        <EmployeeSalaryTab employees={employees} onChanged={reloadEmployees} />
       </TabsContent>
 
       {isCreateOpen && (
@@ -1053,15 +1078,8 @@ function OccurrenceTypeDialog({ onClose, onCreated }: { onClose: () => void; onC
   )
 }
 
-function AuthorizedEmployeesTab({ employees, onChanged }: { employees: Employee[]; onChanged: () => void }) {
-  const handleToggle = async (employee: Employee) => {
-    await adminFetch(`/api/company/employees/${employee.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ canRegisterOccurrences: !employee.canRegisterOccurrences }),
-    }).catch((e) => alert(e instanceof AdminApiError ? e.message : "Erro"))
-    onChanged()
-  }
-
+/** Edição rápida do salário-base dos colaboradores — usado no abate automático de FALTA sem atestado. */
+function EmployeeSalaryTab({ employees, onChanged }: { employees: Employee[]; onChanged: () => void }) {
   const handleSalaryBlur = async (employee: Employee, raw: string) => {
     const next = raw === "" ? null : Number(raw)
     if (next === (employee.monthlySalary ? Number(employee.monthlySalary) : null)) return
@@ -1075,11 +1093,8 @@ function AuthorizedEmployeesTab({ employees, onChanged }: { employees: Employee[
   if (employees.length === 0) return <EmptyState message="Nenhum colaborador cadastrado ainda." />
 
   return (
-    <AdminCard title="Permissão de Inclusão Rápida (CREATE_ONLY)" icon={Users}>
-      <p className="text-xs text-gray-500 mb-4">
-        Colaboradores autorizados podem registrar novas ocorrências, mas não veem o histórico geral nem podem
-        editar/excluir lançamentos. O salário-base é usado apenas para calcular o abate automático de FALTA.
-      </p>
+    <AdminCard title="Salário-base dos Colaboradores" icon={Users}>
+      <p className="text-xs text-gray-500 mb-4">Usado apenas para calcular o abate automático de 1 dia em FALTA sem atestado.</p>
       <div className="space-y-2">
         {employees.map((e) => (
           <div key={e.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl border border-gray-100">
@@ -1087,22 +1102,16 @@ function AuthorizedEmployeesTab({ employees, onChanged }: { employees: Employee[
               <p className="font-medium text-[#3E2415] text-sm">{e.name}</p>
               <p className="text-xs text-gray-400">{e.email}</p>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">Salário-base</span>
-                <Input
-                  type="number"
-                  step="0.01"
-                  defaultValue={e.monthlySalary ?? ""}
-                  onBlur={(ev) => handleSalaryBlur(e, ev.target.value)}
-                  className="w-28 h-8 text-sm"
-                  placeholder="R$"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">Autorizado</span>
-                <Switch checked={e.canRegisterOccurrences ?? false} onCheckedChange={() => handleToggle(e)} />
-              </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">Salário-base</span>
+              <Input
+                type="number"
+                step="0.01"
+                defaultValue={e.monthlySalary ?? ""}
+                onBlur={(ev) => handleSalaryBlur(e, ev.target.value)}
+                className="w-28 h-8 text-sm"
+                placeholder="R$"
+              />
             </div>
           </div>
         ))}
