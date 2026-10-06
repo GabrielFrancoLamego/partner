@@ -5,7 +5,7 @@ import { requirePartner, handleApiError } from "@/lib/api-auth"
  * "Minhas Promoções" — promoções ativas SÓ das empresas cujo Programa de
  * Parceria o parceiro já aderiu (ProgramMembership ACTIVE). Para a vitrine
  * aberta de TODAS as empresas, ver /api/partner/discover-promotions
- * (/partner/descobrir).
+ * (/partner/promocoes?tab=descobrir).
  */
 export async function GET() {
   try {

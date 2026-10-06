@@ -121,7 +121,7 @@ export function AdminShell({ userName, children }: { userName: string; children:
             Logado como <span className="font-semibold text-[#3E2415]">{userName}</span>
           </p>
         </div>
-        <main className="p-4 md:p-6 lg:p-8">{children}</main>
+        <main className="p-4 md:p-6 lg:p-8 overflow-x-hidden">{children}</main>
       </div>
     </div>
   )

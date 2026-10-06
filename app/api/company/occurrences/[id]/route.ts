@@ -42,6 +42,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const body = await request.json()
     const { value, quantity, paymentMethod, paymentStatus, description, discountWaived } = body
 
+    // Quitar exige forma de pagamento + comprovante (POST /api/company/finance/settle) — não dá
+    // para marcar como Paga editando a ocorrência.
+    if (paymentStatus === "PAID" && existing.paymentStatus !== "PAID") {
+      throw new ApiError(400, "Para marcar como paga use 'Marcar como Pago' e anexe o comprovante de pagamento")
+    }
+
     const nextValue = value !== undefined ? (value === null ? null : Number(value)) : existing.value
     const nextQuantity = quantity !== undefined ? Number(quantity) : Number(existing.quantity)
     const total = nextValue !== null ? Math.round(Number(nextValue) * nextQuantity * 100) / 100 : null

@@ -1,4 +1,4 @@
-import { requireCompanyStaff, requireFinanceAccess, handleApiError, ApiError } from "@/lib/api-auth"
+import { handleApiError, ApiError, requireFinanceContext } from "@/lib/api-auth"
 import { parsePaymentMethod, parseProofFile, settleGoalPayout, settleOccurrence, settleWithdrawal } from "@/lib/finance-settlement"
 
 /**
@@ -9,8 +9,7 @@ import { parsePaymentMethod, parseProofFile, settleGoalPayout, settleOccurrence,
  */
 export async function POST(request: Request) {
   try {
-    const user = await requireCompanyStaff()
-    requireFinanceAccess(user)
+    const { user, companyId: scopeCompanyId } = await requireFinanceContext(request)
 
     const form = await request.formData()
     const kind = form.get("kind")
@@ -19,7 +18,7 @@ export async function POST(request: Request) {
 
     const method = parsePaymentMethod(form.get("paymentMethod"))
     const file = parseProofFile(form.get("file"))
-    const base = { companyId: user.companyId, userId: user.id, method, file }
+    const base = { companyId: scopeCompanyId, userId: user.id, method, file }
 
     if (kind === "WITHDRAWAL") return Response.json(await settleWithdrawal({ ...base, withdrawalId: id }), { status: 201 })
     if (kind === "OCCURRENCE") return Response.json(await settleOccurrence({ ...base, occurrenceId: id }), { status: 201 })

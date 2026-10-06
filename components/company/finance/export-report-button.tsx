@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Download, FileSpreadsheet, FileText, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { scopedUrl } from "@/lib/admin-api-client"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 export type ExportTab = "contas-a-pagar" | "comissoes-saques" | "recebiveis" | "quitacoes"
@@ -19,7 +20,7 @@ export function ExportReportButton({ tab, params, disabled }: { tab: ExportTab; 
     setBusy(true)
     try {
       const qs = new URLSearchParams({ tab, format, ...(params ?? {}) })
-      const response = await fetch(`/api/company/finance/export?${qs.toString()}`)
+      const response = await fetch(scopedUrl(`/api/company/finance/export?${qs.toString()}`))
       if (!response.ok) {
         const data = await response.json().catch(() => null)
         throw new Error(data?.error ?? `Erro ${response.status}`)

@@ -1,4 +1,4 @@
-import { requireCompanyStaff, requireFinanceAccess, handleApiError, ApiError } from "@/lib/api-auth"
+import { handleApiError, ApiError, requireFinanceContext } from "@/lib/api-auth"
 import { parsePaymentMethod, parseProofFile } from "@/lib/finance-settlement"
 import { settleEmployeeNet, type PaymentSelection } from "@/lib/finance-employee"
 
@@ -22,8 +22,7 @@ function parseSelection(raw: unknown): PaymentSelection | undefined {
  */
 export async function POST(request: Request) {
   try {
-    const user = await requireCompanyStaff()
-    requireFinanceAccess(user)
+    const { user, companyId: scopeCompanyId } = await requireFinanceContext(request)
 
     const form = await request.formData()
     const employeeId = form.get("employeeId")
@@ -31,7 +30,7 @@ export async function POST(request: Request) {
     const month = form.get("month")
 
     const settlement = await settleEmployeeNet({
-      companyId: user.companyId,
+      companyId: scopeCompanyId,
       userId: user.id,
       employeeId,
       month: typeof month === "string" && month ? month : null,

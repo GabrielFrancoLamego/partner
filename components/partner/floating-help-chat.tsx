@@ -77,7 +77,7 @@ export function FloatingHelpChat() {
   }
 
   return (
-    <div className="fixed bottom-[calc(1rem+var(--safe-bottom))] right-4 z-50">
+    <div className="fixed bottom-[calc(6.25rem+var(--safe-bottom))] lg:bottom-[calc(1rem+var(--safe-bottom))] right-4 z-50">
       {isOpen && (
         <div className="mb-3 w-[calc(100vw-2rem)] max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col" style={{ height: "min(70vh, 520px)" }}>
           <div className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] px-4 py-3 flex items-center justify-between text-white flex-shrink-0">

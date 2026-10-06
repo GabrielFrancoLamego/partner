@@ -100,7 +100,7 @@ async function main() {
   )
 
   const createForm = new FormData()
-  createForm.append("employeeId", colaborador.id)
+  createForm.append("employeeId", rafael.id)
   createForm.append("type", "TAXA_SERVICO")
   createForm.append("value", "30")
   createForm.append("description", "[Audit] vale lançado pelo responsavelFinanceiro")

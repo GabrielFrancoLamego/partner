@@ -33,6 +33,11 @@ export const EARNING_OCCURRENCE_TYPES: OccurrenceType[] = ["SALARIO", "TAXA_SERV
 /** Tipos que ABATEM do líquido do colaborador (CUSTOM entra por customType.salaryImpactType = DISCOUNT). */
 export const DISCOUNT_OCCURRENCE_TYPES: OccurrenceType[] = ["VALE", "DESCONTO_ESPECIAL", "QUEBRA_CAIXA", "FALTA"]
 
+/** Separação de funções: ninguém quita um pagamento em seu próprio nome (ex: Financeiro pagando a si mesmo). */
+export function assertNotSelfPayment(payerId: string, payeeId: string | null) {
+  if (payeeId && payerId === payeeId) throw new ApiError(403, "Você não pode quitar um pagamento em seu próprio nome — peça a outro responsável")
+}
+
 export function parsePaymentMethod(raw: unknown): SettlementPaymentMethod {
   if (typeof raw !== "string" || !SETTLEMENT_METHODS.includes(raw as SettlementPaymentMethod)) {
     throw new ApiError(400, "Selecione a forma de pagamento (Pix, Dinheiro, Transferência Bancária ou Consumo Interno)")
@@ -199,6 +204,7 @@ export async function settleOccurrence(p: { companyId: string; userId: string; o
   if (!occ) throw new ApiError(404, "Ocorrência não encontrada")
   if (occ.paymentStatus === "PAID") throw new ApiError(400, "Esta ocorrência já está marcada como paga")
   if (occ.total === null) throw new ApiError(400, "Esta ocorrência não tem valor financeiro para quitar")
+  assertNotSelfPayment(p.userId, occ.employeeId)
   if (isDiscountOccurrence(occ)) {
     throw new ApiError(400, "Descontos não são pagos individualmente — são abatidos ao quitar o líquido do colaborador")
   }
@@ -267,6 +273,7 @@ export async function settleGoalPayout(p: { companyId: string; userId: string; g
   })
   if (!payout) throw new ApiError(404, "Bônus de meta não encontrado")
   if (payout.status === "PAID") throw new ApiError(400, "Este bônus já está pago")
+  assertNotSelfPayment(p.userId, payout.employeeId)
 
   const amount = Number(payout.amount)
   if (p.method === "CONSUMO" && Number(payout.employee.consumptionDebt) < amount) {

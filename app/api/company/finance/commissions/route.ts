@@ -1,10 +1,9 @@
 import { prisma } from "@/lib/prisma"
-import { requireCompanyStaff, requireFinanceAccess, handleApiError } from "@/lib/api-auth"
+import { handleApiError, requireFinanceContext } from "@/lib/api-auth"
 
 export async function GET(request: Request) {
   try {
-    const user = await requireCompanyStaff()
-    requireFinanceAccess(user)
+    const { user, companyId: scopeCompanyId } = await requireFinanceContext(request)
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
@@ -13,7 +12,7 @@ export async function GET(request: Request) {
 
     const commissions = await prisma.commission.findMany({
       where: {
-        companyId: user.companyId,
+        companyId: scopeCompanyId,
         ...(onlyPending ? { OR: [{ amount: null }, { status: { in: ["AWAITING_VALUE", "PENDING"] } }] } : {}),
         ...(status && status !== "all" ? { status: status as "AWAITING_VALUE" | "PENDING" | "APPROVED" | "PAID" | "REJECTED" } : {}),
       },

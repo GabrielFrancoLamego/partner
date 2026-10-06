@@ -1,4 +1,4 @@
-import { requireCompanyStaff, requireFinanceAccess, handleApiError, ApiError } from "@/lib/api-auth"
+import { handleApiError, ApiError, requireFinanceContext } from "@/lib/api-auth"
 import { buildFinanceExport, parseExportTab, renderPdf, renderXlsx } from "@/lib/finance-export"
 
 export const runtime = "nodejs"
@@ -12,15 +12,14 @@ export const runtime = "nodejs"
  */
 export async function GET(request: Request) {
   try {
-    const user = await requireCompanyStaff()
-    requireFinanceAccess(user)
+    const { user, companyId: scopeCompanyId } = await requireFinanceContext(request)
 
     const { searchParams } = new URL(request.url)
     const tab = parseExportTab(searchParams.get("tab"))
     const format = searchParams.get("format")
     if (format !== "xlsx" && format !== "pdf") throw new ApiError(400, "Formato inválido — use xlsx ou pdf")
 
-    const report = await buildFinanceExport(user.companyId, tab, {
+    const report = await buildFinanceExport(scopeCompanyId, tab, {
       month: searchParams.get("month"),
       from: searchParams.get("from"),
       to: searchParams.get("to"),

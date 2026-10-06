@@ -9,6 +9,22 @@ export class AdminApiError extends Error {
 }
 
 /**
+ * Escopo de empresa do módulo Financeiro quando o ADMIN da plataforma o usa em
+ * /admin/financeiro: enquanto definido, as chamadas ao Financeiro (e a baixa de
+ * ocorrências) levam `?companyId=` e as rotas /api/company/finance/** operam
+ * essa empresa (ver requireFinanceContext). Staff da empresa nunca define isto.
+ */
+let financeScopeCompanyId: string | null = null
+export function setFinanceScope(companyId: string | null) {
+  financeScopeCompanyId = companyId
+}
+const SCOPED_PATH = /^\/api\/company\/(finance\/|occurrences\/[^/?]+\/mark-paid)/
+export function scopedUrl(path: string) {
+  if (!financeScopeCompanyId || !SCOPED_PATH.test(path)) return path
+  return `${path}${path.includes("?") ? "&" : "?"}companyId=${encodeURIComponent(financeScopeCompanyId)}`
+}
+
+/**
  * fetch wrapper para app/admin/** — trata erro do formato `{ error }` das
  * rotas /api/admin/*. Quando `body` é FormData (upload de arquivo), não
  * força Content-Type: o browser precisa definir o boundary do multipart
@@ -16,7 +32,7 @@ export class AdminApiError extends Error {
  */
 export async function adminFetch<T = unknown>(path: string, options?: RequestInit): Promise<T> {
   const isFormData = options?.body instanceof FormData
-  const response = await fetch(path, {
+  const response = await fetch(scopedUrl(path), {
     ...options,
     headers: isFormData ? options?.headers : { "Content-Type": "application/json", ...options?.headers },
   })

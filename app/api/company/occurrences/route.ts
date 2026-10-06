@@ -2,6 +2,7 @@ import type { OccurrenceType, OccurrencePaymentMethod, OccurrencePaymentStatus, 
 import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, handleApiError, ApiError } from "@/lib/api-auth"
 import { canManageOccurrences, canConfigureCompany } from "@/lib/permissions"
+import { EARNING_OCCURRENCE_TYPES } from "@/lib/finance-settlement"
 import { uploadImage } from "@/lib/storage"
 import { awardXp, getInternalProgramRules } from "@/lib/gamification"
 import { logAudit } from "@/lib/audit"
@@ -89,6 +90,9 @@ export async function GET(request: Request) {
     const type = searchParams.get("type") // OccurrenceType, ou "CUSTOM:<id>" para um tipo configurável específico
     const from = searchParams.get("from") // YYYY-MM-DD — sobrepõe `month` quando presente
     const to = searchParams.get("to")
+    // ?scope=pending-payments — visão do Financeiro: ocorrências financeiras a PAGAR em nome de
+    // TODOS os outros colaboradores (nunca as próprias), as mais antigas/vencidas primeiro.
+    const pendingPaymentsScope = isManager && searchParams.get("scope") === "pending-payments"
 
     let dateWhere: { gte: Date; lt: Date } | undefined
     if (from && to) {
@@ -105,6 +109,27 @@ export async function GET(request: Request) {
       typeWhere = { type: type as OccurrenceType }
     }
 
+    if (pendingPaymentsScope) {
+      const pending = await prisma.occurrence.findMany({
+        where: {
+          companyId,
+          employeeId: { not: user.id },
+          total: { not: null },
+          paymentStatus: "PENDING",
+          discountWaived: false,
+          OR: [{ type: { in: EARNING_OCCURRENCE_TYPES } }, { type: "CUSTOM", customType: { salaryImpactType: "BONUS" } }],
+        },
+        include: {
+          employee: { select: { id: true, name: true } },
+          createdBy: { select: { id: true, name: true } },
+          customType: { select: { id: true, name: true, kind: true, salaryImpactType: true } },
+        },
+        orderBy: { date: "asc" },
+        take: 300,
+      })
+      return Response.json(pending)
+    }
+
     const occurrences = await prisma.occurrence.findMany({
       where: {
         companyId,
@@ -116,7 +141,7 @@ export async function GET(request: Request) {
       include: {
         employee: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true } },
-        customType: { select: { id: true, name: true, kind: true } },
+        customType: { select: { id: true, name: true, kind: true, salaryImpactType: true } },
       },
       orderBy: { date: "desc" },
       take: 300,
@@ -238,7 +263,7 @@ export async function POST(request: Request) {
         include: {
           employee: { select: { id: true, name: true } },
           createdBy: { select: { id: true, name: true } },
-          customType: { select: { id: true, name: true, kind: true } },
+          customType: { select: { id: true, name: true, kind: true, salaryImpactType: true } },
         },
       })
 

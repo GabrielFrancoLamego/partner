@@ -1,4 +1,4 @@
-import { requireCompanyStaff, requireFinanceAccess, handleApiError } from "@/lib/api-auth"
+import { handleApiError, requireFinanceContext } from "@/lib/api-auth"
 import { computeFinanceSummary } from "@/lib/finance-reports"
 
 /**
@@ -6,11 +6,10 @@ import { computeFinanceSummary } from "@/lib/finance-reports"
  * EXATA dos badges das abas: Contas a Pagar vencendo hoje + Saques aguardando
  * aprovação + Recebíveis vencendo hoje (ver computeFinanceSummary).
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const user = await requireCompanyStaff()
-    requireFinanceAccess(user)
-    return Response.json(await computeFinanceSummary(user.companyId))
+    const { user, companyId: scopeCompanyId } = await requireFinanceContext(request)
+    return Response.json(await computeFinanceSummary(scopeCompanyId))
   } catch (error) {
     return handleApiError(error)
   }

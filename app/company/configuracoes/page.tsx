@@ -11,6 +11,7 @@ import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { LoadingState, AdminCard, EmptyState } from "@/components/admin/admin-ui"
 import { useCompanyUser } from "@/lib/company-user-context"
 import { canConfigureCompany } from "@/lib/permissions"
+import { LocationForm } from "@/components/company/location-form"
 
 type Settings = {
   shiftClosingDeadline: string
@@ -31,8 +32,9 @@ export default function CompanyConfiguracoesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Configurações da Empresa</h1>
-        <p className="text-gray-600 mt-1 text-sm">Horário-limite do fechamento diário e turnos de funcionamento.</p>
+        <p className="text-gray-600 mt-1 text-sm">Localização exata do estabelecimento, horário-limite do fechamento diário e turnos de funcionamento.</p>
       </div>
+      <LocationForm />
       <SettingsForm />
       <CalendarEventsForm />
     </div>

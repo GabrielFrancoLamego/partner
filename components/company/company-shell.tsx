@@ -297,7 +297,7 @@ export function CompanyShell({
             <NotificationBell />
             <UserAvatarMenu name={user.name} roleLabel={ROLE_LABELS[user.role]} />
           </div>
-          <main className={cn("p-4 md:p-6 lg:p-8", canOperateFrontDesk(user.role) && "pb-24 lg:pb-8")}>{children}</main>
+          <main className={cn("p-4 md:p-6 lg:p-8 overflow-x-hidden", canOperateFrontDesk(user.role) && "pb-24 lg:pb-8")}>{children}</main>
         </div>
       </div>
     </CompanyUserProvider>

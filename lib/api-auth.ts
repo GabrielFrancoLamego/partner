@@ -132,3 +132,23 @@ export function handleApiError(error: unknown) {
   console.error(error)
   return Response.json({ error: "Erro interno" }, { status: 500 })
 }
+
+/**
+ * Uso: rotas do Módulo Financeiro (/api/company/finance/**). Staff da empresa
+ * (Master/Gerente/Financeiro) opera a PRÓPRIA empresa; o ADMIN da plataforma
+ * audita/opera qualquer empresa informando `?companyId=` — assim o painel
+ * global usa exatamente as mesmas regras e telas do módulo da empresa.
+ */
+export async function requireFinanceContext(request: Request): Promise<{ user: CurrentUser; companyId: string }> {
+  const user = await requireUser()
+  if (user.role === "ADMIN") {
+    const companyId = new URL(request.url).searchParams.get("companyId")
+    if (!companyId || companyId === "all") throw new ApiError(400, "Selecione a empresa")
+    const company = await prisma.company.findUnique({ where: { id: companyId }, select: { id: true } })
+    if (!company) throw new ApiError(404, "Empresa não encontrada")
+    return { user, companyId }
+  }
+  const staff = await requireCompanyStaff()
+  requireFinanceAccess(staff)
+  return { user: staff, companyId: staff.companyId }
+}

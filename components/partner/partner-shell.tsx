@@ -1,10 +1,10 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
-import { LayoutDashboard, Wallet, LogOut, Gift, Map, MessagesSquare, Star, Rocket, Compass, Search } from "lucide-react"
+import { LayoutDashboard, Wallet, LogOut, Gift, Map, MessagesSquare, Star, Rocket, Compass, Plus, Ticket } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PartnerUserProvider, type PartnerUser } from "@/lib/partner-user-context"
 import { PartnerTermAcceptanceGate } from "./term-acceptance-gate"
@@ -13,6 +13,7 @@ import { RatingPromptModal } from "./rating-prompt-modal"
 import { MobileNavBar } from "@/components/shared/mobile-nav-bar"
 import { PartnerAvatarMenu } from "./partner-avatar-menu"
 import { FloatingHelpChat } from "./floating-help-chat"
+import { GenerateVoucherDialog, GENERATE_VOUCHER_EVENT, type GenerateVoucherPreset } from "./generate-voucher-dialog"
 
 type NavItem = {
   href: string
@@ -29,15 +30,50 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/partner/comissoes", label: "Comissões & Saques", shortLabel: "Comissões", icon: Wallet },
   { href: "/partner/afiliado", label: "Rede de Afiliados", shortLabel: "Afiliado", icon: Star, show: (u) => u.isAffiliate },
   { href: "/partner/promocoes", label: "Promoções", icon: Gift },
-  { href: "/partner/descobrir", label: "Descobrir Promo", shortLabel: "Descobrir", icon: Search },
   { href: "/partner/mapa", label: "Mapa", icon: Map },
   { href: "/partner/ajuda", label: "Ajuda", icon: MessagesSquare },
 ]
+
+const BOTTOM_ITEMS = [
+  { href: "/partner", label: "Início", icon: LayoutDashboard },
+  { href: "/partner/promocoes", label: "Promoções", icon: Gift },
+  { href: "/partner/comissoes", label: "Comissões", icon: Wallet },
+  { href: "/partner/mapa", label: "Mapa", icon: Map },
+]
+
+function BottomLink({ item, active }: { item: (typeof BOTTOM_ITEMS)[number]; active: boolean }) {
+  const Icon = item.icon
+  return (
+    <Link
+      href={item.href}
+      className={cn("flex min-h-14 flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-medium", active ? "text-[#F2680C]" : "text-[#3E2415]/70")}
+    >
+      <Icon className="h-5 w-5" />
+      {item.label}
+    </Link>
+  )
+}
 
 export function PartnerShell({ user, children }: { user: PartnerUser; children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [photoUrl, setPhotoUrl] = useState(user.photoUrl)
+  const [voucherOpen, setVoucherOpen] = useState(false)
+  const [voucherPreset, setVoucherPreset] = useState<GenerateVoucherPreset | undefined>()
+
+  // Outras telas (ex: "Enviar ao Cliente" numa promoção) abrem o gerador já com estabelecimento/promoção.
+  useEffect(() => {
+    const open = (event: Event) => {
+      setVoucherPreset((event as CustomEvent<GenerateVoucherPreset | undefined>).detail)
+      setVoucherOpen(true)
+    }
+    window.addEventListener(GENERATE_VOUCHER_EVENT, open)
+    return () => window.removeEventListener(GENERATE_VOUCHER_EVENT, open)
+  }, [])
+  const openVoucher = () => {
+    setVoucherPreset(undefined)
+    setVoucherOpen(true)
+  }
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
@@ -119,11 +155,44 @@ export function PartnerShell({ user, children }: { user: PartnerUser; children: 
 
         <div className="lg:ml-[260px]">
           <div className="hidden lg:flex items-center justify-end gap-3 px-8 py-3 border-b border-[#E8E3DC] bg-white/60">
+            <button
+              onClick={openVoucher}
+              className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#FF1F6B] to-[#FF7A00] px-4 py-2 text-sm font-bold text-white shadow-md hover:opacity-95"
+            >
+              <Plus className="h-4 w-4" /> GERAR VOUCHER
+            </button>
             <NotificationBell />
             <PartnerAvatarMenu name={user.name} photoUrl={photoUrl} onPhotoUpdated={setPhotoUrl} />
           </div>
-          <main className="p-4 md:p-6 lg:p-8">{children}</main>
+          <main className="p-4 md:p-6 lg:p-8 pb-32 lg:pb-8 overflow-x-hidden">{children}</main>
         </div>
+
+        {/* Barra inferior (mobile/PWA): atalhos + botão central em destaque [+ GERAR VOUCHER] */}
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-[#E8E3DC] bg-white pb-[var(--safe-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.06)]" aria-label="Atalhos">
+          <div className="mx-auto grid max-w-lg grid-cols-5 items-end px-1">
+            {BOTTOM_ITEMS.slice(0, 2).map((item) => (
+              <BottomLink key={item.href} item={item} active={isActive(item.href)} />
+            ))}
+            <div className="flex justify-center">
+              <button
+                onClick={openVoucher}
+                className="-mt-6 mb-2 flex min-h-14 w-[6.5rem] flex-col items-center justify-center gap-0.5 rounded-2xl bg-gradient-to-br from-[#FF1F6B] to-[#FF7A00] text-white shadow-xl ring-4 ring-white active:scale-95 transition-transform"
+                aria-label="Gerar voucher"
+              >
+                <span className="flex items-center gap-1 text-lg font-extrabold leading-none">
+                  <Plus className="h-5 w-5" strokeWidth={3} />
+                  <Ticket className="h-5 w-5" />
+                </span>
+                <span className="text-[10px] font-extrabold leading-none tracking-wide">GERAR VOUCHER</span>
+              </button>
+            </div>
+            {BOTTOM_ITEMS.slice(2).map((item) => (
+              <BottomLink key={item.href} item={item} active={isActive(item.href)} />
+            ))}
+          </div>
+        </nav>
+
+        <GenerateVoucherDialog open={voucherOpen} onOpenChange={setVoucherOpen} preset={voucherPreset} />
 
         <FloatingHelpChat />
       </div>

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { requireCompanyStaff, requireFinanceAccess, handleApiError, ApiError } from "@/lib/api-auth"
+import { handleApiError, ApiError, requireFinanceContext } from "@/lib/api-auth"
 import { logAudit } from "@/lib/audit"
 import { notifyUser } from "@/lib/notifications"
 import {
@@ -17,10 +17,9 @@ import {
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireCompanyStaff()
-    requireFinanceAccess(user)
+    const { user, companyId: scopeCompanyId } = await requireFinanceContext(request)
     const { id } = await params
-    const companyId = user.companyId
+    const companyId = scopeCompanyId
 
     const commission = await prisma.commission.findFirst({ where: { id, companyId } })
     if (!commission) throw new ApiError(404, "Comissão não encontrada")

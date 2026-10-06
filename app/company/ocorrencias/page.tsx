@@ -18,6 +18,7 @@ import { LoadingState, EmptyState, AdminCard, StatusBadge } from "@/components/a
 import { TableDesktop, MobileCardList, MobileCard, MobileCardAction } from "@/components/admin/mobile-card"
 import { useCompanyUser } from "@/lib/company-user-context"
 import { canManageDailyOperations, canManageOccurrences, isCompanyMasterOrAdmin } from "@/lib/permissions"
+import { PayDialog, DueBadge } from "@/components/company/finance/finance-shared"
 
 const TYPE_LABELS: Record<string, string> = {
   FOLGA_FERIADO: "Folga/Feriado",
@@ -72,7 +73,8 @@ type CustomOccurrenceType = {
 type Occurrence = {
   id: string
   type: string
-  customType: { id: string; name: string; kind: string } | null
+  customType: { id: string; name: string; kind: string; salaryImpactType?: "DISCOUNT" | "BONUS" | null } | null
+  expectedPaymentDate?: string | null
   date: string
   value: string | null
   quantity: string
@@ -85,6 +87,14 @@ type Occurrence = {
   employee: { id: string; name: string } | null
   employeeNameFreeText: string | null
   createdBy: { id: string; name: string }
+}
+
+/** Ocorrência cujo valor a empresa DEVE pagar ao colaborador (provento) — só estas têm "Marcar como Pago". */
+const PAYABLE_TYPES = ["SALARIO", "TAXA_SERVICO", "DIARIA", "COMPRA_DOMINGO", "META", "HORA_EXTRA", "BONUS_ESPECIAL"]
+function isPayable(o: Pick<Occurrence, "type" | "customType" | "paymentStatus" | "total" | "discountWaived">) {
+  if (o.paymentStatus !== "PENDING" || o.total === null || o.discountWaived) return false
+  if (o.type === "CUSTOM") return o.customType?.salaryImpactType === "BONUS"
+  return PAYABLE_TYPES.includes(o.type)
 }
 
 function occurrenceTypeLabel(o: Pick<Occurrence, "type" | "customType">) {
@@ -100,27 +110,125 @@ export default function CompanyOcorrenciasPage() {
   const user = useCompanyUser()
   const isManager = canManageOccurrences({ role: user.role, employeeProfile: { isFinanceResponsible: user.isFinanceResponsible } })
 
+  // Responsável Financeiro (Colaborador com a flag ou papel Financeiro): visão dupla — as próprias
+  // ocorrências + o que está pendente de pagamento dos demais colaboradores.
+  const isFinanceView = isManager && !canManageDailyOperations(user.role)
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-xl md:text-2xl font-bold text-[#3E2415]">Ocorrências</h1>
         <p className="text-gray-600 mt-1 text-sm">
-          {isManager ? "Advertências, vales, folgas e pagamentos especiais" : "Suas ocorrências registradas"}
+          {isFinanceView
+            ? "Suas ocorrências e os pagamentos pendentes dos colaboradores"
+            : isManager
+              ? "Advertências, vales, folgas e pagamentos especiais"
+              : "Suas ocorrências registradas"}
         </p>
       </div>
-      {isManager ? <ManagerOccurrences /> : <MyOccurrencesView />}
+      {isFinanceView ? <FinanceOccurrencesView /> : isManager ? <ManagerOccurrences /> : <MyOccurrencesView />}
+    </div>
+  )
+}
+
+/** Visão do Responsável Financeiro: (a) minhas ocorrências, (b) pendentes de pagamento de todos os outros, (c) todas/lançamentos. */
+function FinanceOccurrencesView() {
+  return (
+    <Tabs defaultValue="mine">
+      <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <TabsTrigger value="mine" className="flex-shrink-0">Minhas Ocorrências</TabsTrigger>
+        <TabsTrigger value="pending" className="flex-shrink-0">Pendentes de Pagamento</TabsTrigger>
+        <TabsTrigger value="all" className="flex-shrink-0">Todas e Lançamentos</TabsTrigger>
+      </TabsList>
+      <div className="mt-4">
+        <TabsContent value="mine">
+          <MyOccurrencesView ownOnly />
+        </TabsContent>
+        <TabsContent value="pending">
+          <PendingPaymentsList />
+        </TabsContent>
+        <TabsContent value="all">
+          <ManagerOccurrences />
+        </TabsContent>
+      </div>
+    </Tabs>
+  )
+}
+
+/** Ocorrências financeiras pendentes em nome dos OUTROS colaboradores, com "Marcar como Pago" (forma + comprovante obrigatórios). */
+function PendingPaymentsList() {
+  const [rows, setRows] = useState<Occurrence[] | null>(null)
+  const [paying, setPaying] = useState<Occurrence | null>(null)
+
+  const reload = () => adminFetch<Occurrence[]>("/api/company/occurrences?scope=pending-payments").then(setRows)
+  useEffect(() => {
+    reload()
+  }, [])
+
+  if (!rows) return <LoadingState />
+  if (rows.length === 0) return <EmptyState message="Nenhum pagamento pendente dos colaboradores." />
+
+  const total = rows.reduce((sum, o) => sum + Math.abs(Number(o.total ?? 0)), 0)
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-gray-600">
+        {rows.length} pagamento(s) pendente(s) · <strong className="text-[#3E2415]">{currency(total)}</strong> em aberto
+      </p>
+      {rows.map((o) => {
+        const due = o.expectedPaymentDate ?? o.date
+        return (
+          <div key={o.id} className="rounded-xl border border-gray-100 bg-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-[#3E2415] truncate">{o.employee?.name ?? "—"}</p>
+              <p className="text-xs text-gray-500">
+                {occurrenceTypeLabel(o)}
+                {o.description && ` · ${o.description}`}
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Previsto {new Date(due).toLocaleDateString("pt-BR")} <DueBadge date={due} />
+              </p>
+            </div>
+            <div className="flex items-center justify-between sm:justify-end gap-3">
+              <span className="text-base font-bold text-[#3E2415]">{currency(o.total)}</span>
+              <Button onClick={() => setPaying(o)} className="min-h-11 bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+                <CheckCircle2 className="h-4 w-4 mr-1.5" /> Marcar como Pago
+              </Button>
+            </div>
+          </div>
+        )
+      })}
+      {paying && (
+        <PayDialog
+          title={`Marcar como Pago — ${paying.employee?.name ?? ""}`}
+          description={`${occurrenceTypeLabel(paying)} · anexe o comprovante para registrar a quitação.`}
+          amount={Math.abs(Number(paying.total ?? 0))}
+          endpoint="/api/company/finance/settle"
+          extraFields={{ kind: "OCCURRENCE", id: paying.id }}
+          consumoAllowed
+          onClose={() => setPaying(null)}
+          onDone={() => {
+            setPaying(null)
+            reload()
+          }}
+        />
+      )}
     </div>
   )
 }
 
 /** Visão do Colaborador comum — só as próprias ocorrências, somente leitura (não lança, não vê de outros). */
-function MyOccurrencesView() {
+function MyOccurrencesView({ ownOnly = false }: { ownOnly?: boolean }) {
+  const user = useCompanyUser()
   const [occurrences, setOccurrences] = useState<Occurrence[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    adminFetch<Occurrence[]>("/api/company/occurrences").then(setOccurrences).finally(() => setIsLoading(false))
-  }, [])
+    // Staff com visão de todos (Financeiro) precisa filtrar explicitamente pelo próprio id.
+    adminFetch<Occurrence[]>(ownOnly ? `/api/company/occurrences?employeeId=${user.id}` : "/api/company/occurrences")
+      .then(setOccurrences)
+      .finally(() => setIsLoading(false))
+  }, [ownOnly, user.id])
 
   if (isLoading) return <LoadingState />
   if (occurrences.length === 0) return <EmptyState message="Nenhuma ocorrência registrada em seu nome ainda." />
@@ -227,13 +335,10 @@ function ManagerOccurrences() {
     reload()
   }
 
-  const handleMarkPaid = async (o: Occurrence) => {
-    await adminFetch(`/api/company/occurrences/${o.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ paymentStatus: "PAID" }),
-    }).catch((e) => alert(e instanceof AdminApiError ? e.message : "Erro"))
-    reload()
-  }
+  const [paying, setPaying] = useState<Occurrence | null>(null)
+  const handleMarkPaid = (o: Occurrence) => setPaying(o)
+  // Ninguém quita pagamento em nome próprio (separação de funções, ver assertNotSelfPayment).
+  const canMarkPaid = (o: Occurrence) => isPayable(o) && o.employee?.id !== user.id
 
   const totalByType = occurrences.reduce<Record<string, number>>((acc, o) => {
     const label = occurrenceTypeLabel(o)
@@ -347,7 +452,7 @@ function ManagerOccurrences() {
                           Ver anexo
                         </a>
                       )}
-                      {o.paymentStatus === "PENDING" && o.total !== null && (
+                      {canMarkPaid(o) && (
                         <MobileCardAction icon={CheckCircle2} label="Marcar como pago" onClick={() => handleMarkPaid(o)} />
                       )}
                       {canEdit &&
@@ -414,7 +519,7 @@ function ManagerOccurrences() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        {o.paymentStatus === "PENDING" && o.total !== null && (
+                        {canMarkPaid(o) && (
                           <Button variant="ghost" size="icon" title="Marcar como pago" className="text-green-600" onClick={() => handleMarkPaid(o)}>
                             <CheckCircle2 className="h-4 w-4" />
                           </Button>
@@ -469,6 +574,22 @@ function ManagerOccurrences() {
             />
           </DialogContent>
         </Dialog>
+      )}
+
+      {paying && (
+        <PayDialog
+          title={`Marcar como Pago — ${paying.employee?.name ?? ""}`}
+          description={`${occurrenceTypeLabel(paying)} · anexe o comprovante para registrar a quitação.`}
+          amount={Math.abs(Number(paying.total ?? 0))}
+          endpoint="/api/company/finance/settle"
+          extraFields={{ kind: "OCCURRENCE", id: paying.id }}
+          consumoAllowed
+          onClose={() => setPaying(null)}
+          onDone={() => {
+            setPaying(null)
+            reload()
+          }}
+        />
       )}
 
       {editing && (
@@ -867,7 +988,7 @@ function EditOccurrenceDialog({ occurrence, onClose, onSaved }: { occurrence: Oc
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="PENDING">Pendente</SelectItem>
-                <SelectItem value="PAID">Pago</SelectItem>
+                {occurrence.paymentStatus === "PAID" && <SelectItem value="PAID">Pago</SelectItem>}
               </SelectContent>
             </Select>
           </div>

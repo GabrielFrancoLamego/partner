@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { requireCompanyStaff, requireFinanceAccess, handleApiError, ApiError } from "@/lib/api-auth"
+import { requireFinanceContext, handleApiError, ApiError } from "@/lib/api-auth"
 import { logAudit } from "@/lib/audit"
 import { notifyUser } from "@/lib/notifications"
 
@@ -10,10 +10,8 @@ import { notifyUser } from "@/lib/notifications"
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireCompanyStaff()
-    requireFinanceAccess(user)
+    const { user, companyId } = await requireFinanceContext(request)
     const { id } = await params
-    const companyId = user.companyId
 
     const existing = await prisma.occurrence.findFirst({ where: { id, companyId } })
     if (!existing) throw new ApiError(404, "Ocorrência não encontrada")

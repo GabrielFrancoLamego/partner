@@ -3,6 +3,8 @@ import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from
 import { canOperateFrontDesk } from "@/lib/permissions"
 import { uploadImage } from "@/lib/storage"
 import { logAudit } from "@/lib/audit"
+import { touchPartnerActivity } from "@/lib/program-lifecycle"
+import { notifyUser } from "@/lib/notifications"
 
 /**
  * Dá baixa em um Vale Retorno lido pela câmera do Scanner (payload
@@ -72,6 +74,37 @@ export async function POST(request: Request) {
       }),
       prisma.promotion.update({ where: { id: voucher.promotionId }, data: { usedCount: { increment: 1 } } }),
     ])
+
+    // Voucher emitido por PARCEIRO: a baixa no PDV é a indicação concretizada — gera a comissão dele
+    // (mesmo fluxo do Scanner de indicação: fica PENDING até o Financeiro aprovar).
+    const issuer = await prisma.user.findUnique({ where: { id: voucher.issuedById }, select: { role: true } })
+    if (issuer?.role === "PARTNER") {
+      await prisma.commission.create({
+        data: {
+          companyId,
+          partnerId: voucher.issuedById,
+          promotionId: voucher.promotionId,
+          scannedById: user.id,
+          clientName: voucher.clientName ?? "Cliente indicado",
+          customerPhone: voucher.clientPhone,
+          qrCodeId: "voucher:" + voucher.code,
+          amount,
+          billJustification: amount === 0 ? justification : null,
+          commissionValue: Number(voucher.promotion.cost),
+          status: "PENDING",
+          acceptedAt: now,
+          billAttachmentUrl: attachmentUrl,
+        },
+      })
+      await touchPartnerActivity(voucher.issuedById, companyId)
+      await notifyUser({
+        userId: voucher.issuedById,
+        type: "REFERRAL_VISITED",
+        title: "🎉 Presença confirmada!",
+        message: "Seu indicado " + (voucher.clientName ?? "") + " usou o voucher na unidade! Sua comissão será creditada após a aprovação.",
+        linkUrl: "/partner",
+      }).catch(() => {})
+    }
 
     await logAudit({
       userId: user.id,

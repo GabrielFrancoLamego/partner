@@ -7,6 +7,7 @@ import { notifyUser } from "./notifications"
 import { maybeBlockDiaristaAfterPayment } from "./employment-access"
 import { ensureCurrentPayrollEntries, MONTH_NAMES_PT } from "./payroll-engine"
 import {
+  assertNotSelfPayment,
   BANKING_SELECT,
   isDiscountOccurrence,
   isEarningOccurrence,
@@ -312,6 +313,7 @@ export async function settleEmployeeNet(p: {
   if (p.method === "CONSUMO") throw new ApiError(400, "O líquido já desconta o Consumo Interno — escolha Pix, Dinheiro ou Transferência")
   const fin = await computeEmployeeFinance(p.companyId, p.employeeId, p.month, { ensurePayroll: true })
   if (!fin) throw new ApiError(404, "Colaborador não encontrado nesta empresa")
+  assertNotSelfPayment(p.userId, p.employeeId)
 
   let earnings = fin.items
   let discountRows = fin.discountItems

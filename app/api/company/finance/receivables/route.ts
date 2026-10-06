@@ -1,4 +1,4 @@
-import { requireCompanyStaff, requireFinanceAccess, handleApiError } from "@/lib/api-auth"
+import { handleApiError, requireFinanceContext } from "@/lib/api-auth"
 import { listReceivables } from "@/lib/finance-reports"
 
 /**
@@ -9,10 +9,9 @@ import { listReceivables } from "@/lib/finance-reports"
  */
 export async function GET(request: Request) {
   try {
-    const user = await requireCompanyStaff()
-    requireFinanceAccess(user)
+    const { user, companyId: scopeCompanyId } = await requireFinanceContext(request)
     const { searchParams } = new URL(request.url)
-    return Response.json(await listReceivables(user.companyId, searchParams.get("month")))
+    return Response.json(await listReceivables(scopeCompanyId, searchParams.get("month")))
   } catch (error) {
     return handleApiError(error)
   }

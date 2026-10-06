@@ -7,7 +7,10 @@ import { adminFetch } from "@/lib/admin-api-client"
 import { useCompanies } from "@/components/admin/use-companies"
 import { CompanyFilter } from "@/components/admin/admin-filters"
 import { LoadingState } from "@/components/admin/admin-ui"
-import { WithdrawalsTab } from "@/components/admin/financeiro/withdrawals-tab"
+import { OccurrencesAuditTab } from "@/components/admin/financeiro/occurrences-audit-tab"
+import { WalletsTab } from "@/components/admin/financeiro/wallets-tab"
+import { FinanceModule, FinanceScope } from "@/components/company/finance/finance-module"
+import { EmptyState } from "@/components/admin/admin-ui"
 import { TransactionsTab } from "@/components/admin/financeiro/transactions-tab"
 import { BonusesTab } from "@/components/admin/financeiro/bonuses-tab"
 import { SaasTab } from "@/components/admin/financeiro/saas-tab"
@@ -93,17 +96,31 @@ export default function AdminFinanceiroPage() {
         </div>
       )}
 
-      <Tabs defaultValue="withdrawals">
+      <Tabs defaultValue="operation">
         <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="withdrawals">Saques PIX</TabsTrigger>
+          <TabsTrigger value="operation">Operação (por empresa)</TabsTrigger>
+          <TabsTrigger value="occurrences">Ocorrências</TabsTrigger>
+          <TabsTrigger value="wallets">Carteiras</TabsTrigger>
           <TabsTrigger value="transactions">Extrato</TabsTrigger>
           <TabsTrigger value="bonuses">Bônus & Premiações</TabsTrigger>
           <TabsTrigger value="saas">Receita SaaS</TabsTrigger>
         </TabsList>
 
         <div className="bg-white rounded-2xl p-4 md:p-6 shadow-md border border-gray-100 mt-4">
-          <TabsContent value="withdrawals">
-            <WithdrawalsTab companyId={companyId} />
+          <TabsContent value="operation">
+            {companyId === "all" ? (
+              <EmptyState message="Selecione uma empresa no filtro acima para operar e auditar contas a pagar, saques, recebíveis e quitações." />
+            ) : (
+              <FinanceScope key={companyId} companyId={companyId}>
+                <FinanceModule urlSync={false} showReportsLink={false} subtitle={`Operação e auditoria de ${companies.find((c) => c.id === companyId)?.name ?? "empresa"} — mesmas telas e regras da empresa`} />
+              </FinanceScope>
+            )}
+          </TabsContent>
+          <TabsContent value="occurrences">
+            <OccurrencesAuditTab companyId={companyId} />
+          </TabsContent>
+          <TabsContent value="wallets">
+            <WalletsTab companyId={companyId} />
           </TabsContent>
           <TabsContent value="transactions">
             <TransactionsTab companyId={companyId} />
