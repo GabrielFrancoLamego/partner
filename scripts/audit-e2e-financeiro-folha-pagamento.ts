@@ -56,7 +56,8 @@ async function main() {
     "Linha do colaborador consolida o valor pendente com os dados bancários/reasons",
     async () => {
       const row = Array.isArray(paymentOrderRes.json) ? paymentOrderRes.json.find((r: any) => r.recipientId === colaborador.id) : null
-      return Boolean(row) && row.totalAmount >= 75 && Array.isArray(row.reasons) && row.reasons.length > 0
+      if (Boolean(row) && row.totalAmount >= 75 && Array.isArray(row.reasons) && row.reasons.length > 0) return true
+      return `row=${JSON.stringify(row)} totalRows=${Array.isArray(paymentOrderRes.json) ? paymentOrderRes.json.length : typeof paymentOrderRes.json} valeId=${valeRes.json?.id}`
     },
   )
 

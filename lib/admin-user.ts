@@ -45,6 +45,12 @@ export async function createPlatformUser(input: CreatePlatformUserInput) {
     throw new ApiError(500, error?.message ?? "Falha ao criar conta de autenticação")
   }
 
+  // "Financeiro" é um Colaborador normal (mesmo dashboard, checklists, ponto,
+  // desempenho) marcado com isFinanceResponsible — não um papel separado sem
+  // EmployeeProfile, que ficava sem dashboard de desempenho.
+  const isFinanceRole = input.role === "COMPANY_FINANCE"
+  const effectiveRole: Role = isFinanceRole ? "EMPLOYEE" : input.role
+
   try {
     const user = await prisma.user.create({
       data: {
@@ -52,13 +58,13 @@ export async function createPlatformUser(input: CreatePlatformUserInput) {
         email: input.email,
         name: input.name,
         phone: input.phone ?? null,
-        role: input.role,
+        role: effectiveRole,
         companyId: input.companyId ?? null,
       },
     })
 
-    if (input.role === "EMPLOYEE") {
-      await prisma.employeeProfile.create({ data: { userId: user.id } })
+    if (effectiveRole === "EMPLOYEE") {
+      await prisma.employeeProfile.create({ data: { userId: user.id, isFinanceResponsible: isFinanceRole } })
     }
 
     if (input.role === "PARTNER") {
