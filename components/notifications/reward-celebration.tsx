@@ -22,7 +22,7 @@ function randomCoins(): Coin[] {
 /**
  * Modal de celebração "Meta/Bônus/Prêmio recebido" — chuva de moedas +
  * destaque central. Disparado pelo NotificationBell junto com o efeito
- * sonoro (lib/earnings-sound.ts) sempre que chega uma notificação nova do
+ * sonoro (lib/coin-sound.ts) sempre que chega uma notificação nova do
  * tipo COMMISSION_EARNED/BONUS_AWARDED, para Colaborador OU Parceiro (o sino
  * já é compartilhado entre os 2 papéis).
  */

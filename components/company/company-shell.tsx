@@ -153,7 +153,7 @@ export function CompanyShell({
     const refresh = () =>
       fetch("/api/company/finance/summary")
         .then((r) => (r.ok ? r.json() : null))
-        .then((data: { dueTodayTotal: number } | null) => setFinanceDueToday(data?.dueTodayTotal ?? 0))
+        .then((data: { total: number } | null) => setFinanceDueToday(data?.total ?? 0))
         .catch(() => {})
     refresh()
     window.addEventListener(FINANCE_CHANGED_EVENT, refresh)

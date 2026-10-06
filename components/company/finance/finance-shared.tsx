@@ -56,9 +56,10 @@ export function DueBadge({ date }: { date: string | Date }) {
 }
 
 /** Contador ao lado do título de sub-aba — fica vermelho quando há algo vencendo hoje. */
-export function CountBadge({ count, urgent }: { count: number; urgent?: boolean }) {
+export function CountBadge({ count, urgent, title }: { count: number; urgent?: boolean; title?: string }) {
   return (
     <span
+      title={title}
       className={`ml-1.5 inline-flex min-w-[20px] h-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
         urgent && count > 0 ? "bg-red-500 text-white" : "bg-gray-200 text-gray-700"
       }`}

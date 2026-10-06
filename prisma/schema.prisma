@@ -391,6 +391,8 @@ enum NotificationType {
   INTERNAL_MESSAGE_RECEIVED // nova Comunicação Interna destinada ao usuário/setor
   REFERRAL_VISITED // indicado do parceiro compareceu à unidade (QR escaneado no PDV) — alerta motivacional antes da aprovação da comissão
   TICKET_MESSAGE_RECEIVED // nova mensagem numa conversa de chamado (Suporte Tribuss ou chat com o Estabelecimento)
+  PAYMENT_RECEIVED // valor recebido: saque pago, ocorrência/líquido quitado pelo Financeiro — dispara o som de moedas
+  WITHDRAWAL_APPROVED // saque do parceiro aprovado, com data prevista de pagamento — dispara o som de moedas
   GENERIC
 }
 
@@ -1304,7 +1306,8 @@ model Withdrawal {
   rejectionReason   String?
   proofOfPaymentUrl String? // comprovante de transferência PIX anexado pelo Financeiro
   paidAt            DateTime?
-  approvedAt        DateTime? // aprovação da solicitação — a partir daí o saque é uma conta a pagar (vencimento = aprovação)
+  approvedAt        DateTime? // aprovação da solicitação — a partir daí o saque é uma conta a pagar
+  expectedPaymentDate DateTime? // Data/Hora prevista de pagamento informada na aprovação (padrão: 24 horas úteis) — é o vencimento da conta a pagar
   // Integração futura com o Omie ERP — ver lib/finance-settlement.ts (ponto de sincronização).
   omieCodigoLancamento String?
   omieStatus           String? // 'Sincronizado' | 'Pendente' | 'Pago_Omie'

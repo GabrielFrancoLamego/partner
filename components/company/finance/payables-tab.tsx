@@ -7,7 +7,7 @@ import { adminFetch } from "@/lib/admin-api-client"
 import { LoadingState, EmptyState, AdminCard } from "@/components/admin/admin-ui"
 import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 import { ExportReportButton } from "./export-report-button"
-import { PayDialog, RecipientDrawer, DueBadge, currencyNum, formatDate, dueStatus, type RecipientBanking } from "./finance-shared"
+import { PayDialog, RecipientDrawer, DueBadge, currencyNum, formatDate, type RecipientBanking } from "./finance-shared"
 
 type PayableRow = {
   id: string
@@ -36,20 +36,6 @@ export function PayablesTab({ onChanged }: { onChanged: () => void }) {
   if (!rows) return <LoadingState />
 
   const total = rows.reduce((sum, r) => sum + r.amount, 0)
-  const exportRows = rows.map((r) => ({
-    favorecido: r.banking.fullName,
-    tipo: TYPE_LABEL[r.recipientType],
-    documento: r.banking.document,
-    banco: r.banking.bankName,
-    agencia: r.banking.agency,
-    conta: r.banking.accountNumber,
-    pix: r.banking.pixKey,
-    valor: r.amount,
-    vencimento: formatDate(r.dueDate),
-    status: dueStatus(r.dueDate).label,
-    motivo: r.label,
-  }))
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -57,30 +43,7 @@ export function PayablesTab({ onChanged }: { onChanged: () => void }) {
           <p className="text-2xl font-bold text-[#3E2415]">{currencyNum(total)}</p>
           <p className="text-xs text-gray-500 mt-1">{rows.length} compromisso(s) em ordem de vencimento</p>
         </AdminCard>
-        <ExportReportButton
-          title="Contas a Pagar"
-          filename="contas-a-pagar"
-          disabled={rows.length === 0}
-          sections={[
-            {
-              name: "Contas a Pagar",
-              columns: [
-                { header: "Favorecido", key: "favorecido" },
-                { header: "Tipo", key: "tipo" },
-                { header: "CPF/CNPJ", key: "documento" },
-                { header: "Banco", key: "banco" },
-                { header: "Agência", key: "agencia" },
-                { header: "Conta", key: "conta" },
-                { header: "Chave PIX", key: "pix" },
-                { header: "Valor", key: "valor", kind: "currency" },
-                { header: "Vencimento", key: "vencimento" },
-                { header: "Status", key: "status" },
-                { header: "Motivo", key: "motivo" },
-              ],
-              rows: exportRows,
-            },
-          ]}
-        />
+        <ExportReportButton tab="contas-a-pagar" disabled={rows.length === 0} />
       </div>
 
       {rows.length === 0 ? (

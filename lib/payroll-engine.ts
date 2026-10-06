@@ -24,19 +24,23 @@ export async function ensureCurrentPayrollEntries(companyId: string, employeeId:
   const balanceDate = get5thBusinessDay(month === 11 ? year + 1 : year, month === 11 ? 0 : month + 1)
   const label = `${MONTH_NAMES_PT[month]}/${year}`
 
-  const [existingAdvance, existingBalance] = await Promise.all([
-    prisma.occurrence.findFirst({ where: { companyId, employeeId, type: "SALARIO", date: advanceDate } }),
-    prisma.occurrence.findFirst({ where: { companyId, employeeId, type: "SALARIO", date: balanceDate } }),
-  ])
+  // A checagem + criação roda numa transação com lock consultivo por colaborador/mês:
+  // o menu do Financeiro, "Sua Conta" e os Recebíveis geram a folha "on read" e podem
+  // chegar juntos — sem o lock, duas chamadas simultâneas duplicavam Adiantamento/Saldo.
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`payroll:${employeeId}:${year}-${month}`}))`
 
-  const toCreate: Array<{ value: number; description: string; date: Date }> = []
-  if (!existingAdvance) toCreate.push({ value: advance, description: `Adiantamento de Salário (${label})`, date: advanceDate })
-  if (!existingBalance) toCreate.push({ value: balance, description: `Saldo de Salário (${label})`, date: balanceDate })
-  if (toCreate.length === 0) return
+    const [existingAdvance, existingBalance] = await Promise.all([
+      tx.occurrence.findFirst({ where: { companyId, employeeId, type: "SALARIO", date: advanceDate } }),
+      tx.occurrence.findFirst({ where: { companyId, employeeId, type: "SALARIO", date: balanceDate } }),
+    ])
 
-  await prisma.$transaction(
-    toCreate.map((entry) =>
-      prisma.occurrence.create({
+    const toCreate: Array<{ value: number; description: string; date: Date }> = []
+    if (!existingAdvance) toCreate.push({ value: advance, description: `Adiantamento de Salário (${label})`, date: advanceDate })
+    if (!existingBalance) toCreate.push({ value: balance, description: `Saldo de Salário (${label})`, date: balanceDate })
+
+    for (const entry of toCreate) {
+      await tx.occurrence.create({
         data: {
           companyId,
           employeeId,
@@ -50,7 +54,7 @@ export async function ensureCurrentPayrollEntries(companyId: string, employeeId:
           description: entry.description,
           createdById: employeeId,
         },
-      }),
-    ),
-  )
+      })
+    }
+  })
 }

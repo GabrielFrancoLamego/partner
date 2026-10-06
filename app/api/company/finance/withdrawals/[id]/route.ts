@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireFinanceAccess, handleApiError, ApiError } from "@/lib/api-auth"
 import { logAudit } from "@/lib/audit"
 import { notifyUser } from "@/lib/notifications"
+import { addBusinessHours, DEFAULT_WITHDRAWAL_PAYMENT_BUSINESS_HOURS } from "@/lib/business-time"
 
 const money = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
@@ -32,10 +33,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (existing.status !== "PENDING") throw new ApiError(400, "Esta solicitação já foi analisada")
     if (status === "REJECTED" && !rejectionReason) throw new ApiError(400, "Informe a justificativa da reprovação")
 
+    // Data/Hora Prevista de Pagamento: a informada na aprovação ou, sem ela, 24 horas úteis a partir de agora.
+    const approvedAt = new Date()
+    let expectedPaymentDate = addBusinessHours(approvedAt, DEFAULT_WITHDRAWAL_PAYMENT_BUSINESS_HOURS)
+    if (status === "APPROVED" && typeof body.expectedPaymentDate === "string" && body.expectedPaymentDate) {
+      const informed = new Date(body.expectedPaymentDate)
+      if (Number.isNaN(informed.getTime())) throw new ApiError(400, "Data/Hora prevista de pagamento inválida")
+      if (informed.getTime() < approvedAt.getTime() - 60 * 1000) throw new ApiError(400, "A data prevista de pagamento não pode estar no passado")
+      expectedPaymentDate = informed
+    }
+
     const withdrawal = await prisma.$transaction(async (tx) => {
       const saved = await tx.withdrawal.update({
         where: { id },
-        data: status === "APPROVED" ? { status, approvedAt: new Date() } : { status, rejectionReason },
+        data: status === "APPROVED" ? { status, approvedAt, expectedPaymentDate } : { status, rejectionReason },
       })
 
       if (status === "REJECTED") {
@@ -65,18 +76,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       action: "PIX_APPROVAL",
       entity: "Withdrawal",
       entityId: id,
-      details: { status, rejectionReason },
+      details: { status, rejectionReason, expectedPaymentDate: status === "APPROVED" ? expectedPaymentDate : undefined },
     })
 
     await notifyUser({
       userId: existing.partnerId,
-      type: "GENERIC",
+      type: status === "APPROVED" ? "WITHDRAWAL_APPROVED" : "GENERIC",
       title: status === "APPROVED" ? "Saque aprovado" : "Saque reprovado",
       message:
         status === "APPROVED"
-          ? `Seu saque de ${money(Number(existing.amount))} foi aprovado e será pago em breve.`
+          ? `Seu saque de ${money(Number(existing.amount))} foi aprovado — pagamento previsto para ${expectedPaymentDate.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}.`
           : `Seu saque de ${money(Number(existing.amount))} foi reprovado e o valor voltou à sua carteira. Motivo: ${rejectionReason}`,
-      linkUrl: "/partner/saques",
+      linkUrl: "/partner/carteira/saques",
     }).catch(() => {})
 
     return Response.json(withdrawal)

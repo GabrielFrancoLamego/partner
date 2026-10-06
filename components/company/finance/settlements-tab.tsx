@@ -37,11 +37,19 @@ const KIND_LABEL = {
 } as const
 const RECIPIENT_LABEL = { PARTNER: "Parceiro", EMPLOYEE: "Colaborador", EXTERNAL: "Sem cadastro" } as const
 
+const toDateInput = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+const defaultFrom = () => {
+  const d = new Date()
+  d.setDate(d.getDate() - 30)
+  return toDateInput(d)
+}
+
 /** Registro de Quitação — extrato de tudo que foi pago (Contas a Pagar e Recebíveis), com comprovante. */
 export function SettlementsTab() {
   const [rows, setRows] = useState<Settlement[] | null>(null)
-  const [from, setFrom] = useState("")
-  const [to, setTo] = useState("")
+  // Padrão: últimos 30 dias (data inicial = hoje − 30, data final = hoje); tabela e exportações seguem o intervalo.
+  const [from, setFrom] = useState(defaultFrom)
+  const [to, setTo] = useState(() => toDateInput(new Date()))
   const [selected, setSelected] = useState<Settlement | null>(null)
 
   useEffect(() => {
@@ -70,44 +78,7 @@ export function SettlementsTab() {
             <p className="text-xl font-bold text-[#3E2415]">{currencyNum(totalPaid)}</p>
           </AdminCard>
         </div>
-        <ExportReportButton
-          title="Registro de Quitação"
-          filename="registro-de-quitacao"
-          disabled={!rows || rows.length === 0}
-          sections={[
-            {
-              name: "Quitações",
-              columns: [
-                { header: "Data/Hora do pagamento", key: "pagoEm" },
-                { header: "Favorecido", key: "favorecido" },
-                { header: "Tipo", key: "tipo" },
-                { header: "CPF/CNPJ", key: "documento" },
-                { header: "Chave PIX", key: "pix" },
-                { header: "Valor", key: "valor", kind: "currency" },
-                { header: "Forma de pagamento", key: "forma" },
-                { header: "Vencimento", key: "vencimento" },
-                { header: "Status", key: "status" },
-                { header: "Motivo", key: "motivo" },
-                { header: "Pago por", key: "pagoPor" },
-                { header: "Omie", key: "omie" },
-              ],
-              rows: (rows ?? []).map((r) => ({
-                pagoEm: formatDateTime(r.paidAt),
-                favorecido: r.recipientName,
-                tipo: RECIPIENT_LABEL[r.recipientType],
-                documento: r.recipientDocument,
-                pix: r.pixKey,
-                valor: r.amount,
-                forma: PAYMENT_METHOD_LABELS[r.paymentMethod],
-                vencimento: formatDate(r.dueDate),
-                status: "Pago",
-                motivo: r.description,
-                pagoPor: r.paidBy.name,
-                omie: r.omieStatus ?? "Não sincronizado",
-              })),
-            },
-          ]}
-        />
+        <ExportReportButton tab="quitacoes" params={{ from, to }} disabled={!rows || rows.length === 0} />
       </div>
 
       {!rows ? (

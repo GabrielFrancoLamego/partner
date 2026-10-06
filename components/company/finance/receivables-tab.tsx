@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Banknote, ChevronDown, ChevronUp, PlusCircle, Loader2 } from "lucide-react"
+import { Banknote, ChevronDown, ChevronUp, Loader2, ListChecks } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -14,7 +15,17 @@ import { ExportReportButton } from "./export-report-button"
 import { PayDialog, RecipientDrawer, DueBadge, currencyNum, formatDate, type RecipientBanking } from "./finance-shared"
 
 type Bucket = { paid: number; pending: number }
-type FinanceItem = { kind: "OCCURRENCE" | "GOAL_PAYOUT"; id: string; label: string; amount: number; status: "PENDING" | "PAID"; dueDate: string }
+type Category = "SALARIO" | "ADIANTAMENTO" | "TAXA_SERVICO" | "DIARIA" | "VALE_CONSUMO" | "METAS_BONUS" | "OUTROS" | "DESCONTOS"
+type BreakdownItem = {
+  kind: "OCCURRENCE" | "GOAL_PAYOUT" | "CONSUMPTION"
+  id: string
+  category: Category
+  label: string
+  amount: number
+  sign: 1 | -1
+  status: "PENDING" | "PAID"
+  dueDate: string | null
+}
 
 type EmployeeFinance = {
   employeeId: string
@@ -31,12 +42,25 @@ type EmployeeFinance = {
     metas: Bucket
     outrosAdicionais: Bucket
   }
-  items: FinanceItem[]
-  discountItems: FinanceItem[]
+  items: { kind: "OCCURRENCE" | "GOAL_PAYOUT"; id: string; label: string; amount: number; dueDate: string }[]
+  discountItems: { id: string; label: string; amount: number }[]
+  breakdown: BreakdownItem[]
   totals: { pendingEarnings: number; paidEarnings: number; discounts: number; consumo: number; netRemaining: number }
 }
 
+const CATEGORY_ORDER: { key: Category; label: string }[] = [
+  { key: "SALARIO", label: "Salário Fixo" },
+  { key: "ADIANTAMENTO", label: "Adiantamento (dia 20)" },
+  { key: "TAXA_SERVICO", label: "Taxa de Serviço" },
+  { key: "DIARIA", label: "Diária" },
+  { key: "VALE_CONSUMO", label: "Vale/Consumo" },
+  { key: "METAS_BONUS", label: "Metas/Bônus de Ocorrência" },
+  { key: "OUTROS", label: "Outros adicionais" },
+  { key: "DESCONTOS", label: "Descontos" },
+]
+
 const total = (b: Bucket) => b.paid + b.pending
+const itemKey = (i: BreakdownItem) => `${i.kind}:${i.id}`
 
 function Cell({ bucket }: { bucket: Bucket }) {
   return (
@@ -48,15 +72,17 @@ function Cell({ bucket }: { bucket: Bucket }) {
   )
 }
 
-/** Recebíveis de Colaboradores — projeção do mês por colaborador, pagamento individual de itens ou do total líquido. */
+type PartialPayment = { row: EmployeeFinance; net: number; selection: { occurrenceIds: string[]; goalPayoutIds: string[]; consumption: boolean } }
+
+/** Recebíveis de Colaboradores — projeção do mês, desdobramento por categoria e pagamento parcial ou do líquido total. */
 export function ReceivablesTab({ onChanged }: { onChanged: () => void }) {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
   const [rows, setRows] = useState<EmployeeFinance[] | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [drawer, setDrawer] = useState<EmployeeFinance | null>(null)
   const [payingNet, setPayingNet] = useState<EmployeeFinance | null>(null)
-  const [payingItem, setPayingItem] = useState<{ row: EmployeeFinance; item: FinanceItem } | null>(null)
-  const [rescheduling, setRescheduling] = useState<FinanceItem | null>(null)
+  const [payingSelected, setPayingSelected] = useState<PartialPayment | null>(null)
+  const [rescheduling, setRescheduling] = useState<BreakdownItem | null>(null)
 
   const reload = () => adminFetch<{ month: string; rows: EmployeeFinance[] }>(`/api/company/finance/receivables?month=${month}`).then((d) => setRows(d.rows))
   useEffect(() => {
@@ -72,26 +98,10 @@ export function ReceivablesTab({ onChanged }: { onChanged: () => void }) {
   if (!rows) return <LoadingState />
 
   const totalNet = rows.reduce((s, r) => s + Math.max(r.totals.netRemaining, 0), 0)
-  const exportRows = rows.map((r) => {
-    const earliest = r.items.map((i) => i.dueDate).sort()[0]
-    return {
-      colaborador: r.banking.fullName,
-      documento: r.banking.document,
-      pix: r.banking.pixKey,
-      banco: r.banking.bankName,
-      agencia: r.banking.agency,
-      conta: r.banking.accountNumber,
-      salario: r.monthlySalary,
-      adiantamento: total(r.projection.adiantamento),
-      taxa: total(r.projection.taxaServico),
-      metas: total(r.projection.metas),
-      descontos: r.totals.discounts + r.totals.consumo,
-      liquido: r.totals.netRemaining,
-      vencimento: earliest ? formatDate(earliest) : "—",
-      status: r.items.length === 0 ? "Quitado" : "Pendente",
-      motivo: `Folha ${r.month}`,
-    }
-  })
+  const panelProps = {
+    onPaySelected: setPayingSelected,
+    onReschedule: setRescheduling,
+  }
 
   return (
     <div className="space-y-4">
@@ -105,44 +115,14 @@ export function ReceivablesTab({ onChanged }: { onChanged: () => void }) {
             <p className="text-xl font-bold text-[#3E2415]">{currencyNum(totalNet)}</p>
           </AdminCard>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/company/ocorrencias?novo=1">
-              <PlusCircle className="h-4 w-4 mr-1.5" /> Lançar Meta/Bônus/Prêmio
-            </Link>
-          </Button>
-          <ExportReportButton
-            title={`Recebíveis de Colaboradores — ${month}`}
-            filename={`recebiveis-${month}`}
-            disabled={rows.length === 0}
-            sections={[
-              {
-                name: "Recebíveis",
-                columns: [
-                  { header: "Colaborador", key: "colaborador" },
-                  { header: "CPF/CNPJ", key: "documento" },
-                  { header: "Chave PIX", key: "pix" },
-                  { header: "Banco", key: "banco" },
-                  { header: "Agência", key: "agencia" },
-                  { header: "Conta", key: "conta" },
-                  { header: "Salário Fixo", key: "salario", kind: "currency" },
-                  { header: "Adiantamento (dia 20)", key: "adiantamento", kind: "currency" },
-                  { header: "Taxa de Serviço", key: "taxa", kind: "currency" },
-                  { header: "Metas/Premiações", key: "metas", kind: "currency" },
-                  { header: "(-) Descontos/Consumo", key: "descontos", kind: "currency" },
-                  { header: "Saldo Líquido Restante", key: "liquido", kind: "currency" },
-                  { header: "Vencimento", key: "vencimento" },
-                  { header: "Status", key: "status" },
-                  { header: "Motivo", key: "motivo" },
-                ],
-                rows: exportRows,
-              },
-            ]}
-          />
-        </div>
+        <ExportReportButton tab="recebiveis" params={{ month }} disabled={rows.length === 0} />
       </div>
       <p className="text-xs text-gray-500">
-        Pagamentos de Meta, Bônus ou Prêmio avulso são lançados em <strong>Ocorrências</strong> — a projeção abaixo é recalculada automaticamente.
+        Metas, bônus e premiações não são lançados aqui: registre-os em{" "}
+        <Link href="/company/ocorrencias" className="font-medium text-[#F58220] hover:underline">
+          Ocorrências
+        </Link>{" "}
+        e o valor entra automaticamente na projeção abaixo. Abra a linha do colaborador para pagar itens específicos.
       </p>
 
       {rows.length === 0 ? (
@@ -164,73 +144,102 @@ export function ReceivablesTab({ onChanged }: { onChanged: () => void }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {rows.map((r) => (
-                  <ReceivableRow
-                    key={r.employeeId}
-                    row={r}
-                    open={expanded === r.employeeId}
-                    onToggle={() => setExpanded(expanded === r.employeeId ? null : r.employeeId)}
-                    onDrawer={() => setDrawer(r)}
-                    onPayNet={() => setPayingNet(r)}
-                    onPayItem={(item) => setPayingItem({ row: r, item })}
-                    onReschedule={setRescheduling}
-                  />
-                ))}
+                {rows.map((r) => {
+                  const open = expanded === r.employeeId
+                  return (
+                    <Fragment key={r.employeeId}>
+                      <tr className="hover:bg-gray-50 align-top">
+                        <td className="px-4 py-3">
+                          <button className="text-left" onClick={() => setDrawer(r)}>
+                            <p className="font-semibold text-[#3E2415] hover:underline">{r.name}</p>
+                            <p className="text-xs text-gray-400">{r.employmentType ?? "—"}</p>
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-[#3E2415]">{currencyNum(r.monthlySalary)}</td>
+                        <td className="px-4 py-3">
+                          <Cell bucket={r.projection.adiantamento} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Cell bucket={r.projection.taxaServico} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Cell bucket={r.projection.metas} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-red-600">{currencyNum(r.totals.discounts + r.totals.consumo)}</p>
+                          {r.totals.consumo > 0 && <p className="text-[11px] text-gray-500">consumo {currencyNum(r.totals.consumo)}</p>}
+                        </td>
+                        <td className="px-4 py-3 font-bold text-[#3E2415]">{currencyNum(r.totals.netRemaining)}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => setExpanded(open ? null : r.employeeId)}>
+                              <ListChecks className="h-4 w-4 mr-1" /> Detalhar {open ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
+                            </Button>
+                            <Button size="sm" disabled={r.totals.netRemaining <= 0} onClick={() => setPayingNet(r)} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+                              <Banknote className="h-4 w-4 mr-1" /> Pagar total líquido
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                      {open && (
+                        <tr className="bg-gray-50/60">
+                          <td colSpan={8} className="px-4 py-4">
+                            <BreakdownPanel row={r} {...panelProps} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </TableDesktop>
 
           <div className="md:hidden space-y-3">
-            {rows.map((r) => (
-              <div key={r.employeeId} className="rounded-xl border border-gray-100 bg-white p-4 space-y-3 shadow-sm">
-                <button className="w-full text-left" onClick={() => setDrawer(r)}>
-                  <p className="font-semibold text-[#3E2415]">{r.name}</p>
-                  <p className="text-xs text-gray-500">Salário fixo {currencyNum(r.monthlySalary)}</p>
-                </button>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <p className="text-[11px] text-gray-400">Adiantamento (dia 20)</p>
-                    <p className="font-medium">{currencyNum(total(r.projection.adiantamento))}</p>
+            {rows.map((r) => {
+              const open = expanded === r.employeeId
+              return (
+                <div key={r.employeeId} className="rounded-xl border border-gray-100 bg-white p-4 space-y-3 shadow-sm">
+                  <button className="w-full text-left" onClick={() => setDrawer(r)}>
+                    <p className="font-semibold text-[#3E2415]">{r.name}</p>
+                    <p className="text-xs text-gray-500">Salário fixo {currencyNum(r.monthlySalary)}</p>
+                  </button>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <p className="text-[11px] text-gray-400">Adiantamento (dia 20)</p>
+                      <p className="font-medium">{currencyNum(total(r.projection.adiantamento))}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-gray-400">Taxa de Serviço</p>
+                      <p className="font-medium">{currencyNum(total(r.projection.taxaServico))}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-gray-400">Metas/Premiações</p>
+                      <p className="font-medium">{currencyNum(total(r.projection.metas))}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-gray-400">(-) Descontos/Consumo</p>
+                      <p className="font-medium text-red-600">{currencyNum(r.totals.discounts + r.totals.consumo)}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[11px] text-gray-400">Taxa de Serviço</p>
-                    <p className="font-medium">{currencyNum(total(r.projection.taxaServico))}</p>
+                  <div className="flex items-center justify-between border-t border-gray-100 pt-3 gap-2 flex-wrap">
+                    <div>
+                      <p className="text-[11px] text-gray-400">Saldo líquido restante</p>
+                      <p className="text-lg font-bold text-[#3E2415]">{currencyNum(r.totals.netRemaining)}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setExpanded(open ? null : r.employeeId)}>
+                        Detalhar {open ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
+                      </Button>
+                      <Button size="sm" disabled={r.totals.netRemaining <= 0} onClick={() => setPayingNet(r)} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+                        <Banknote className="h-4 w-4 mr-1" /> Pagar total
+                      </Button>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[11px] text-gray-400">Metas/Premiações</p>
-                    <p className="font-medium">{currencyNum(total(r.projection.metas))}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-gray-400">(-) Descontos/Consumo</p>
-                    <p className="font-medium text-red-600">{currencyNum(r.totals.discounts + r.totals.consumo)}</p>
-                  </div>
+                  {open && <BreakdownPanel row={r} {...panelProps} />}
                 </div>
-                <div className="flex items-center justify-between border-t border-gray-100 pt-3">
-                  <div>
-                    <p className="text-[11px] text-gray-400">Saldo líquido restante</p>
-                    <p className="text-lg font-bold text-[#3E2415]">{currencyNum(r.totals.netRemaining)}</p>
-                  </div>
-                  <Button size="sm" disabled={r.totals.netRemaining <= 0} onClick={() => setPayingNet(r)} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
-                    <Banknote className="h-4 w-4 mr-1" /> Pagar total líquido
-                  </Button>
-                </div>
-                {r.items.length > 0 && (
-                  <div className="space-y-2 border-t border-gray-100 pt-3">
-                    <p className="text-xs font-medium text-gray-500">Itens pendentes</p>
-                    {r.items.map((i) => (
-                      <div key={`${i.kind}-${i.id}`} className="flex items-center justify-between gap-2 text-xs">
-                        <span className="text-gray-600 min-w-0">
-                          {i.label} <DueBadge date={i.dueDate} />
-                        </span>
-                        <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => setPayingItem({ row: r, item: i })}>
-                          {currencyNum(i.amount)} · Pagar
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
@@ -264,18 +273,18 @@ export function ReceivablesTab({ onChanged }: { onChanged: () => void }) {
         />
       )}
 
-      {payingItem && (
+      {payingSelected && (
         <PayDialog
-          title={`Pagar item — ${payingItem.row.banking.fullName}`}
-          description={payingItem.item.label}
-          amount={payingItem.item.amount}
-          endpoint="/api/company/finance/settle"
-          extraFields={{ kind: payingItem.item.kind, id: payingItem.item.id }}
-          consumoAllowed
-          recipient={payingItem.row.banking}
-          onClose={() => setPayingItem(null)}
+          title={`Pagar itens selecionados — ${payingSelected.row.banking.fullName}`}
+          description="Quitação parcial: só os itens marcados são pagos; o restante segue pendente."
+          amount={payingSelected.net}
+          endpoint="/api/company/finance/settle-employee"
+          extraFields={{ employeeId: payingSelected.row.employeeId, month: payingSelected.row.month, selection: JSON.stringify(payingSelected.selection) }}
+          consumoAllowed={false}
+          recipient={payingSelected.row.banking}
+          onClose={() => setPayingSelected(null)}
           onDone={() => {
-            setPayingItem(null)
+            setPayingSelected(null)
             done()
           }}
         />
@@ -295,103 +304,131 @@ export function ReceivablesTab({ onChanged }: { onChanged: () => void }) {
   )
 }
 
-function ReceivableRow({
+/** Desdobramento da linha: cada provento e desconto por categoria, com checkboxes para pagar só o que for marcado. */
+function BreakdownPanel({
   row,
-  open,
-  onToggle,
-  onDrawer,
-  onPayNet,
-  onPayItem,
+  onPaySelected,
   onReschedule,
 }: {
   row: EmployeeFinance
-  open: boolean
-  onToggle: () => void
-  onDrawer: () => void
-  onPayNet: () => void
-  onPayItem: (item: FinanceItem) => void
-  onReschedule: (item: FinanceItem) => void
+  onPaySelected: (p: PartialPayment) => void
+  onReschedule: (item: BreakdownItem) => void
 }) {
-  const discountsTotal = row.totals.discounts + row.totals.consumo
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const toggle = (item: BreakdownItem, checked: boolean) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(itemKey(item))
+      else next.delete(itemKey(item))
+      return next
+    })
+
+  const pickedItems = row.breakdown.filter((i) => selected.has(itemKey(i)))
+  const selection = useMemo(
+    () => ({
+      occurrenceIds: pickedItems.filter((i) => i.kind === "OCCURRENCE").map((i) => i.id),
+      goalPayoutIds: pickedItems.filter((i) => i.kind === "GOAL_PAYOUT").map((i) => i.id),
+      consumption: pickedItems.some((i) => i.kind === "CONSUMPTION"),
+    }),
+    [pickedItems.length, row],
+  )
+  const earnings = pickedItems.filter((i) => i.sign === 1).reduce((s, i) => s + i.amount, 0)
+  const deductions = pickedItems.filter((i) => i.sign === -1).reduce((s, i) => s + i.amount, 0)
+  const net = Math.round((earnings - deductions) * 100) / 100
+  const canPay = pickedItems.some((i) => i.sign === 1) && net > 0
+
+  const groups = CATEGORY_ORDER.map((c) => ({ ...c, items: row.breakdown.filter((i) => i.category === c.key) })).filter((g) => g.items.length > 0)
+  const selectablePending = row.breakdown.filter((i) => i.status === "PENDING")
+
   return (
-    <>
-      <tr className="hover:bg-gray-50 align-top">
-        <td className="px-4 py-3">
-          <button className="text-left" onClick={onDrawer}>
-            <p className="font-semibold text-[#3E2415] hover:underline">{row.name}</p>
-            <p className="text-xs text-gray-400">{row.employmentType ?? "—"}</p>
-          </button>
-        </td>
-        <td className="px-4 py-3 text-[#3E2415]">{currencyNum(row.monthlySalary)}</td>
-        <td className="px-4 py-3">
-          <Cell bucket={row.projection.adiantamento} />
-        </td>
-        <td className="px-4 py-3">
-          <Cell bucket={row.projection.taxaServico} />
-        </td>
-        <td className="px-4 py-3">
-          <Cell bucket={row.projection.metas} />
-        </td>
-        <td className="px-4 py-3">
-          <p className="font-medium text-red-600">{currencyNum(discountsTotal)}</p>
-          {row.totals.consumo > 0 && <p className="text-[11px] text-gray-500">consumo {currencyNum(row.totals.consumo)}</p>}
-        </td>
-        <td className="px-4 py-3 font-bold text-[#3E2415]">{currencyNum(row.totals.netRemaining)}</td>
-        <td className="px-4 py-3">
-          <div className="flex items-center justify-end gap-1">
-            <Button size="sm" variant="ghost" onClick={onToggle} disabled={row.items.length === 0 && row.discountItems.length === 0}>
-              Itens ({row.items.length}) {open ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
-            </Button>
-            <Button size="sm" disabled={row.totals.netRemaining <= 0} onClick={onPayNet} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
-              <Banknote className="h-4 w-4 mr-1" /> Pagar total líquido
-            </Button>
-          </div>
-        </td>
-      </tr>
-      {open && (
-        <tr className="bg-gray-50/60">
-          <td colSpan={8} className="px-4 py-3">
-            <div className="space-y-2">
-              {row.items.map((i) => (
-                <div key={`${i.kind}-${i.id}`} className="flex items-center justify-between gap-3 text-xs flex-wrap">
-                  <span className="text-gray-600">
-                    {i.label} · previsto {formatDate(i.dueDate)} <DueBadge date={i.dueDate} />
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <strong className="text-[#3E2415]">{currencyNum(i.amount)}</strong>
-                    {i.kind === "OCCURRENCE" && (
-                      <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => onReschedule(i)}>
+    <div className="space-y-3">
+      {groups.length === 0 ? (
+        <p className="text-xs text-gray-400">Sem lançamentos financeiros neste mês.</p>
+      ) : (
+        groups.map((g) => {
+          const pending = g.items.filter((i) => i.status === "PENDING").reduce((s, i) => s + i.sign * i.amount, 0)
+          const sum = g.items.reduce((s, i) => s + i.sign * i.amount, 0)
+          return (
+            <div key={g.key} className="rounded-lg border border-gray-100 bg-white">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 text-sm">
+                <span className="font-medium text-[#3E2415]">{g.label}</span>
+                <span className="text-xs text-gray-500">
+                  total {currencyNum(sum)} · pendente <strong className={pending < 0 ? "text-red-600" : "text-[#3E2415]"}>{currencyNum(pending)}</strong>
+                </span>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {g.items.map((i) => (
+                  <label key={itemKey(i)} className="flex items-center gap-3 px-3 py-2 text-xs cursor-pointer">
+                    <Checkbox checked={selected.has(itemKey(i))} disabled={i.status === "PAID"} onCheckedChange={(v) => toggle(i, v === true)} />
+                    <span className="flex-1 min-w-0 text-gray-600">
+                      {i.label}
+                      {i.dueDate && (
+                        <span className="ml-2 text-gray-400">
+                          previsto {formatDate(i.dueDate)} {i.status === "PENDING" && <DueBadge date={i.dueDate} />}
+                        </span>
+                      )}
+                    </span>
+                    {i.status === "PAID" && <span className="text-green-700 font-medium">Pago</span>}
+                    {i.status === "PENDING" && i.kind === "OCCURRENCE" && i.sign === 1 && (
+                      <button
+                        type="button"
+                        className="text-[11px] text-[#F58220] hover:underline"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          onReschedule(i)
+                        }}
+                      >
                         Alterar data
-                      </Button>
+                      </button>
                     )}
-                    <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => onPayItem(i)}>
-                      Pagar
-                    </Button>
-                  </span>
-                </div>
-              ))}
-              {row.discountItems.map((i) => (
-                <div key={`d-${i.id}`} className="flex items-center justify-between gap-3 text-xs">
-                  <span className="text-gray-600">(-) {i.label}</span>
-                  <strong className="text-red-600">-{currencyNum(i.amount)}</strong>
-                </div>
-              ))}
-              {row.totals.consumo > 0 && (
-                <div className="flex items-center justify-between gap-3 text-xs">
-                  <span className="text-gray-600">(-) Conta de Consumo Interno</span>
-                  <strong className="text-red-600">-{currencyNum(row.totals.consumo)}</strong>
-                </div>
-              )}
+                    <strong className={i.sign === -1 ? "text-red-600" : "text-[#3E2415]"}>
+                      {i.sign === -1 ? "-" : ""}
+                      {currencyNum(i.amount)}
+                    </strong>
+                  </label>
+                ))}
+              </div>
             </div>
-          </td>
-        </tr>
+          )
+        })
       )}
-    </>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white border border-gray-100 px-3 py-2.5">
+        <div className="flex items-center gap-3 text-xs text-gray-500">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-[11px]"
+            onClick={() => setSelected(new Set(selectablePending.map(itemKey)))}
+            disabled={selectablePending.length === 0}
+          >
+            Marcar todos
+          </Button>
+          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
+            Limpar
+          </Button>
+          <span>
+            {selected.size} item(ns) · líquido selecionado <strong className="text-[#3E2415]">{currencyNum(Math.max(net, 0))}</strong>
+          </span>
+        </div>
+        <Button
+          size="sm"
+          disabled={!canPay}
+          onClick={() => onPaySelected({ row, net, selection })}
+          className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white"
+        >
+          <Banknote className="h-4 w-4 mr-1" /> Pagar Itens Selecionados
+        </Button>
+      </div>
+      {selected.size > 0 && !canPay && <p className="text-xs text-amber-700">Marque ao menos um provento e confira se os descontos marcados não superam o valor a pagar.</p>}
+    </div>
   )
 }
 
-function RescheduleDialog({ item, onClose, onDone }: { item: FinanceItem; onClose: () => void; onDone: () => void }) {
-  const [date, setDate] = useState(item.dueDate.slice(0, 10))
+function RescheduleDialog({ item, onClose, onDone }: { item: BreakdownItem; onClose: () => void; onDone: () => void }) {
+  const [date, setDate] = useState(item.dueDate ? item.dueDate.slice(0, 10) : "")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 

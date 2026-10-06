@@ -12,7 +12,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-import { playEarningsSound } from "@/lib/earnings-sound"
+import { playCoinSound } from "@/lib/coin-sound"
 import { RewardCelebration } from "./reward-celebration"
 
 type Notification = {
@@ -26,7 +26,9 @@ type Notification = {
   createdAt: string
 }
 
-const EARNINGS_NOTIFICATION_TYPES = new Set(["COMMISSION_EARNED", "BONUS_AWARDED"])
+// Valor recebido, saque aprovado, comissão creditada e bônus — disparam o som de moedas (lib/coin-sound.ts).
+const EARNINGS_NOTIFICATION_TYPES = new Set(["COMMISSION_EARNED", "BONUS_AWARDED", "PAYMENT_RECEIVED", "WITHDRAWAL_APPROVED"])
+const POLL_INTERVAL_MS = 15000
 
 function timeAgo(dateStr: string) {
   const diffMs = Date.now() - new Date(dateStr).getTime()
@@ -58,7 +60,7 @@ export function NotificationBell() {
         if (seenIds.current) {
           const newEarning = list.find((n) => !seenIds.current!.has(n.id) && EARNINGS_NOTIFICATION_TYPES.has(n.type))
           if (newEarning) {
-            if (soundEnabled.current) playEarningsSound()
+            if (soundEnabled.current) playCoinSound()
             setCelebration(newEarning)
           }
         }
@@ -79,8 +81,16 @@ export function NotificationBell() {
       .catch(() => {})
 
     reload()
-    const interval = setInterval(reload, 60000)
-    return () => clearInterval(interval)
+    const interval = setInterval(reload, POLL_INTERVAL_MS)
+    // Ao voltar para o app (PWA em segundo plano), confere na hora em vez de esperar o próximo ciclo.
+    const onVisible = () => document.visibilityState === "visible" && reload()
+    document.addEventListener("visibilitychange", onVisible)
+    window.addEventListener("focus", reload)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("focus", reload)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

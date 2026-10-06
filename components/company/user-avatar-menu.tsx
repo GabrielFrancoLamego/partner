@@ -22,7 +22,7 @@ import {
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu"
 import { createClient } from "@/lib/supabase/client"
-import { playEarningsSound } from "@/lib/earnings-sound"
+import { playCoinSound } from "@/lib/coin-sound"
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/)
@@ -320,7 +320,7 @@ function PreferencesDialog({ onClose }: { onClose: () => void }) {
     setIsSaving(true)
     try {
       await fetch("/api/account/notification-preferences", { method: "PATCH", body: JSON.stringify(patch) })
-      if (patch.soundOnEarnings) playEarningsSound()
+      if (patch.soundOnEarnings) playCoinSound()
     } finally {
       setIsSaving(false)
     }

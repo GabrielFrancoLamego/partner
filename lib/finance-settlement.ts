@@ -169,7 +169,7 @@ export async function settleWithdrawal(p: { companyId: string; userId: string; w
       pixKey: withdrawal.pixKey ?? banking.pixKey,
       description: "Saque PIX de parceiro",
       amount,
-      dueDate: withdrawal.approvedAt ?? withdrawal.requestDate,
+      dueDate: withdrawal.expectedPaymentDate ?? withdrawal.approvedAt ?? withdrawal.requestDate,
       paymentMethod: p.method,
       proofUrl,
       paidById: p.userId,
@@ -179,10 +179,10 @@ export async function settleWithdrawal(p: { companyId: string; userId: string; w
   await logAudit({ userId: p.userId, companyId: p.companyId, action: "PIX_APPROVAL", entity: "Withdrawal", entityId: withdrawal.id, details: { status: "PAID", method: p.method } })
   await notifyUser({
     userId: withdrawal.partnerId,
-    type: "GENERIC",
+    type: "PAYMENT_RECEIVED",
     title: "Saque pago",
-    message: `Seu saque de ${money(amount)} foi pago.`,
-    linkUrl: "/partner/saques",
+    message: `Seu saque de ${money(amount)} foi pago. O comprovante está disponível em Meus Saques.`,
+    linkUrl: "/partner/carteira/saques",
   }).catch(() => {})
 
   return settlement
@@ -245,8 +245,8 @@ export async function settleOccurrence(p: { companyId: string; userId: string; o
   if (occ.employeeId) {
     await notifyUser({
       userId: occ.employeeId,
-      type: "GENERIC",
-      title: "Ocorrência quitada",
+      type: "PAYMENT_RECEIVED",
+      title: "Valor recebido",
       message: `O pagamento de "${occurrenceLabel(occ)}" (${money(amount)}) foi registrado.`,
       linkUrl: "/company",
     }).catch(() => {})
@@ -298,6 +298,13 @@ export async function settleGoalPayout(p: { companyId: string; userId: string; g
   })
 
   await logAudit({ userId: p.userId, companyId: p.companyId, action: "MARK_PAID", entity: "GoalPayout", entityId: payout.id, details: { method: p.method } })
+  await notifyUser({
+    userId: payout.employeeId,
+    type: "PAYMENT_RECEIVED",
+    title: "Valor recebido",
+    message: `O pagamento da meta "${payout.goal.name}" (${money(amount)}) foi registrado.`,
+    linkUrl: "/company",
+  }).catch(() => {})
   return settlement
 }
 

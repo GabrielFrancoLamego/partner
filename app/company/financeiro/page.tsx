@@ -20,9 +20,10 @@ import { CountBadge } from "@/components/company/finance/finance-shared"
 const TABS = ["contas-a-pagar", "comissoes-saques", "recebiveis", "quitacoes"] as const
 type TabKey = (typeof TABS)[number]
 
+/** `total` (badge do menu) = payables.count + withdrawals.count + receivables.count — a soma exata dos badges das abas. */
 type Summary = {
-  tabs: Record<"payables" | "commissionsWithdrawals" | "receivables", { pending: number; dueToday: number }>
-  dueTodayTotal: number
+  tabs: { payables: { count: number }; withdrawals: { count: number }; receivables: { count: number } }
+  total: number
 }
 
 function FinanceiroContent() {
@@ -65,15 +66,15 @@ function FinanceiroContent() {
         <TabsList className="w-full justify-start h-auto overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <TabsTrigger value="contas-a-pagar" className="flex-shrink-0">
             Contas a Pagar
-            {counters && <CountBadge count={counters.payables.pending} urgent={counters.payables.dueToday > 0} />}
+            {counters && <CountBadge count={counters.payables.count} urgent title="Vencidas ou vencendo hoje" />}
           </TabsTrigger>
           <TabsTrigger value="comissoes-saques" className="flex-shrink-0">
             Comissões & Saques
-            {counters && <CountBadge count={counters.commissionsWithdrawals.pending} urgent={counters.commissionsWithdrawals.dueToday > 0} />}
+            {counters && <CountBadge count={counters.withdrawals.count} urgent title="Saques aguardando aprovação" />}
           </TabsTrigger>
           <TabsTrigger value="recebiveis" className="flex-shrink-0">
             Recebíveis de Colaboradores
-            {counters && <CountBadge count={counters.receivables.pending} urgent={counters.receivables.dueToday > 0} />}
+            {counters && <CountBadge count={counters.receivables.count} urgent title="Recebíveis vencendo hoje" />}
           </TabsTrigger>
           <TabsTrigger value="quitacoes" className="flex-shrink-0">
             Registro de Quitação

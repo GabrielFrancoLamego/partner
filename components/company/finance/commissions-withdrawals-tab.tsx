@@ -11,7 +11,8 @@ import { adminFetch, AdminApiError } from "@/lib/admin-api-client"
 import { StatusBadge, LoadingState, EmptyState, AdminCard } from "@/components/admin/admin-ui"
 import { TableDesktop, MobileCardList, MobileCard } from "@/components/admin/mobile-card"
 import { ExportReportButton } from "./export-report-button"
-import { currencyNum, formatDate } from "./finance-shared"
+import { currencyNum, formatDate, formatDateTime } from "./finance-shared"
+import { addBusinessHours, DEFAULT_WITHDRAWAL_PAYMENT_BUSINESS_HOURS } from "@/lib/business-time"
 
 type Withdrawal = {
   id: string
@@ -19,6 +20,7 @@ type Withdrawal = {
   status: "PENDING" | "APPROVED" | "REJECTED" | "PAID"
   requestDate: string
   approvedAt: string | null
+  expectedPaymentDate: string | null
   pixKey: string | null
   rejectionReason: string | null
   partner: { id: string; name: string; email: string; partnerProfile: { fullName: string | null; cpf: string | null; document: string | null } | null }
@@ -36,13 +38,12 @@ type Commission = {
   promotion: { id: string; title: string } | null
 }
 
-const WITHDRAWAL_STATUS_LABEL = { PENDING: "Aguardando análise", APPROVED: "Aprovado — em Contas a Pagar", PAID: "Pago", REJECTED: "Reprovado" } as const
-
 /** Comissões e Saques — fila de solicitações de saque (aprovar/reprovar) e comissões pendentes de lançamento/aprovação. */
 export function CommissionsWithdrawalsTab({ onChanged }: { onChanged: () => void }) {
   const [withdrawals, setWithdrawals] = useState<Withdrawal[] | null>(null)
   const [commissions, setCommissions] = useState<Commission[] | null>(null)
   const [rejecting, setRejecting] = useState<Withdrawal | null>(null)
+  const [approving, setApproving] = useState<Withdrawal | null>(null)
   const [launching, setLaunching] = useState<Commission | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -58,15 +59,6 @@ export function CommissionsWithdrawalsTab({ onChanged }: { onChanged: () => void
   const done = () => {
     reload()
     onChanged()
-  }
-
-  const approveWithdrawal = async (w: Withdrawal) => {
-    setBusyId(w.id)
-    await adminFetch(`/api/company/finance/withdrawals/${w.id}`, { method: "PATCH", body: JSON.stringify({ status: "APPROVED" }) }).catch((e) =>
-      alert(e instanceof AdminApiError ? e.message : "Erro ao aprovar"),
-    )
-    setBusyId(null)
-    done()
   }
 
   const updateCommission = async (c: Commission, status: "APPROVED" | "REJECTED") => {
@@ -85,45 +77,10 @@ export function CommissionsWithdrawalsTab({ onChanged }: { onChanged: () => void
   const history = withdrawals.filter((w) => w.status !== "PENDING").slice(0, 8)
   const needsValue = (c: Commission) => c.amount === null || c.status === "AWAITING_VALUE"
 
-  const withdrawalRows = withdrawals.map((w) => ({
-    favorecido: w.partner.partnerProfile?.fullName?.trim() || w.partner.name,
-    documento: w.partner.partnerProfile?.cpf ?? w.partner.partnerProfile?.document ?? null,
-    pix: w.pixKey,
-    valor: Number(w.amount),
-    vencimento: formatDate(w.approvedAt ?? w.requestDate),
-    status: WITHDRAWAL_STATUS_LABEL[w.status],
-    motivo: w.status === "REJECTED" ? `Reprovado: ${w.rejectionReason ?? ""}` : "Saque PIX de parceiro",
-  }))
-  const commissionRows = commissions.map((c) => ({
-    favorecido: c.partner.name,
-    documento: null,
-    pix: null,
-    valor: c.commissionValue !== null ? Number(c.commissionValue) : null,
-    vencimento: formatDate(c.date),
-    status: needsValue(c) ? "Aguardando lançamento do valor da conta" : "Aguardando aprovação",
-    motivo: `Indicação de ${c.clientName}${c.promotion ? ` — ${c.promotion.title}` : ""}`,
-  }))
-  const exportColumns = [
-    { header: "Favorecido", key: "favorecido" },
-    { header: "CPF/CNPJ", key: "documento" },
-    { header: "Chave PIX", key: "pix" },
-    { header: "Valor", key: "valor", kind: "currency" as const },
-    { header: "Data/Vencimento", key: "vencimento" },
-    { header: "Status", key: "status" },
-    { header: "Motivo", key: "motivo" },
-  ]
-
   return (
     <div className="space-y-8">
       <div className="flex justify-end">
-        <ExportReportButton
-          title="Comissões e Saques"
-          filename="comissoes-e-saques"
-          sections={[
-            { name: "Saques de Parceiros", columns: exportColumns, rows: withdrawalRows },
-            { name: "Comissões Pendentes", columns: exportColumns, rows: commissionRows },
-          ]}
-        />
+        <ExportReportButton tab="comissoes-saques" />
       </div>
 
       <section className="space-y-3">
@@ -156,7 +113,7 @@ export function CommissionsWithdrawalsTab({ onChanged }: { onChanged: () => void
                       <td className="px-4 py-3 text-gray-600">{formatDate(w.requestDate)}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
-                          <Button size="sm" variant="outline" className="text-green-700 border-green-200" disabled={busyId === w.id} onClick={() => approveWithdrawal(w)}>
+                          <Button size="sm" variant="outline" className="text-green-700 border-green-200" onClick={() => setApproving(w)}>
                             <Check className="h-4 w-4 mr-1" /> Aprovar
                           </Button>
                           <Button size="sm" variant="outline" className="text-red-600 border-red-200" onClick={() => setRejecting(w)}>
@@ -179,7 +136,7 @@ export function CommissionsWithdrawalsTab({ onChanged }: { onChanged: () => void
                   fields={[{ label: "Solicitado em", value: formatDate(w.requestDate) }]}
                   actions={
                     <>
-                      <Button size="sm" variant="outline" className="text-green-700 border-green-200" disabled={busyId === w.id} onClick={() => approveWithdrawal(w)}>
+                      <Button size="sm" variant="outline" className="text-green-700 border-green-200" onClick={() => setApproving(w)}>
                         <Check className="h-4 w-4 mr-1" /> Aprovar
                       </Button>
                       <Button size="sm" variant="outline" className="text-red-600 border-red-200" onClick={() => setRejecting(w)}>
@@ -201,6 +158,7 @@ export function CommissionsWithdrawalsTab({ onChanged }: { onChanged: () => void
                   <span className="text-[#3E2415] font-medium">
                     {w.partner.name} · {currencyNum(Number(w.amount))}
                     {w.status === "REJECTED" && w.rejectionReason && <span className="block text-xs font-normal text-gray-500">Motivo: {w.rejectionReason}</span>}
+                    {w.status === "APPROVED" && w.expectedPaymentDate && <span className="block text-xs font-normal text-gray-500">Pagamento previsto: {formatDateTime(w.expectedPaymentDate)}</span>}
                   </span>
                   <StatusBadge status={w.status} />
                 </div>
@@ -313,9 +271,70 @@ export function CommissionsWithdrawalsTab({ onChanged }: { onChanged: () => void
         )}
       </section>
 
+      {approving && <ApproveWithdrawalDialog withdrawal={approving} onClose={() => setApproving(null)} onDone={() => { setApproving(null); done() }} />}
       {rejecting && <RejectWithdrawalDialog withdrawal={rejecting} onClose={() => setRejecting(null)} onDone={() => { setRejecting(null); done() }} />}
       {launching && <LaunchValueDialog commission={launching} onClose={() => setLaunching(null)} onDone={() => { setLaunching(null); done() }} />}
     </div>
+  )
+}
+
+/** yyyy-MM-ddTHH:mm no fuso local — formato do input datetime-local. */
+function toLocalInput(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function ApproveWithdrawalDialog({ withdrawal, onClose, onDone }: { withdrawal: Withdrawal; onClose: () => void; onDone: () => void }) {
+  const [expected, setExpected] = useState(() => toLocalInput(addBusinessHours(new Date(), DEFAULT_WITHDRAWAL_PAYMENT_BUSINESS_HOURS)))
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    setIsSubmitting(true)
+    try {
+      await adminFetch(`/api/company/finance/withdrawals/${withdrawal.id}`, {
+        method: "PATCH",
+        // Sem data, o servidor assume 24 horas úteis a partir da aprovação.
+        body: JSON.stringify({ status: "APPROVED", expectedPaymentDate: expected ? new Date(expected).toISOString() : undefined }),
+      })
+      onDone()
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : "Erro ao aprovar")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Aprovar saque — {withdrawal.partner.name}</DialogTitle>
+          <DialogDescription>
+            {currencyNum(Number(withdrawal.amount))} · PIX {withdrawal.pixKey ?? "não informado"}. Aprovado, o saque vai para Contas a Pagar e o parceiro é avisado da data prevista.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="space-y-1.5">
+            <Label>Data/Hora prevista de pagamento</Label>
+            <Input type="datetime-local" value={expected} onChange={(e) => setExpected(e.target.value)} />
+            <p className="text-[11px] text-gray-400">Sugestão: 24 horas úteis a partir de agora. Se deixar em branco, o sistema usa esse prazo.</p>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-[#F2680C] via-[#FB9C08] to-[#FFC800] text-white">
+              {isSubmitting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Aprovar saque
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 

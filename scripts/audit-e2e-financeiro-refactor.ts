@@ -2,7 +2,9 @@ import "./audit-lib"
 import { PrismaClient } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { randomUUID } from "crypto"
-import { loginAs, api, check, printSummary, results, settleForm } from "./audit-lib"
+import ExcelJS from "exceljs"
+import { loginAs, api, check, printSummary, results, settleForm, BASE_URL } from "./audit-lib"
+import { addBusinessHours } from "../lib/business-time"
 
 /**
  * Auditoria do módulo Financeiro refatorado (/company/financeiro): fila de
@@ -12,13 +14,22 @@ import { loginAs, api, check, printSummary, results, settleForm } from "./audit-
  * de valor de comissão e contadores/badge. Usa um colaborador temporário para
  * não mexer nos saldos das fixtures compartilhadas. Idempotente.
  */
+const localDate = (offsetDays = 0) => {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) })
 const TEMP_EMAIL = "audit-recebiveis@teste.invalid"
 const TAG = "[AuditFin]"
 
 async function cleanup(companyId: string, startedAt: Date, partnerId: string, partnerWalletBefore: number) {
   const temp = await prisma.user.findUnique({ where: { email: TEMP_EMAIL } })
-  await prisma.financialSettlement.deleteMany({ where: { companyId, OR: [{ paidAt: { gte: startedAt } }, { recipientName: { startsWith: TAG } }] } })
+  // O seed de quitações ("[Seed]") é preservado — só some o que este teste gerou.
+  await prisma.financialSettlement.deleteMany({
+    where: { companyId, NOT: { description: { startsWith: "[Seed]" } }, OR: [{ paidAt: { gte: startedAt } }, { recipientName: { startsWith: TAG } }] },
+  })
+  await prisma.notification.deleteMany({ where: { userId: partnerId, type: { in: ["WITHDRAWAL_APPROVED", "PAYMENT_RECEIVED"] }, createdAt: { gte: startedAt } } })
   await prisma.occurrence.deleteMany({ where: { companyId, OR: [{ description: { startsWith: TAG } }, { employeeNameFreeText: { startsWith: TAG } }, ...(temp ? [{ employeeId: temp.id }] : [])] } })
   await prisma.withdrawal.deleteMany({ where: { companyId, pixKey: { startsWith: "audit-fin" } } })
   await prisma.commission.deleteMany({ where: { companyId, clientName: { startsWith: TAG } } })
@@ -89,8 +100,8 @@ async function main() {
   const w2 = await mkWithdrawal(44.44, "audit-fin-2")
 
   const summaryAfterW = (await api(masterS, "GET", "/api/company/finance/summary")).json
-  await check("2.Saques", "Saque solicitado entra na contagem de Comissões & Saques com vencimento hoje", async () =>
-    summaryAfterW.tabs.commissionsWithdrawals.dueToday >= summaryBefore.tabs.commissionsWithdrawals.dueToday + 2 || JSON.stringify(summaryAfterW.tabs.commissionsWithdrawals),
+  await check("2.Saques", "Saque aguardando aprovação entra no badge de Saques (e no total do menu)", async () =>
+    (summaryAfterW.tabs.withdrawals.count === summaryBefore.tabs.withdrawals.count + 2 && summaryAfterW.total === summaryBefore.total + 2) || JSON.stringify([summaryBefore, summaryAfterW]),
   )
   await check("2.Saques", "Saque PENDENTE (ainda não aprovado) NÃO aparece em Contas a Pagar", async () => {
     const { json } = await api(masterS, "GET", "/api/company/finance/payables")
@@ -114,6 +125,31 @@ async function main() {
     const { json } = await api(masterS, "GET", "/api/company/finance/payables")
     const row = json.find((r: any) => r.id === w1.id)
     return (status === 200 && Boolean(row) && row.kind === "WITHDRAWAL" && row.banking.pixKey === "audit-fin-1" && Boolean(row.dueDate)) || `status ${status} row ${JSON.stringify(row)}`
+  })
+  await check("2.Saques", "Aprovar sem informar data atribui automaticamente 24 horas úteis a partir da aprovação", async () => {
+    const row = await prisma.withdrawal.findUniqueOrThrow({ where: { id: w1.id } })
+    if (!row.expectedPaymentDate || !row.approvedAt) return "expectedPaymentDate/approvedAt vazios"
+    const expected = addBusinessHours(row.approvedAt, 24).getTime()
+    return Math.abs(row.expectedPaymentDate.getTime() - expected) < 2000 || `esperado ${new Date(expected).toISOString()} veio ${row.expectedPaymentDate.toISOString()}`
+  })
+  const w4 = await mkWithdrawal(12.5, "audit-fin-4")
+  const w5 = await mkWithdrawal(7.5, "audit-fin-5")
+  const informed = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+  informed.setSeconds(0, 0)
+  await check("2.Saques", "Data/hora prevista informada na aprovação é gravada e vira o vencimento em Contas a Pagar", async () => {
+    const { status } = await api(masterS, "PATCH", `/api/company/finance/withdrawals/${w4.id}`, { status: "APPROVED", expectedPaymentDate: informed.toISOString() })
+    const { json } = await api(masterS, "GET", "/api/company/finance/payables")
+    const row = json.find((r: any) => r.id === w4.id)
+    return (status === 200 && Boolean(row) && new Date(row.dueDate).getTime() === informed.getTime()) || `status ${status} row ${JSON.stringify(row)}`
+  })
+  await check("2.Saques", "Data prevista no passado é bloqueada (400) e data inválida também", async () => {
+    const past = await api(masterS, "PATCH", `/api/company/finance/withdrawals/${w5.id}`, { status: "APPROVED", expectedPaymentDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() })
+    const bad = await api(masterS, "PATCH", `/api/company/finance/withdrawals/${w5.id}`, { status: "APPROVED", expectedPaymentDate: "não-é-data" })
+    return (past.status === 400 && bad.status === 400) || `${past.status}/${bad.status}`
+  })
+  await check("2.Saques", "Parceiro recebe notificação 'Saque aprovado' (WITHDRAWAL_APPROVED — dispara o som de moedas) com a data prevista", async () => {
+    const n = await prisma.notification.findFirst({ where: { userId: partner.id, type: "WITHDRAWAL_APPROVED", createdAt: { gte: startedAt } }, orderBy: { createdAt: "desc" } })
+    return (Boolean(n) && n!.message.includes("pagamento previsto")) || "notificação não encontrada"
   })
   await check("2.Saques", "Saque já analisado não pode ser analisado de novo (400)", async () =>
     (await api(masterS, "PATCH", `/api/company/finance/withdrawals/${w1.id}`, { status: "APPROVED" })).status === 400,
@@ -260,7 +296,8 @@ async function main() {
   )
   await check("5.Recebiveis", "Contador de Recebíveis inclui os itens do colaborador", async () => {
     const s = (await api(masterS, "GET", "/api/company/finance/summary")).json
-    return s.tabs.receivables.pending >= 4 || JSON.stringify(s.tabs.receivables)
+    // Taxa de Serviço e Meta (lançadas hoje) vencem hoje; Adiantamento/Saldo ainda não.
+    return s.tabs.receivables.count >= summaryBefore.tabs.receivables.count + 2 || JSON.stringify(s.tabs.receivables)
   })
   await check("5.Recebiveis", "Descontos (Vale) não podem ser pagos como item (400)", async () =>
     (await api(masterS, "POST", "/api/company/finance/settle", settleForm({ kind: "OCCURRENCE", id: vale.json.id }), true)).status === 400,
@@ -281,12 +318,41 @@ async function main() {
     !afterItem.row.items.some((i: any) => i.id === meta.json.id) && Math.abs(afterItem.row.totals.netRemaining - (2080 - 60)) < 0.01,
   )
 
+  await check("5.Detalhamento", "Linha desdobra Salário, Adiantamento, Taxa, Vale/Consumo e Metas/Bônus (proventos e descontos, com a Conta de Consumo)", async () => {
+    const cats = new Set(afterItem.row.breakdown.map((b: any) => b.category))
+    const consumoLine = afterItem.row.breakdown.find((b: any) => b.kind === "CONSUMPTION")
+    return (
+      (["SALARIO", "ADIANTAMENTO", "TAXA_SERVICO", "VALE_CONSUMO", "METAS_BONUS", "DESCONTOS"].every((c) => cats.has(c)) && Boolean(consumoLine) && consumoLine.sign === -1 && consumoLine.amount === 30) ||
+      JSON.stringify([...cats])
+    )
+  })
+  await check("5.Parcial", "Seleção com item que não está pendente é recusada (400)", async () =>
+    (await api(masterS, "POST", "/api/company/finance/settle-employee", settleForm({ employeeId: tempId, selection: JSON.stringify({ occurrenceIds: [meta.json.id], goalPayoutIds: [], consumption: false }) }), true)).status === 400,
+  )
+  await check("5.Parcial", "Seleção só de descontos (sem nenhum provento) é recusada (400)", async () =>
+    (await api(masterS, "POST", "/api/company/finance/settle-employee", settleForm({ employeeId: tempId, selection: JSON.stringify({ occurrenceIds: [vale.json.id], goalPayoutIds: [], consumption: false }) }), true)).status === 400,
+  )
+  await check("5.Parcial", "Pagamento parcial: Taxa (100) + Vale marcado (40) = líquido 60, sem pagar o salário nem o restante", async () => {
+    const selection = JSON.stringify({ occurrenceIds: [taxa.json.id, vale.json.id], goalPayoutIds: [], consumption: false })
+    const { status, json } = await api(masterS, "POST", "/api/company/finance/settle-employee", settleForm({ employeeId: tempId, selection }, { method: "PIX" }), true)
+    const occ = await prisma.occurrence.findMany({ where: { id: { in: [taxa.json.id, vale.json.id] } } })
+    const stillPending = await prisma.occurrence.count({ where: { employeeId: tempId, paymentStatus: "PENDING", type: "SALARIO" } })
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: tempId } })
+    return (
+      (status === 201 && Math.abs(Number(json.amount) - 60) < 0.01 && json.description.startsWith("Itens selecionados") && occ.every((o) => o.paymentStatus === "PAID") && stillPending === 2 && Number(user.consumptionDebt) === 30) ||
+      `status ${status} amount ${json?.amount} paid ${occ.map((o) => o.paymentStatus)} salário pendente ${stillPending} consumo ${user.consumptionDebt}`
+    )
+  })
+  const afterPartial = await rowOf()
+  await check("5.Parcial", "Depois do parcial restam salário (2000), desconto especial (10) e consumo (30) → líquido 1960", async () =>
+    Math.abs(afterPartial.row.totals.netRemaining - 1960) < 0.01 || JSON.stringify(afterPartial.row.totals),
+  )
   await check("5.Recebiveis", "Pagar total líquido: sem comprovante (400) e com Consumo Interno (400)", async () => {
     const a = await api(masterS, "POST", "/api/company/finance/settle-employee", settleForm({ employeeId: tempId }, { withFile: false }), true)
     const b = await api(masterS, "POST", "/api/company/finance/settle-employee", settleForm({ employeeId: tempId }, { method: "CONSUMO" }), true)
     return (a.status === 400 && b.status === 400) || `${a.status}/${b.status}`
   })
-  const expectedNet = afterItem.row.totals.netRemaining
+  const expectedNet = afterPartial.row.totals.netRemaining
   await check("5.Recebiveis", "Pagar total líquido quita proventos, abate vale/desconto e zera o consumo", async () => {
     const { status, json } = await api(flaggedS, "POST", "/api/company/finance/settle-employee", settleForm({ employeeId: tempId }, { method: "TRANSFERENCIA" }), true)
     const u = await prisma.user.findUniqueOrThrow({ where: { id: tempId } })
@@ -337,6 +403,133 @@ async function main() {
   )
   await check("6.Comissoes", "Colaborador comum NÃO lança valor de comissão (403)", async () =>
     (await api(plainS, "PATCH", `/api/company/finance/commissions/${c2.id}/launch`, { amount: 10 })).status === 403,
+  )
+
+  // --------------------------------------------------------------------------
+  // 7. Badge do menu = soma exata dos badges das abas
+  // --------------------------------------------------------------------------
+  await check("7.Badge", "Total do menu = Contas a Pagar hoje + Saques aguardando + Recebíveis hoje (e cada parcela bate com a lista da aba)", async () => {
+    const sum = (await api(masterS, "GET", "/api/company/finance/summary")).json
+    const endOfToday = new Date()
+    endOfToday.setHours(23, 59, 59, 999)
+    const pay = ((await api(masterS, "GET", "/api/company/finance/payables")).json as any[]).filter((r) => new Date(r.dueDate) <= endOfToday).length
+    const wd = await prisma.withdrawal.count({ where: { companyId: company.id, status: "PENDING" } })
+    const rec = (await api(masterS, "GET", "/api/company/finance/receivables")).json.rows.reduce((n: number, r: any) => n + r.items.filter((i: any) => new Date(i.dueDate) <= endOfToday).length, 0)
+    const parts = { pay, wd, rec }
+    return (
+      (sum.tabs.payables.count === pay && sum.tabs.withdrawals.count === wd && sum.tabs.receivables.count === rec && sum.total === pay + wd + rec) ||
+      `summary ${JSON.stringify(sum)} listas ${JSON.stringify(parts)}`
+    )
+  })
+  await check("7.Badge", "Menu e abas leem o MESMO resumo (Gerente vê o mesmo total que o Master)", async () => {
+    const a = (await api(masterS, "GET", "/api/company/finance/summary")).json
+    const b = (await api(gerenteS, "GET", "/api/company/finance/summary")).json
+    return a.total === b.total || `${a.total} x ${b.total}`
+  })
+
+  // --------------------------------------------------------------------------
+  // 8. Horas úteis, notificações sonoras e tela de acompanhamento do parceiro
+  // --------------------------------------------------------------------------
+  await check("8.HorasUteis", "24 horas úteis: sexta 15h → segunda 15h; segunda 10h → terça 10h; sábado → terça 00h", async () => {
+    const fri = addBusinessHours(new Date(2026, 9, 9, 15, 0), 24)
+    const mon = addBusinessHours(new Date(2026, 9, 5, 10, 0), 24)
+    const sat = addBusinessHours(new Date(2026, 9, 10, 10, 0), 24)
+    const ok = fri.getTime() === new Date(2026, 9, 12, 15, 0).getTime() && mon.getTime() === new Date(2026, 9, 6, 10, 0).getTime() && sat.getTime() === new Date(2026, 9, 13, 0, 0).getTime()
+    return ok || `${fri.toISOString()} ${mon.toISOString()} ${sat.toISOString()}`
+  })
+  await check("8.Notificacoes", "Saque pago e líquido pago geram 'Valor recebido' (PAYMENT_RECEIVED) para parceiro e colaborador", async () => {
+    const partnerN = await prisma.notification.findFirst({ where: { userId: partner.id, type: "PAYMENT_RECEIVED", createdAt: { gte: startedAt } } })
+    const employeeN = await prisma.notification.findFirst({ where: { userId: tempId, type: "PAYMENT_RECEIVED" } })
+    return (Boolean(partnerN) && Boolean(employeeN)) || `parceiro ${Boolean(partnerN)} colaborador ${Boolean(employeeN)}`
+  })
+  await check("8.Parceiro", "Tela 'Meus Saques Solicitados': parceiro vê status, data prevista, comprovante do pago e motivo do recusado", async () => {
+    const partnerS = await loginAs(partner.email)
+    const { status, json } = await api(partnerS, "GET", "/api/partner/withdrawals")
+    const get = (id: string) => json.find((w: any) => w.id === id)
+    const paid = get(w1.id)
+    const approved = get(w4.id)
+    const rejected = get(w2.id)
+    return (
+      (status === 200 &&
+        paid?.status === "PAID" &&
+        Boolean(paid.proofOfPaymentUrl) &&
+        approved?.status === "APPROVED" &&
+        new Date(approved.expectedPaymentDate).getTime() === informed.getTime() &&
+        rejected?.status === "REJECTED" &&
+        rejected.rejectionReason === "Dados divergentes") ||
+      `status ${status} ${JSON.stringify([paid?.status, approved?.status, rejected?.status])}`
+    )
+  })
+
+  // --------------------------------------------------------------------------
+  // 9. Exportações reais (Excel e PDF) — gerados no servidor
+  // --------------------------------------------------------------------------
+  const fetchFile = async (session: any, path: string) => {
+    const cookie = [...session.jar.entries()].map(([k, v]: [string, string]) => `${k}=${v}`).join("; ")
+    const res = await fetch(`${BASE_URL}${path}`, { headers: { Cookie: cookie } })
+    return { res, bytes: Buffer.from(await res.arrayBuffer()) }
+  }
+  for (const tab of ["contas-a-pagar", "comissoes-saques", "recebiveis", "quitacoes"]) {
+    await check("9.Exportacao", `${tab}: Excel (.xlsx) válido, com cabeçalhos completos`, async () => {
+      const { res, bytes } = await fetchFile(masterS, `/api/company/finance/export?tab=${tab}&format=xlsx`)
+      if (res.status !== 200) return `status ${res.status} ${bytes.toString().slice(0, 120)}`
+      if (bytes.subarray(0, 2).toString() !== "PK") return "não é um .xlsx (assinatura ZIP ausente)"
+      const wb = new ExcelJS.Workbook()
+      await wb.xlsx.load(bytes as any)
+      const headers = wb.worksheets.flatMap((ws) => (ws.getRow(1).values as any[]).filter(Boolean))
+      const expected =
+        tab === "quitacoes"
+          ? ["Favorecido", "CPF/CNPJ", "Chave PIX", "Valor", "Forma de pagamento", "Motivo", "Comprovante"]
+          : tab === "contas-a-pagar"
+            ? ["Favorecido", "CPF/CNPJ", "Banco", "Chave PIX", "Valor", "Vencimento", "Motivo"]
+            : ["Valor"]
+      const missing = expected.filter((h) => !headers.includes(h))
+      return (missing.length === 0 && /spreadsheetml/.test(res.headers.get("content-type") ?? "")) || `faltam colunas: ${missing.join(", ")}`
+    })
+    await check("9.Exportacao", `${tab}: PDF válido`, async () => {
+      const { res, bytes } = await fetchFile(gerenteS, `/api/company/finance/export?tab=${tab}&format=pdf`)
+      return (res.status === 200 && bytes.subarray(0, 4).toString() === "%PDF" && bytes.length > 1500 && res.headers.get("content-type") === "application/pdf") || `status ${res.status} ${bytes.length} bytes`
+    })
+  }
+  await check("9.Exportacao", "Quitações: o período (from/to) filtra estritamente a exportação — futuro vem sem linhas, hoje traz as pagas", async () => {
+    const today = localDate()
+    const countRows = async (qs: string) => {
+      const { bytes } = await fetchFile(masterS, `/api/company/finance/export?tab=quitacoes&format=xlsx&${qs}`)
+      const wb = new ExcelJS.Workbook()
+      await wb.xlsx.load(bytes as any)
+      return wb.worksheets[0].rowCount - 1
+    }
+    const future = await countRows("from=2999-01-01&to=2999-12-31")
+    const current = await countRows(`from=${today}&to=${today}`)
+    const apiToday = (await api(masterS, "GET", `/api/company/finance/settlements?from=${today}&to=${today}`)).json.length
+    return (future === 0 && current >= 3 && current === apiToday) || `futuro ${future} hoje ${current} api ${apiToday}`
+  })
+  await check("9.Exportacao", "Exportação traz o comprovante como link; Colaborador comum não exporta (403); aba inválida (400)", async () => {
+    const { bytes } = await fetchFile(masterS, "/api/company/finance/export?tab=quitacoes&format=xlsx")
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(bytes as any)
+    const sheet = wb.worksheets[0]
+    const proofCol = (sheet.getRow(1).values as any[]).indexOf("Comprovante")
+    const cell = sheet.getRow(2).getCell(proofCol).value as any
+    const plain = await fetchFile(plainS, "/api/company/finance/export?tab=quitacoes&format=pdf")
+    const invalid = await fetchFile(masterS, "/api/company/finance/export?tab=xyz&format=pdf")
+    return (Boolean(cell?.hyperlink) && plain.res.status === 403 && invalid.res.status === 400) || `link ${JSON.stringify(cell)} plain ${plain.res.status} invalid ${invalid.res.status}`
+  })
+
+  // --------------------------------------------------------------------------
+  // 10. Filtro padrão de 30 dias + seed e trava de ganhos só por Ocorrências
+  // --------------------------------------------------------------------------
+  await check("10.Quitacoes", "Seed (scripts/seed-quitacoes.ts) presente nos últimos 30 dias; intervalo menor filtra estritamente", async () => {
+    const day = (offset: number) => localDate(offset)
+    const last30 = (await api(masterS, "GET", `/api/company/finance/settlements?from=${day(-30)}&to=${day(0)}`)).json as any[]
+    const last7 = (await api(masterS, "GET", `/api/company/finance/settlements?from=${day(-7)}&to=${day(0)}`)).json as any[]
+    const seeded = last30.filter((r) => r.description.startsWith("[Seed]"))
+    const inRange = last7.every((r) => new Date(r.paidAt) >= new Date(`${day(-7)}T00:00:00`))
+    const sortedDesc = last30.every((r, i) => i === 0 || new Date(last30[i - 1].paidAt) >= new Date(r.paidAt))
+    return (seeded.length >= 10 && last7.length < last30.length && inRange && sortedDesc) || `seed ${seeded.length} 30d ${last30.length} 7d ${last7.length} faixa ${inRange} ordem ${sortedDesc}`
+  })
+  await check("10.TravaGanhos", "Não existe lançamento direto de ganho no Financeiro (rota goal-payouts removida → 404)", async () =>
+    (await api(masterS, "POST", "/api/company/finance/goal-payouts", { goalId: "x", employeeId: tempId, amount: 10, period: "2026-10" })).status === 404,
   )
 
   printSummary("MÓDULO FINANCEIRO REFATORADO (SAQUES, CONTAS A PAGAR, RECEBÍVEIS, QUITAÇÃO, COMISSÕES)")

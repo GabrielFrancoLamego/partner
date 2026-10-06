@@ -152,6 +152,9 @@ export default function PartnerCommissionsAndWithdrawalsPage() {
         </TabsContent>
 
         <TabsContent value="withdrawals" className="mt-4">
+          <Link href="/partner/carteira/saques" className="mb-3 inline-block text-sm font-medium text-[#F58220] hover:underline">
+            Acompanhar meus saques solicitados (data prevista e comprovante) →
+          </Link>
           {withdrawals.length === 0 ? (
             <EmptyState message="Nenhum saque solicitado ainda." />
           ) : (
