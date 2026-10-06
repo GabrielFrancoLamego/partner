@@ -8,7 +8,7 @@ export async function GET() {
 
     const withdrawals = await prisma.withdrawal.findMany({
       where: { companyId: user.companyId },
-      include: { partner: { select: { id: true, name: true, email: true } } },
+      include: { partner: { select: { id: true, name: true, email: true, partnerProfile: { select: { fullName: true, cpf: true, document: true } } } } },
       orderBy: { requestDate: "desc" },
       take: 200,
     })

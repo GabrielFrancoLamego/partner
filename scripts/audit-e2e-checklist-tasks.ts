@@ -11,7 +11,7 @@
  */
 import { PrismaClient } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
-import { check, printSummary, results, loginAs, api, startOfDay } from "./audit-lib"
+import { check, printSummary, results, loginAs, api, startOfDay, settleForm } from "./audit-lib"
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
 const prisma = new PrismaClient({ adapter })
@@ -151,10 +151,10 @@ async function main() {
 
   // --- Financeiro: Gerente visualiza + quita ocorrência ---
   let occurrenceId = ""
-  await check("Financeiro", "Master cria ocorrência VALE pendente pro colaborador A", async () => {
+  await check("Financeiro", "Master cria ocorrência de Taxa de Serviço pendente pro colaborador A", async () => {
     const form = new FormData()
     form.set("employeeId", pColabA.id)
-    form.set("type", "VALE")
+    form.set("type", "TAXA_SERVICO")
     form.set("value", "50")
     form.set("description", "E2E mark-paid fixture")
     const master = await loginAs((await prisma.user.findFirstOrThrow({ where: { companyId: pousada.id, role: "COMPANY_MASTER" } })).email)
@@ -167,16 +167,17 @@ async function main() {
   await check("Financeiro", "Gerente consegue ver /api/company/finance/receivables (não é mais 403)", async () => {
     const { status, json } = await api(gerente, "GET", "/api/company/finance/receivables")
     if (status !== 200) return `status ${status}`
-    const row = json.find((r: any) => r.employeeId === pColabA.id)
-    const occ = row?.occurrences.find((o: any) => o.id === occurrenceId)
-    return Boolean(occ) || "ocorrência não apareceu no recebível do colaborador A"
+    const row = json.rows.find((r: any) => r.employeeId === pColabA.id)
+    const item = row?.items.find((i: any) => i.id === occurrenceId)
+    return Boolean(item) || "ocorrência não apareceu nos itens pendentes do colaborador A"
   })
 
-  await check("Financeiro", "Gerente marca a ocorrência como Paga (mark-paid)", async () => {
-    const form = new FormData()
-    const { status, json } = await api(gerente, "POST", `/api/company/occurrences/${occurrenceId}/mark-paid`, form, true)
-    if (status !== 200) return `status ${status} — ${JSON.stringify(json)}`
-    return json.paymentStatus === "PAID" || `esperado PAID, veio ${json.paymentStatus}`
+  await check("Financeiro", "Gerente quita a ocorrência (settle, com forma de pagamento + comprovante)", async () => {
+    const { status, json } = await api(gerente, "POST", "/api/company/finance/settle", settleForm({ kind: "OCCURRENCE", id: occurrenceId }, { method: "PIX" }), true)
+    if (status !== 201) return `status ${status} — ${JSON.stringify(json)}`
+    const paid = await prisma.occurrence.findUniqueOrThrow({ where: { id: occurrenceId } })
+    await prisma.financialSettlement.deleteMany({ where: { sourceId: occurrenceId } })
+    return paid.paymentStatus === "PAID" || `esperado PAID, veio ${paid.paymentStatus}`
   })
 
   printSummary("TAREFAS LIVRES/SETOR/TAG, AUTO-APROVAÇÃO E QUITAÇÃO NO FINANCEIRO")

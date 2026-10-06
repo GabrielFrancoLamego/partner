@@ -1,82 +1,62 @@
 import { prisma } from "@/lib/prisma"
-import { requireCompanyStaff, handleApiError, ApiError } from "@/lib/api-auth"
-import { canManageDailyOperations, canAccessFinanceModule } from "@/lib/permissions"
+import { requireCompanyStaff, requireFinanceAccess, handleApiError } from "@/lib/api-auth"
+import { BANKING_SELECT, occurrenceLabel, toRecipientBanking, type RecipientBanking } from "@/lib/finance-settlement"
 
-const TYPE_LABELS: Record<string, string> = {
-  SALARIO: "Salário Fixo",
-  TAXA_SERVICO: "Taxa de Serviço",
-  DIARIA: "Diária",
-  COMPRA_DOMINGO: "Compra de Domingo",
-  META: "Bonificação de Meta",
-  VALE: "Vale/Adiantamento",
-  HORA_EXTRA: "Hora Extra",
-  BANCO_HORAS: "Banco de Horas",
-  BONUS_ESPECIAL: "Bônus Especial",
-  DESCONTO_ESPECIAL: "Desconto Especial",
-  CUSTOM: "Lançamento Configurável",
+type PayableRow = {
+  id: string
+  kind: "WITHDRAWAL" | "OCCURRENCE"
+  recipientType: "PARTNER" | "EXTERNAL"
+  recipientId: string | null
+  label: string
+  amount: number
+  dueDate: Date
+  banking: RecipientBanking | null
 }
 
 /**
- * Contas a Pagar — consolida TODOS os compromissos financeiros pendentes da
- * empresa com data prevista, numa única lista ordenada por vencimento:
- * (a) Saques PIX de parceiros, (b) Salários/Adiantamentos/Diárias/Temporários
- * (Occurrence, já cobre todos esses tipos), (c) Metas/Bônus/Prêmios pendentes
- * (Occurrence type=META manual + GoalPayout, raro ficar PENDING).
+ * Contas a Pagar — compromissos com terceiros em ordem cronológica de
+ * vencimento: Saques PIX de parceiros JÁ APROVADOS (vencimento = aprovação) e
+ * ocorrências financeiras de favorecidos sem cadastro (ex: diarista com nome
+ * livre). Pagamentos a colaboradores cadastrados NÃO entram aqui — ficam em
+ * Recebíveis (ver /api/company/finance/receivables).
  */
 export async function GET() {
   try {
     const user = await requireCompanyStaff()
-    if (!canManageDailyOperations(user.role) && !canAccessFinanceModule(user)) throw new ApiError(403, "Sem permissão para esta ação")
+    requireFinanceAccess(user)
     const companyId = user.companyId
 
-    const [withdrawals, occurrences, goalPayouts] = await Promise.all([
+    const [withdrawals, occurrences] = await Promise.all([
       prisma.withdrawal.findMany({
-        where: { companyId, status: "PENDING" },
-        include: { partner: { select: { id: true, name: true } } },
-        orderBy: { requestDate: "asc" },
+        where: { companyId, status: "APPROVED" },
+        include: { partner: { select: { id: true, name: true, partnerProfile: { select: { ...BANKING_SELECT, document: true } } } } },
       }),
       prisma.occurrence.findMany({
-        where: { companyId, employeeId: { not: null }, total: { not: null }, paymentStatus: "PENDING" },
-        include: { employee: { select: { id: true, name: true } }, customType: { select: { name: true } } },
-        orderBy: { expectedPaymentDate: "asc" },
-      }),
-      prisma.goalPayout.findMany({
-        where: { companyId, status: "PENDING" },
-        include: { employee: { select: { id: true, name: true } }, goal: { select: { name: true } } },
-        orderBy: { expectedPaymentDate: "asc" },
+        where: { companyId, employeeId: null, total: { not: null }, paymentStatus: "PENDING" },
+        include: { customType: { select: { name: true } } },
       }),
     ])
 
-    const rows = [
+    const rows: PayableRow[] = [
       ...withdrawals.map((w) => ({
         id: w.id,
         kind: "WITHDRAWAL" as const,
         recipientType: "PARTNER" as const,
         recipientId: w.partnerId,
-        recipientName: w.partner.name,
-        label: "Saque PIX de Parceiro",
+        label: "Saque PIX de parceiro",
         amount: Number(w.amount),
-        dueDate: w.requestDate,
+        dueDate: w.approvedAt ?? w.requestDate,
+        banking: { ...toRecipientBanking(w.partner.name, w.partner.partnerProfile), pixKey: w.pixKey ?? w.partner.partnerProfile?.pixKey ?? null },
       })),
       ...occurrences.map((o) => ({
         id: o.id,
         kind: "OCCURRENCE" as const,
-        recipientType: "EMPLOYEE" as const,
-        recipientId: o.employeeId!,
-        recipientName: o.employee!.name,
-        label: o.type === "CUSTOM" ? o.customType?.name ?? "Lançamento" : TYPE_LABELS[o.type] ?? o.type,
-        amount: Number(o.total),
+        recipientType: "EXTERNAL" as const,
+        recipientId: null,
+        label: occurrenceLabel(o),
+        amount: Math.abs(Number(o.total)),
         dueDate: o.expectedPaymentDate ?? o.date,
-      })),
-      ...goalPayouts.map((p) => ({
-        id: p.id,
-        kind: "GOAL_PAYOUT" as const,
-        recipientType: "EMPLOYEE" as const,
-        recipientId: p.employeeId,
-        recipientName: p.employee.name,
-        label: `Meta "${p.goal.name}"`,
-        amount: Number(p.amount),
-        dueDate: p.expectedPaymentDate ?? p.paidAt,
+        banking: { ...toRecipientBanking(o.employeeNameFreeText ?? "Favorecido sem cadastro", null), fullName: o.employeeNameFreeText ?? "Favorecido sem cadastro" },
       })),
     ].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
 

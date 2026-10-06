@@ -1,7 +1,7 @@
 import "server-only"
 import { Prisma, type Role } from "@prisma/client"
 import { getCurrentUser, type CurrentUser } from "./current-user"
-import { isPlatformAdmin, isCompanyStaff, isPartner, canAccessFinanceModule } from "./permissions"
+import { isPlatformAdmin, isCompanyStaff, isPartner, canOperateFinance } from "./permissions"
 import { prisma } from "./prisma"
 import { getCompanyAccessState } from "./company-access"
 import { isTwoFactorVerified } from "./two-factor-session"
@@ -81,12 +81,12 @@ export async function requireCompanyStaff(): Promise<CurrentUser & { companyId: 
 }
 
 /**
- * Uso: rotas do Módulo Financeiro (/api/company/finance/**) — exige role de
- * finanças (Master/Admin/COMPANY_FINANCE) OU um EMPLOYEE marcado como
- * Responsável pelo Financeiro (ver lib/permissions.ts#canAccessFinanceModule).
+ * Uso: rotas do Módulo Financeiro (/api/company/finance/**) — Master/Gerente/
+ * Admin/COMPANY_FINANCE ou um EMPLOYEE marcado como Responsável pelo
+ * Financeiro (ver lib/permissions.ts#canOperateFinance).
  */
 export function requireFinanceAccess(user: CurrentUser) {
-  if (!canAccessFinanceModule(user)) throw new ApiError(403, "Sem permissão para esta ação")
+  if (!canOperateFinance(user)) throw new ApiError(403, "Sem permissão para esta ação")
 }
 
 /**

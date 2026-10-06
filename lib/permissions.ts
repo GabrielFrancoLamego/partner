@@ -82,6 +82,16 @@ export function canAccessFinanceModule(user: { role: Role; employeeProfile?: { i
   return canManageFinance(user.role) || Boolean(user.employeeProfile?.isFinanceResponsible)
 }
 
+/**
+ * Quem opera o módulo Financeiro (/company/financeiro): Master/Gerente/Admin
+ * (operação diária) E quem acessa o módulo por papel ou pela flag
+ * `responsavelFinanceiro` — aprovar/reprovar saques, quitar contas, lançar o
+ * valor de comissões, ver recebíveis e exportar relatórios.
+ */
+export function canOperateFinance(user: { role: Role; employeeProfile?: { isFinanceResponsible: boolean } | null }) {
+  return canManageDailyOperations(user.role) || canAccessFinanceModule(user)
+}
+
 /** Lançar/ver todas as Ocorrências e dar baixa em pagamentos — Master/Gerente/Admin (operação diária) OU quem acessa o Módulo Financeiro (papel COMPANY_FINANCE ou Colaborador com responsavelFinanceiro). Editar/excluir um lançamento já existente continua exclusivo de Gerente/Master/Admin (ver app/api/company/occurrences/[id]/route.ts). */
 export function canManageOccurrences(user: { role: Role; employeeProfile?: { isFinanceResponsible: boolean } | null }) {
   return canManageDailyOperations(user.role) || canAccessFinanceModule(user)

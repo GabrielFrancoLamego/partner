@@ -8,10 +8,13 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
+    // ?pending=1 → só o que exige ação do Financeiro: valor da conta a lançar ou comissão a aprovar.
+    const onlyPending = searchParams.get("pending") === "1"
 
     const commissions = await prisma.commission.findMany({
       where: {
         companyId: user.companyId,
+        ...(onlyPending ? { OR: [{ amount: null }, { status: { in: ["AWAITING_VALUE", "PENDING"] } }] } : {}),
         ...(status && status !== "all" ? { status: status as "AWAITING_VALUE" | "PENDING" | "APPROVED" | "PAID" | "REJECTED" } : {}),
       },
       include: {

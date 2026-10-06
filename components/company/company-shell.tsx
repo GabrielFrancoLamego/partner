@@ -28,7 +28,8 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Role } from "@prisma/client"
-import { canManageDailyOperations, canManageFinance, canOperateFrontDesk, canConfigureCompany } from "@/lib/permissions"
+import { canManageDailyOperations, canOperateFinance, canOperateFrontDesk, canConfigureCompany } from "@/lib/permissions"
+import { FINANCE_CHANGED_EVENT } from "@/lib/finance-events"
 import { CompanyUserProvider, type CompanyUser } from "@/lib/company-user-context"
 import { TermAcceptanceGate } from "./term-acceptance-gate"
 import { ProfileCompletionGate } from "./profile-completion-gate"
@@ -55,6 +56,8 @@ type NavItem = {
   show: (user: CompanyUser) => boolean
   /** Item ganha um selo piscante (ver useChecklistPendingCount) quando há tarefas de checklist pendentes para o turno. */
   pulseWhenChecklistPending?: boolean
+  /** Item mostra um badge vermelho piscante com o total de pendências do Financeiro vencendo hoje (ver /api/company/finance/summary). */
+  showFinanceBadge?: boolean
   /** Ponto e Scanner ganham destaque próprio na barra fixa inferior (ver QuickActionBar) — não duplica na barra de navegação do topo no mobile. */
   hideFromMobileNav?: boolean
 }
@@ -114,12 +117,15 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/company/programas", label: "Programa de Parceria", shortLabel: "Parceria", icon: Award, show: (u) => canConfigureCompany(u.role) },
   { href: "/company/promocoes", label: "Promoções", icon: Gift, show: (u) => canConfigureCompany(u.role) },
   { href: "/company/comunicacao", label: "Comunicação", icon: MessagesSquare, show: () => true },
-  // Exclusivo do Master/Admin/COMPANY_FINANCE por papel, OU do Colaborador
-  // marcado com responsavelFinanceiro (EmployeeProfile.isFinanceResponsible)
-  // — esse Colaborador mantém TODOS os itens normais de Colaborador abaixo
-  // (Dashboard, Checklists, Ponto, Mural, Crescimento, Ocorrências) e ganha
-  // este item extra, sem trocar de papel na plataforma.
-  { href: "/company/financeiro", label: "Financeiro", icon: Wallet, show: (u) => canManageFinance(u.role) || u.isFinanceResponsible },
+  // Master, Gerente e Colaborador com a flag responsavelFinanceiro (o Colaborador
+  // financeiro mantém TODOS os itens normais de Colaborador e ganha só este a mais).
+  {
+    href: "/company/financeiro",
+    label: "Financeiro",
+    icon: Wallet,
+    show: (u) => canOperateFinance({ role: u.role, employeeProfile: { isFinanceResponsible: u.isFinanceResponsible } }),
+    showFinanceBadge: true,
+  },
   { href: "/company/folha-pagamento", label: "Folha de Pagamento", icon: FileSpreadsheet, show: (u) => canManageDailyOperations(u.role) },
   { href: "/company/configuracoes", label: "Configurações", icon: Settings2, show: (u) => canConfigureCompany(u.role) },
 ]
@@ -139,6 +145,20 @@ export function CompanyShell({
   const canSeeBillingWarning = user.role === "COMPANY_MASTER" || user.role === "COMPANY_FINANCE"
   const hasChecklistNavItem = items.some((i) => i.pulseWhenChecklistPending)
   const [hasPendingChecklists, setHasPendingChecklists] = useState(false)
+  const hasFinanceNavItem = items.some((i) => i.showFinanceBadge)
+  const [financeDueToday, setFinanceDueToday] = useState(0)
+
+  useEffect(() => {
+    if (!hasFinanceNavItem) return
+    const refresh = () =>
+      fetch("/api/company/finance/summary")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { dueTodayTotal: number } | null) => setFinanceDueToday(data?.dueTodayTotal ?? 0))
+        .catch(() => {})
+    refresh()
+    window.addEventListener(FINANCE_CHANGED_EVENT, refresh)
+    return () => window.removeEventListener(FINANCE_CHANGED_EVENT, refresh)
+  }, [hasFinanceNavItem, pathname])
 
   useEffect(() => {
     if (!hasChecklistNavItem) return
@@ -202,6 +222,7 @@ export function CompanyShell({
                   icon: item.icon,
                   active: isActive(item.href),
                   pulsing: item.pulseWhenChecklistPending && hasPendingChecklists,
+                  badgeCount: item.showFinanceBadge ? financeDueToday : undefined,
                 }))}
             />
           </div>
@@ -244,6 +265,14 @@ export function CompanyShell({
                     )}
                   </span>
                   <span className="font-heading">{item.label}</span>
+                  {item.showFinanceBadge && financeDueToday > 0 && (
+                    <span
+                      className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white animate-pulse"
+                      aria-label={`${financeDueToday} pendências financeiras para hoje`}
+                    >
+                      {financeDueToday}
+                    </span>
+                  )}
                 </Link>
               )
             })}

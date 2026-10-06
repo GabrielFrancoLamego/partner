@@ -1,7 +1,7 @@
 import "./audit-lib"
 import { PrismaClient } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
-import { loginAs, api, check, record, printSummary, results } from "./audit-lib"
+import { loginAs, api, check, record, printSummary, results, settleForm } from "./audit-lib"
 
 /**
  * Auditoria do acesso do Colaborador a Ocorrências/Financeiro — estado FINAL
@@ -101,16 +101,17 @@ async function main() {
 
   const createForm = new FormData()
   createForm.append("employeeId", colaborador.id)
-  createForm.append("type", "VALE")
+  createForm.append("type", "TAXA_SERVICO")
   createForm.append("value", "30")
   createForm.append("description", "[Audit] vale lançado pelo responsavelFinanceiro")
   const postRes3 = await api(colaboradorSession, "POST", "/api/company/occurrences", createForm, true)
   await check("2.ResponsavelFinanceiro", "Consegue lançar ocorrência", async () => postRes3.status === 201)
 
   if (postRes3.status === 201) {
-    const markPaidRes = await api(colaboradorSession, "POST", `/api/company/occurrences/${postRes3.json.id}/mark-paid`, new FormData(), true)
-    await check("2.ResponsavelFinanceiro", "Consegue dar baixa (marcar como paga)", async () => markPaidRes.status === 200)
+    const markPaidRes = await api(colaboradorSession, "POST", "/api/company/finance/settle", settleForm({ kind: "OCCURRENCE", id: postRes3.json.id }), true)
+    await check("2.ResponsavelFinanceiro", "Consegue dar baixa (quitar com forma de pagamento + comprovante)", async () => markPaidRes.status === 201 || `status ${markPaidRes.status} — ${JSON.stringify(markPaidRes.json)}`)
 
+    await prisma.financialSettlement.deleteMany({ where: { sourceId: postRes3.json.id } })
     const editRes = await api(colaboradorSession, "PATCH", `/api/company/occurrences/${outraOcorrencia.id}`, { description: "tentativa de editar" })
     await check("2.ResponsavelFinanceiro", "NÃO consegue editar uma ocorrência já existente (403 — exclusivo Gerente/Master)", async () => editRes.status === 403)
 

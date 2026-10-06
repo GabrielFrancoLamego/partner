@@ -1,7 +1,7 @@
 import "./audit-lib"
 import { PrismaClient } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
-import { loginAs, api, check, record, printSummary, results, startOfDay } from "./audit-lib"
+import { loginAs, api, check, record, printSummary, results, startOfDay, settleForm } from "./audit-lib"
 
 /**
  * Auditoria do ciclo "Dashboard do Colaborador, Header Gamificado, Sua Conta
@@ -87,8 +87,9 @@ async function main() {
       createdById: masterSession.userId,
     },
   })
-  const markDiariaRes = await api(gerenteSession, "POST", `/api/company/occurrences/${diariaOccurrence.id}/mark-paid`, new FormData(), true)
-  await check("4.Diarista", "Gerente marca a diária como Paga", async () => markDiariaRes.status === 200)
+  const markDiariaRes = await api(gerenteSession, "POST", "/api/company/finance/settle", settleForm({ kind: "OCCURRENCE", id: diariaOccurrence.id }, { method: "DINHEIRO" }), true)
+  await check("4.Diarista", "Gerente quita a diária (forma de pagamento + comprovante)", async () => markDiariaRes.status === 201 || `status ${markDiariaRes.status} — ${JSON.stringify(markDiariaRes.json)}`)
+  await prisma.financialSettlement.deleteMany({ where: { sourceId: diariaOccurrence.id } })
   const rafaelAfterPayment = await prisma.user.findUniqueOrThrow({ where: { id: rafael.id } })
   await check("4.Diarista", "Acesso do Diarista é bloqueado automaticamente após o pagamento (status=INACTIVE)", async () => rafaelAfterPayment.status === "INACTIVE")
 

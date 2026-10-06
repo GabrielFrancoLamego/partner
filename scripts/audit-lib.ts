@@ -141,3 +141,17 @@ export function startOfDay(d = new Date()) {
   x.setHours(0, 0, 0, 0)
   return x
 }
+
+// ---------------------------------------------------------------------------
+// Quitação no Financeiro (POST /api/company/finance/settle*): multipart com
+// forma de pagamento + comprovante PNG (1x1) — o comprovante é obrigatório.
+// ---------------------------------------------------------------------------
+const ONE_PX_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64")
+export function settleForm(fields: Record<string, string>, opts: { method?: string | null; withFile?: boolean } = {}) {
+  const form = new FormData()
+  for (const [key, value] of Object.entries(fields)) form.append(key, value)
+  const method = opts.method === undefined ? "PIX" : opts.method
+  if (method) form.append("paymentMethod", method)
+  if (opts.withFile !== false) form.append("file", new File([ONE_PX_PNG], "comprovante.png", { type: "image/png" }))
+  return form
+}

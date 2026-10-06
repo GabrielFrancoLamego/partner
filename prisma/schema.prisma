@@ -144,6 +144,24 @@ enum OccurrencePaymentMethod {
   TRABALHO
   FOLGA_ADICIONAL
   CONSUMO // abate diretamente da Conta de Consumo (User.consumptionDebt) do colaborador — não é dinheiro novo saindo
+  TRANSFERENCIA // Transferência bancária (TED/DOC) — usada na quitação pelo módulo Financeiro
+}
+
+// Forma de pagamento escolhida ao quitar um compromisso no módulo Financeiro
+// (ver FinancialSettlement e app/api/company/finance/settle).
+enum SettlementPaymentMethod {
+  PIX
+  DINHEIRO
+  TRANSFERENCIA
+  CONSUMO // só colaborador — abate User.consumptionDebt em vez de sair dinheiro
+}
+
+// Origem do compromisso quitado em FinancialSettlement.
+enum SettlementSourceKind {
+  WITHDRAWAL // Saque PIX de parceiro (já aprovado)
+  OCCURRENCE // Ocorrência financeira individual (colaborador ou nome livre)
+  GOAL_PAYOUT // Bônus de meta pendente
+  EMPLOYEE_NET // "Pagar total líquido" — quita o líquido do mês de um colaborador
 }
 
 enum OccurrencePaymentStatus {
@@ -534,6 +552,7 @@ model Company {
   referrals   Referral[]
   commissions Commission[]
   withdrawals Withdrawal[]
+  settlements FinancialSettlement[]
   wallets     WalletTransaction[]
   timeEntries TimeEntry[]
   checklists  Checklist[]
@@ -699,6 +718,7 @@ model User {
   occurrencesReceived          Occurrence[]                @relation("OccurrenceEmployee")
   occurrencesCreated           Occurrence[]                @relation("OccurrenceCreatedBy")
   occurrencesPaid              Occurrence[]                @relation("OccurrencePaidBy")
+  settlementsPaid              FinancialSettlement[]       @relation("SettlementPaidBy")
   occurrenceTypeConfigsMade    OccurrenceTypeConfig[]      @relation("OccurrenceTypeConfigCreatedBy")
   calendarEventsCreated        CompanyCalendarEvent[]      @relation("CompanyCalendarEventCreatedBy")
   dailyEvaluationsReceived     DailyEvaluation[]           @relation("DailyEvaluationEmployee")
@@ -1237,6 +1257,39 @@ model Commission {
   @@index([status])
 }
 
+// Registro de Quitação — extrato de TUDO que o módulo Financeiro marcou como
+// pago (saque de parceiro, ocorrência, bônus de meta ou líquido do mês de um
+// colaborador), com forma de pagamento e comprovante. É o "lançamento
+// financeiro" do módulo: snapshot do favorecido no momento do pagamento.
+model FinancialSettlement {
+  id                String                  @id @default(cuid())
+  companyId         String
+  company           Company                 @relation(fields: [companyId], references: [id])
+  sourceKind        SettlementSourceKind
+  sourceId          String // id do Withdrawal/Occurrence/GoalPayout, ou do colaborador em EMPLOYEE_NET
+  recipientType     String // PARTNER | EMPLOYEE | EXTERNAL (nome livre, sem cadastro)
+  recipientId       String?
+  recipientName     String
+  recipientDocument String?
+  pixKey            String?
+  description       String // motivo/origem
+  amount            Decimal                 @db.Decimal(10, 2)
+  dueDate           DateTime?
+  paymentMethod     SettlementPaymentMethod
+  proofUrl          String
+  paidById          String
+  paidBy            User                    @relation("SettlementPaidBy", fields: [paidById], references: [id])
+  paidAt            DateTime                @default(now())
+  createdAt         DateTime                @default(now())
+
+  // Integração futura com o Omie ERP — ver lib/finance-settlement.ts (ponto de sincronização).
+  omieCodigoLancamento String?
+  omieStatus           String? // 'Sincronizado' | 'Pendente' | 'Pago_Omie'
+
+  @@index([companyId, paidAt])
+  @@index([sourceKind, sourceId])
+}
+
 model Withdrawal {
   id                String           @id @default(cuid())
   companyId         String
@@ -1251,6 +1304,10 @@ model Withdrawal {
   rejectionReason   String?
   proofOfPaymentUrl String? // comprovante de transferência PIX anexado pelo Financeiro
   paidAt            DateTime?
+  approvedAt        DateTime? // aprovação da solicitação — a partir daí o saque é uma conta a pagar (vencimento = aprovação)
+  // Integração futura com o Omie ERP — ver lib/finance-settlement.ts (ponto de sincronização).
+  omieCodigoLancamento String?
+  omieStatus           String? // 'Sincronizado' | 'Pendente' | 'Pago_Omie'
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
@@ -1801,6 +1858,10 @@ model Occurrence {
   // Financeiro, exibida ao colaborador no widget "Sua Conta" enquanto PENDING.
   expectedPaymentDate DateTime?
 
+  // Integração futura com o Omie ERP — ver lib/finance-settlement.ts (ponto de sincronização).
+  omieCodigoLancamento String?
+  omieStatus           String? // 'Sincronizado' | 'Pendente' | 'Pago_Omie'
+
   // Preenchido só quando esta Occurrence (type=META) foi gerada pela
   // distribuição automática de prêmio de Meta batida (ver lib/goal-rewards.ts)
   // — permite que excluir a ocorrência estorne o GoalPayout correspondente.
@@ -2305,6 +2366,10 @@ model GoalPayout {
   // Data prevista de pagamento enquanto status=PENDING — editável pelo
   // Financeiro (ver widget "Sua Conta").
   expectedPaymentDate DateTime?
+
+  // Integração futura com o Omie ERP — ver lib/finance-settlement.ts (ponto de sincronização).
+  omieCodigoLancamento String?
+  omieStatus           String? // 'Sincronizado' | 'Pendente' | 'Pago_Omie'
 
   // Ocorrência (type=META) irmã, criada só pela distribuição automática —
   // null nos lançamentos manuais via /company/financeiro. Excluir essa

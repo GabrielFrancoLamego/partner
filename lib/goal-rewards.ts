@@ -23,9 +23,9 @@ function startOfDay(date: Date) {
  *   1. Público: colaboradores presentes hoje (TimeEntry CHECK_IN), filtrados
  *      pelo escopo da meta (COMPANY = todos, SECTOR = só o setor, EMPLOYEE =
  *      só o colaborador-alvo, presente ou não).
- *   2. Credita na "carteira digital" via GoalPayout (status PAID) — mesma
- *      tabela/fluxo já usado no lançamento manual de
- *      app/api/company/finance/goal-payouts.
+ *   2. Credita na "carteira digital" via GoalPayout (status PAID); bônus de
+ *      meta pagos à parte entram por Ocorrências e são quitados em
+ *      app/api/company/finance/settle.
  *   3. Registra a Occurrence automática (type=META) espelhada, ligada ao
  *      GoalPayout via occurrenceId — excluir essa Occurrence estorna o
  *      GoalPayout (ver DELETE /api/company/occurrences/[id]).

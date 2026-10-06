@@ -15,6 +15,8 @@ export type MobileNavBarItem = {
   icon: LucideIcon
   active: boolean
   pulsing?: boolean
+  /** Contador vermelho piscante (ex: pendências do Financeiro para hoje) — some quando 0. */
+  badgeCount?: number
 }
 
 const MAX_PINS = 5
@@ -81,6 +83,11 @@ export function MobileNavBar({ items }: { items: MobileNavBarItem[] }) {
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
                 </span>
               )}
+              {item.badgeCount ? (
+                <span className="absolute -top-2 -right-3 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white animate-pulse">
+                  {item.badgeCount}
+                </span>
+              ) : null}
             </span>
             <span className="text-[10px] font-medium leading-tight whitespace-nowrap">{item.shortLabel ?? item.label}</span>
           </Link>
@@ -132,7 +139,14 @@ export function MobileNavBar({ items }: { items: MobileNavBarItem[] }) {
                     }}
                     className="flex flex-col items-center gap-1.5 w-full pt-2"
                   >
-                    <item.icon className="h-6 w-6" />
+                    <span className="relative">
+                      <item.icon className="h-6 w-6" />
+                      {item.badgeCount ? (
+                        <span className="absolute -top-2 -right-3 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white animate-pulse">
+                          {item.badgeCount}
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="text-[11px] font-medium leading-tight">{item.shortLabel ?? item.label}</span>
                   </button>
                 </div>

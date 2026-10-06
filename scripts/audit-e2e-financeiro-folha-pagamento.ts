@@ -24,7 +24,7 @@ async function main() {
   const colaboradorSession = await loginAs("colaborador@teste.com.vc")
 
   // --------------------------------------------------------------------------
-  // SEÇÃO 2 — Contas a Pagar / Ordem de Pagamento
+  // SEÇÃO 2 — fixture de ocorrência (Contas a Pagar/Recebíveis: ver audit-e2e-financeiro-refactor.ts)
   // --------------------------------------------------------------------------
   const valeRes = await api(masterSession, "POST", "/api/company/occurrences", (() => {
     const f = new FormData()
@@ -34,32 +34,7 @@ async function main() {
     f.append("description", "[Audit] vale pendente pra contas a pagar")
     return f
   })(), true)
-  await check("2.ContasAPagar", "Setup: Master cria um VALE pendente", async () => valeRes.status === 201)
-
-  const payablesRes = await api(financeiroSession, "GET", "/api/company/finance/payables")
-  await check("2.ContasAPagar", "Financeiro vê Contas a Pagar (200)", async () => payablesRes.status === 200)
-  await check(
-    "2.ContasAPagar",
-    "Lista inclui o VALE recém-criado, com dueDate e recipientName",
-    async () =>
-      Array.isArray(payablesRes.json) &&
-      payablesRes.json.some((r: any) => r.id === valeRes.json?.id && r.recipientName === colaborador.name && Boolean(r.dueDate)),
-  )
-
-  const colaboradorPayablesRes = await api(colaboradorSession, "GET", "/api/company/finance/payables")
-  await check("2.ContasAPagar", "Colaborador comum NÃO acessa Contas a Pagar (403)", async () => colaboradorPayablesRes.status === 403)
-
-  const paymentOrderRes = await api(financeiroSession, "GET", "/api/company/finance/payment-order")
-  await check("2.OrdemPagamento", "Financeiro vê a Ordem de Pagamento (200)", async () => paymentOrderRes.status === 200)
-  await check(
-    "2.OrdemPagamento",
-    "Linha do colaborador consolida o valor pendente com os dados bancários/reasons",
-    async () => {
-      const row = Array.isArray(paymentOrderRes.json) ? paymentOrderRes.json.find((r: any) => r.recipientId === colaborador.id) : null
-      if (Boolean(row) && row.totalAmount >= 75 && Array.isArray(row.reasons) && row.reasons.length > 0) return true
-      return `row=${JSON.stringify(row)} totalRows=${Array.isArray(paymentOrderRes.json) ? paymentOrderRes.json.length : typeof paymentOrderRes.json} valeId=${valeRes.json?.id}`
-    },
-  )
+  await check("2.Setup", "Master cria um VALE pendente", async () => valeRes.status === 201)
 
   // --------------------------------------------------------------------------
   // SEÇÃO 4 — Financeiro lança, mas não edita/exclui (reforço com o ID real)

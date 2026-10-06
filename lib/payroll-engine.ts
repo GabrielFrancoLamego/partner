@@ -2,7 +2,7 @@ import "server-only"
 import { prisma } from "./prisma"
 import { get5thBusinessDay, getAdvanceDate, splitFixedSalary } from "./payroll"
 
-const MONTH_NAMES_PT = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+export const MONTH_NAMES_PT = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
 
 /**
  * Garante que o Adiantamento (40%, dia 20) e o Saldo (60%, 5º dia útil do mês
