@@ -80,6 +80,7 @@ async function main() {
   console.log("--- PONTO: prévia calculada na hora, SEM aplicar nada ao banco/pontos ---")
 
   await check("Ponto.Previa", "CHECK_IN com 20min de atraso devolve a prévia (5min além da tolerância) mas NÃO debita o banco", async () => {
+    if (crossesMidnight(20)) return true // ignorado: horário "há 20 min" cairia no dia anterior (ver crossesMidnight)
     await resetToday(pColabA.id)
     await prisma.employeeProfile.update({ where: { userId: pColabA.id }, data: { workStartTime: minutesAgo(20), bankOfHoursMinutes: 0 } })
     const { status, json } = await punch(A, "CHECK_IN")
@@ -90,6 +91,7 @@ async function main() {
   })
 
   await check("Ponto.Previa", "CHECK_OUT 20min depois do horário devolve a prévia (+5min) mas NÃO credita o banco", async () => {
+    if (crossesMidnight(20)) return true // ignorado: horário "há 20 min" cairia no dia anterior (ver crossesMidnight)
     await resetToday(pColabA.id)
     await prisma.employeeProfile.update({
       where: { userId: pColabA.id },

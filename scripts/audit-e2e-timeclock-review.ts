@@ -72,6 +72,7 @@ async function main() {
   })
 
   await check("Fechamento.Ponto", "GET fechamento lista a variação pendente (LATE_CHECKIN) e step0Complete=false", async () => {
+    if (crossesMidnight(20)) return true // ignorado: horário "há 20 min" cairia no dia anterior (ver crossesMidnight)
     const { status, json } = await getClosing()
     if (status !== 200) return `status ${status}`
     const item = json.checklist.pendingTimeclockAdjustments.find((a: any) => a.employeeId === pColabA.id && a.kind === "LATE_CHECKIN")
@@ -89,6 +90,7 @@ async function main() {
   })
 
   await check("Fechamento.Ponto", "Aplicar um desconto SEM justificativa é rejeitado (400)", async () => {
+    if (crossesMidnight(20)) return true // ignorado: horário "há 20 min" cairia no dia anterior (ver crossesMidnight)
     const { status } = await api(gerente, "POST", "/api/company/shift-closing/timeclock-adjustments", {
       employeeId: pColabA.id,
       kind: "LATE_CHECKIN",
@@ -98,6 +100,7 @@ async function main() {
   })
 
   await check("Fechamento.Ponto", "Gerente confirma o atraso COM justificativa -> aplica pontos + banco de horas + notifica", async () => {
+    if (crossesMidnight(20)) return true // ignorado: horário "há 20 min" cairia no dia anterior (ver crossesMidnight)
     const before = await getProfile(pColabA.id)
     const { status } = await api(gerente, "POST", "/api/company/shift-closing/timeclock-adjustments", {
       employeeId: pColabA.id,
@@ -114,6 +117,7 @@ async function main() {
   })
 
   await check("Fechamento.Ponto", "A mesma variação NÃO é perguntada de novo (idempotência)", async () => {
+    if (crossesMidnight(20)) return true // ignorado: depende do passo anterior, que não roda na janela da meia-noite
     const { status, json } = await getClosing()
     if (status !== 200) return `status ${status}`
     const stillPending = json.checklist.pendingTimeclockAdjustments.some((a: any) => a.employeeId === pColabA.id && a.kind === "LATE_CHECKIN")
