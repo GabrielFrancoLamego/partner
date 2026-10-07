@@ -13,7 +13,7 @@
  */
 import { PrismaClient } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
-import { check, printSummary, results, loginAs, api, startOfDay, type Session } from "./audit-lib"
+import { check, printSummary, results, loginAs, api, startOfDay, type Session, crossesMidnight } from "./audit-lib"
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
 const prisma = new PrismaClient({ adapter })
@@ -107,6 +107,7 @@ async function main() {
   })
 
   await check("Ponto.Previa", "Intervalo além da tolerância devolve a prévia do excedente mas NÃO debita o banco", async () => {
+    if (crossesMidnight(90)) return true // ignorado: batidas de 90 min atrás cairiam no dia anterior (ver crossesMidnight)
     await resetToday(pColabB.id)
     await prisma.employeeProfile.update({ where: { userId: pColabB.id }, data: { dailyBreakAllowanceMinutes: 60, bankOfHoursMinutes: 0 } })
     // 80min de pausa: 60 permitidos + 15 de tolerância = 75 livres; excedente = 5min.

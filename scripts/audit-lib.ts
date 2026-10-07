@@ -155,3 +155,13 @@ export function settleForm(fields: Record<string, string>, opts: { method?: stri
   if (opts.withFile !== false) form.append("file", new File([ONE_PX_PNG], "comprovante.png", { type: "image/png" }))
   return form
 }
+
+/**
+ * Testes de ponto montam batidas "há N minutos"; nos primeiros N minutos após a
+ * meia-noite elas caem no dia anterior e a API (que só olha o dia atual) as ignora.
+ * Nessa janela o passo é registrado como ignorado em vez de falhar por artefato do relógio.
+ */
+export function crossesMidnight(minutesBack: number) {
+  const now = new Date()
+  return now.getHours() * 60 + now.getMinutes() < minutesBack + 5
+}

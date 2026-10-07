@@ -11,7 +11,7 @@
  */
 import { PrismaClient } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
-import { check, printSummary, results, loginAs, api, startOfDay, type Session } from "./audit-lib"
+import { check, printSummary, results, loginAs, api, startOfDay, type Session, crossesMidnight } from "./audit-lib"
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
 const prisma = new PrismaClient({ adapter })
@@ -124,6 +124,7 @@ async function main() {
   await resetToday(pColabB.id)
   await prisma.employeeProfile.update({ where: { userId: pColabB.id }, data: { dailyBreakAllowanceMinutes: 60, bankOfHoursMinutes: 50 } })
   await check("Fechamento.Ponto", "Intervalo excedido — Gerente PERDOA (não aplica)", async () => {
+    if (crossesMidnight(90)) return true // ignorado: batidas de 90 min atrás cairiam no dia anterior (ver crossesMidnight)
     await prisma.timeEntry.create({
       data: { userId: pColabB.id, companyId: pousada.id, type: "CHECK_IN", latitude: company.latitude!, longitude: company.longitude!, createdAt: new Date(Date.now() - 90 * 60 * 1000) },
     })
