@@ -59,6 +59,7 @@ export async function GET(request: Request) {
           date: true,
           description: true,
           paymentMethod: true,
+          discountWaived: true,
           goalPayout: { select: { id: true } },
           customType: { select: { name: true, salaryImpactType: true, isTax: true } },
         },
@@ -94,6 +95,10 @@ export async function GET(request: Request) {
       else if (o.type === "COMPRA_DOMINGO") accumulate(comprasDomingo, Math.abs(total), status, expected)
       else if (o.type === "META" && !o.goalPayout) accumulate(metas, Math.abs(total), status, expected)
       else if (o.type === "VALE") vales += Math.abs(total)
+      // Bônus Especial (Master) e Hora Extra somam aos ganhos; Desconto Especial, Quebra de Caixa e
+      // Falta (não abonada) entram em Descontos Diversos — o extrato recalcula a cada lançamento.
+      else if (o.type === "BONUS_ESPECIAL" || o.type === "HORA_EXTRA") accumulate(outrosAdicionais, Math.abs(total), status, expected)
+      else if (o.type === "DESCONTO_ESPECIAL" || o.type === "QUEBRA_CAIXA" || (o.type === "FALTA" && !o.discountWaived)) descontosDiversos += Math.abs(total)
       else if (o.type === "CUSTOM" && o.customType?.salaryImpactType === "BONUS") accumulate(outrosAdicionais, Math.abs(total), status, expected)
       else if (o.type === "CUSTOM" && o.customType?.salaryImpactType === "DISCOUNT") {
         if (o.customType.isTax) impostos += Math.abs(total)

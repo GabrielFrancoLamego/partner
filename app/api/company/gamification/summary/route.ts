@@ -19,14 +19,27 @@ export async function GET() {
     ])
     const levels = program?.levels ?? []
 
-    const leaderboard = ranked.map((r, index) => ({
-      rank: index + 1,
-      employeeId: r.userId,
-      name: r.user.name,
-      xpPoints: r.xpPoints,
-      levelName: r.currentInternalLevel?.name ?? levels[0]?.name ?? null,
-    }))
+    const levelOf = (r: (typeof ranked)[number]) => r.currentInternalLevel?.name ?? levels[0]?.name ?? null
+    // Colaborador comum vê o PÓDIO (3 primeiros, só o primeiro nome) e a própria posição — nunca
+    // id, sobrenome nem Pts dos colegas. Gestão (Master/Gerente/Admin) mantém o ranking completo.
+    const leaderboard =
+      user.role === "EMPLOYEE"
+        ? ranked.map((r, index) => ({
+            rank: index + 1,
+            isMe: r.userId === user.id,
+            displayName: r.userId === user.id ? r.user.name : index < 3 ? r.user.name.split(" ")[0] : null,
+            xpPoints: r.userId === user.id ? r.xpPoints : null,
+            levelName: levelOf(r),
+          }))
+        : ranked.map((r, index) => ({
+            rank: index + 1,
+            employeeId: r.userId,
+            name: r.user.name,
+            xpPoints: r.xpPoints,
+            levelName: levelOf(r),
+          }))
 
+    let myRank: number | null = null
     let me: (ReturnType<typeof resolveCareerProgress> & { pendingPromotionLevel: { id: string; name: string } | null }) | null = null
     if (user.role === "EMPLOYEE") {
       const profile = await prisma.employeeProfile.findUnique({
@@ -37,9 +50,14 @@ export async function GET() {
         ...resolveCareerProgress(profile?.xpPoints ?? 0, levels, profile?.currentInternalLevelId ?? null),
         pendingPromotionLevel: profile?.pendingPromotionLevel ?? null,
       }
+      // Posição real mesmo fora do top 20 do ranking carregado.
+      const ahead = await prisma.employeeProfile.count({
+        where: { user: { companyId, role: "EMPLOYEE", status: "ACTIVE" }, xpPoints: { gt: profile?.xpPoints ?? 0 } },
+      })
+      myRank = ahead + 1
     }
 
-    return Response.json({ levels, leaderboard, me })
+    return Response.json({ levels, leaderboard, me, myRank })
   } catch (error) {
     return handleApiError(error)
   }
