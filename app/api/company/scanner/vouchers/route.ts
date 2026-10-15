@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { requireCompanyStaff, requireCapability, handleApiError, ApiError } from "@/lib/api-auth"
 import { canOperateFrontDesk } from "@/lib/permissions"
 import { generateQrDataUrl, buildWhatsAppShareUrl } from "@/lib/promotion-share"
-import { Resend } from "resend"
+import { sendEmail } from "@/lib/email"
 
 /** Histórico de Vale Retorno emitidos pela empresa. */
 export async function GET(request: Request) {
@@ -27,25 +27,16 @@ export async function GET(request: Request) {
   }
 }
 
-async function trySendVoucherEmail(to: string, promotionTitle: string, companyName: string, qrDataUrl: string) {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) return false
-  try {
-    const resend = new Resend(apiKey)
-    await resend.emails.send({
-      from: process.env.EMAIL_FROM_ADDRESS || "Tribuss <onboarding@resend.dev>",
-      to,
-      subject: `Seu Vale Retorno: ${promotionTitle}`,
-      html: `<div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; text-align:center;">
-        <h1 style="font-size:18px; color:#3E2415;">Vale Retorno — ${companyName}</h1>
-        <p style="color:#555; font-size:14px;">Apresente este QR Code na sua próxima visita para resgatar: <strong>${promotionTitle}</strong></p>
-        <img src="${qrDataUrl}" alt="QR Code" style="width:240px;height:240px;" />
-      </div>`,
-    })
-    return true
-  } catch {
-    return false
-  }
+function trySendVoucherEmail(to: string, promotionTitle: string, companyName: string, qrDataUrl: string) {
+  return sendEmail({
+    to,
+    subject: `Seu Vale Retorno: ${promotionTitle}`,
+    html: `<div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; text-align:center;">
+      <h1 style="font-size:18px; color:#3E2415;">Vale Retorno — ${companyName}</h1>
+      <p style="color:#555; font-size:14px;">Apresente este QR Code na sua próxima visita para resgatar: <strong>${promotionTitle}</strong></p>
+      <img src="${qrDataUrl}" alt="QR Code" style="width:240px;height:240px;" />
+    </div>`,
+  })
 }
 
 /**

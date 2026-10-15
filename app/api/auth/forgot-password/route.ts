@@ -1,31 +1,24 @@
-import { Resend } from "resend"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { sendEmail } from "@/lib/email"
 
 const Schema = z.object({ email: z.string().trim().email() })
 
+// Falha silenciosa (sendEmail nunca lança) — não expomos ao cliente se o email existe/foi enviado (evita enumeração de contas).
 async function trySendResetEmail(email: string, link: string) {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) return
-  try {
-    const resend = new Resend(apiKey)
-    await resend.emails.send({
-      from: process.env.EMAIL_FROM_ADDRESS || "Tribuss <onboarding@resend.dev>",
-      to: email,
-      subject: "Redefinição de senha — Tribuss",
-      html: `
-        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-          <h1 style="font-size:20px; color:#3E2415;">Redefinir sua senha</h1>
-          <p style="color:#555; font-size:14px; line-height:1.5;">
-            Clique no link abaixo para escolher uma nova senha de acesso à Tribuss. Se você não pediu isso, ignore este email.
-          </p>
-          <p><a href="${link}" style="color:#F58220;">${link}</a></p>
-        </div>
-      `.trim(),
-    })
-  } catch {
-    // Falha silenciosa — não expomos ao cliente se o email existe/foi enviado (evita enumeração de contas).
-  }
+  await sendEmail({
+    to: email,
+    subject: "Redefinição de senha — Tribuss",
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+        <h1 style="font-size:20px; color:#3E2415;">Redefinir sua senha</h1>
+        <p style="color:#555; font-size:14px; line-height:1.5;">
+          Clique no link abaixo para escolher uma nova senha de acesso à Tribuss. Se você não pediu isso, ignore este email.
+        </p>
+        <p><a href="${link}" style="color:#F58220;">${link}</a></p>
+      </div>
+    `.trim(),
+  })
 }
 
 /**

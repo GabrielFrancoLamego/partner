@@ -1,9 +1,9 @@
 import "server-only"
-import { Resend } from "resend"
 import type { PartnerType, Role } from "@prisma/client"
 import { prisma } from "./prisma"
 import { createAdminClient } from "./supabase/admin"
 import { ApiError } from "./api-auth"
+import { sendEmail } from "./email"
 
 const DEFAULT_PASSWORD = "123456" // ambiente local de testes — mesma convenção do scripts/seed.mjs
 
@@ -94,34 +94,25 @@ export async function createPlatformUser(input: CreatePlatformUserInput) {
 }
 
 /**
- * Envia o link de acesso/redefinição por email via Resend, quando
- * RESEND_API_KEY estiver configurada. Sem a chave (ambiente local/sem
+ * Envia o link de acesso/redefinição por email via Brevo (lib/email.ts),
+ * quando BREVO_API_KEY estiver configurada. Sem a chave (ambiente local/sem
  * provedor contratado ainda), não faz nada — o link já é sempre devolvido
  * para a UI, para cópia e envio manual, mesmo padrão usado em todo o app.
  */
 async function trySendInviteEmail(email: string, link: string) {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) return
-
-  try {
-    const resend = new Resend(apiKey)
-    await resend.emails.send({
-      from: process.env.EMAIL_FROM_ADDRESS || "Tribuss <onboarding@resend.dev>",
-      to: email,
-      subject: "Seu acesso à plataforma Tribuss",
-      html: `
-        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-          <h1 style="font-size:20px; color:#3E2415;">Bem-vindo(a) à Tribuss</h1>
-          <p style="color:#555; font-size:14px; line-height:1.5;">
-            Clique no link abaixo para definir sua senha e acessar a plataforma:
-          </p>
-          <p><a href="${link}" style="color:#F58220;">${link}</a></p>
-        </div>
-      `.trim(),
-    })
-  } catch {
-    // Falha silenciosa — o link já foi gerado e devolvido para a UI de qualquer forma.
-  }
+  await sendEmail({
+    to: email,
+    subject: "Seu acesso à plataforma Tribuss",
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+        <h1 style="font-size:20px; color:#3E2415;">Bem-vindo(a) à Tribuss</h1>
+        <p style="color:#555; font-size:14px; line-height:1.5;">
+          Clique no link abaixo para definir sua senha e acessar a plataforma:
+        </p>
+        <p><a href="${link}" style="color:#F58220;">${link}</a></p>
+      </div>
+    `.trim(),
+  })
 }
 
 /** Gera um link de redefinição de senha e tenta enviá-lo por email (ver trySendInviteEmail); o link é sempre devolvido para a UI. */

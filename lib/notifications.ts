@@ -1,7 +1,7 @@
 import "server-only"
-import { Resend } from "resend"
 import type { NotificationType } from "@prisma/client"
 import { prisma } from "./prisma"
+import { sendEmail } from "./email"
 import { buildWhatsAppShareUrl } from "./promotion-share"
 
 type NotifyInput = {
@@ -10,38 +10,28 @@ type NotifyInput = {
   title: string
   message: string
   linkUrl?: string
-  /** Email do destinatário, quando disponível — best-effort via Resend (ver trySendEmail). */
+  /** Email do destinatário, quando disponível — best-effort via Brevo (ver lib/email.ts). */
   email?: string | null
   /** Telefone/WhatsApp do destinatário — gera um link wa.me como fallback manual (sem API paga). */
   phone?: string | null
 }
 
-async function trySendEmail(to: string, title: string, message: string) {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) return false
-
-  try {
-    const resend = new Resend(apiKey)
-    await resend.emails.send({
-      from: process.env.EMAIL_FROM_ADDRESS || "Tribuss <onboarding@resend.dev>",
-      to,
-      subject: title,
-      html: `
-        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-          <h1 style="font-size:18px; color:#3E2415;">${title}</h1>
-          <p style="color:#555; font-size:14px; line-height:1.5;">${message}</p>
-        </div>
-      `.trim(),
-    })
-    return true
-  } catch {
-    return false
-  }
+function trySendEmail(to: string, title: string, message: string) {
+  return sendEmail({
+    to,
+    subject: title,
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+        <h1 style="font-size:18px; color:#3E2415;">${title}</h1>
+        <p style="color:#555; font-size:14px; line-height:1.5;">${message}</p>
+      </div>
+    `.trim(),
+  })
 }
 
 /**
  * Cria a notificação em-app (fonte da verdade do sino) e, em paralelo, tenta
- * o e-mail (Resend, best-effort) e monta o link de WhatsApp de fallback —
+ * o e-mail (Brevo, best-effort) e monta o link de WhatsApp de fallback —
  * mesmo padrão de canais "sem garantia de entrega automática" já usado em
  * lib/promotion-share.ts e lib/admin-user.ts (não há gateway de WhatsApp
  * contratado; o link fica pronto na UI para envio manual de 1 clique).
