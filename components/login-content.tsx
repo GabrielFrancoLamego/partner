@@ -25,6 +25,13 @@ import { createClient } from "@/lib/supabase/client"
 const DEMO_PASSWORD = "123456"
 
 /**
+ * Login com Google fica oculto até o provedor ser configurado (Google Cloud +
+ * Supabase). Para religar: NEXT_PUBLIC_GOOGLE_LOGIN_ENABLED=true na Vercel e
+ * um novo deploy.
+ */
+const GOOGLE_LOGIN_ENABLED = process.env.NEXT_PUBLIC_GOOGLE_LOGIN_ENABLED === "true"
+
+/**
  * Contas semeadas no ambiente local de testes (prisma/seed-*.ts), todas com
  * senha "123456". Lista mantida à mão — só as contas @teste.com.vc / a
  * parceira de teste, nunca os ~170 parceiros reais importados da planilha.
@@ -360,6 +367,8 @@ export function LoginContent({ onLogin }: LoginContentProps) {
             </Button>
           </form>
 
+          {GOOGLE_LOGIN_ENABLED && (
+          <>
           <div className="flex items-center gap-3 my-5">
             <div className="h-px flex-1 bg-gray-200" />
             <span className="text-xs text-gray-400">ou</span>
@@ -393,6 +402,8 @@ export function LoginContent({ onLogin }: LoginContentProps) {
             </svg>
             {isGoogleLoading ? "Redirecionando..." : "Continuar com o Google"}
           </Button>
+          </>
+          )}
 
           <p className="text-center text-sm text-gray-500 mt-6">
             Esqueceu a senha?{" "}
