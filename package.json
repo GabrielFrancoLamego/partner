@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "next build",
+    "vercel-build": "prisma migrate deploy && next build",
     "dev": "next dev",
     "dev:https": "next dev --experimental-https",
     "lint": "eslint .",
