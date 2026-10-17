@@ -1,11 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { updateSession } from "@/lib/supabase/middleware"
 
-// Rotas de auth precisam ficar públicas (login/logout/signup) — o resto de
-// /api/* exige sessão válida. A verificação fina de capacidade (quem pode
-// aprovar saque, checklist, etc.) acontece dentro de cada route handler via
+// Rotas de auth precisam ficar públicas (login/logout/signup/esqueci a senha) —
+// o resto de /api/* exige sessão válida. A verificação fina de capacidade (quem
+// pode aprovar saque, checklist, etc.) acontece dentro de cada route handler via
 // lib/api-auth.ts + lib/permissions.ts.
-const PUBLIC_API_PATHS = ["/api/auth/login", "/api/auth/logout", "/api/auth/callback", "/api/public/"]
+const PUBLIC_API_PATHS = [
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/auth/callback",
+  "/api/auth/forgot-password",
+  "/api/public/",
+]
 
 export async function proxy(request: NextRequest) {
   const { response, userId } = await updateSession(request)
